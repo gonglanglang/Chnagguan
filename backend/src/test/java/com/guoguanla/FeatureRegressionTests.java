@@ -472,6 +472,8 @@ class FeatureRegressionTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.uploadId").isNotEmpty())
                 .andExpect(jsonPath("$.data.chunkSize").value(5242880))
+                .andExpect(jsonPath("$.data.directUpload").value(false))
+                .andExpect(jsonPath("$.data.partUploadUrls").isArray())
                 .andReturn();
         JsonNode initData = objectMapper.readTree(initRes.getResponse().getContentAsString()).path("data");
         String uploadId = initData.path("uploadId").asText();
@@ -498,6 +500,17 @@ class FeatureRegressionTests {
                 .andExpect(status().isOk())
                 .andReturn();
         String eTag2 = objectMapper.readTree(p2Res.getResponse().getContentAsString()).path("data").path("eTag").asText();
+
+        mockMvc.perform(post("/api/admin/videos/upload-media/complete")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "uploadId", uploadId,
+                                "objectKey", chunkObjectKey,
+                                "parts", List.of(Map.of("partNumber", 1, "eTag", ""))
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400));
 
         MvcResult compRes = mockMvc.perform(post("/api/admin/videos/upload-media/complete")
                         .header("Authorization", "Bearer " + adminToken)

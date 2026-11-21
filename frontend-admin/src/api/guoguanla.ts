@@ -477,8 +477,104 @@ export const uploadVideoMedia = (formData: FormData, onProgress?: (percent: numb
     }
   );
 
+export interface VideoMultipartPartUrl {
+  partNumber: number;
+  uploadUrl: string;
+}
+
+export interface VideoMultipartInitResult {
+  uploadId: string;
+  objectKey: string;
+  chunkSize: number;
+  storageType: string;
+  directUpload?: boolean;
+  partContentType?: string;
+  partUploadUrls?: VideoMultipartPartUrl[];
+}
+
+export class OssDirectNetworkError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "OssDirectNetworkError";
+  }
+}
+
+export function uploadPartDirectToOss(options: {
+  uploadUrl: string;
+  partNumber: number;
+  blob: Blob;
+  contentType?: string;
+  signal?: AbortSignal;
+  onProgress?: (loadedBytes: number) => void;
+}): Promise<{ partNumber: number; eTag: string }> {
+  return new Promise((resolve, reject) => {
+    if (options.signal?.aborted) {
+      reject(new DOMException("Upload aborted", "AbortError"));
+      return;
+    }
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", options.uploadUrl, true);
+    xhr.timeout = 180000;
+    xhr.withCredentials = false;
+    xhr.setRequestHeader("Content-Type", options.contentType || "application/octet-stream");
+
+    let settled = false;
+    const cleanup = () => {
+      if (options.signal) {
+        options.signal.removeEventListener("abort", onAbort);
+      }
+    };
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      xhr.abort();
+      reject(new DOMException("Upload aborted", "AbortError"));
+    };
+    if (options.signal) {
+      options.signal.addEventListener("abort", onAbort, { once: true });
+    }
+
+    xhr.upload.onprogress = evt => {
+      if (evt.lengthComputable && options.onProgress) {
+        options.onProgress(evt.loaded);
+      }
+    };
+
+    xhr.onload = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (xhr.status >= 200 && xhr.status < 300) {
+        options.onProgress?.(options.blob.size);
+        const rawTag = (xhr.getResponseHeader("ETag") || xhr.getResponseHeader("etag") || "").trim();
+        resolve({ partNumber: options.partNumber, eTag: rawTag });
+        return;
+      }
+      reject(new Error(`直传 OSS 第 ${options.partNumber} 片失败 (HTTP ${xhr.status})`));
+    };
+
+    xhr.onerror = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new OssDirectNetworkError(`直传 OSS 网络或跨域受限（第 ${options.partNumber} 片）`));
+    };
+
+    xhr.ontimeout = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error(`直传 OSS 第 ${options.partNumber} 片超时`));
+    };
+
+    xhr.send(options.blob);
+  });
+}
+
 export const initVideoMultipart = (data: { fileName: string; contentType: string; fileSize: number }) =>
-  http.post<ApiResult<{ uploadId: string; objectKey: string; chunkSize: number; storageType: string }>, any>(
+  http.post<ApiResult<VideoMultipartInitResult>, any>(
     "/videos/upload-media/init",
     { data }
   );

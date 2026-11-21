@@ -60,10 +60,10 @@ public class VideoDTO {
     public static class CompletedPartReq {
         @Min(value = 1, message = "分片序号必须从 1 开始")
         private int partNumber;
-        @NotBlank(message = "分片 ETag 不能为空")
+        // 浏览器直传 OSS 时若桶 CORS 未暴露 ETag 响应头，允许为空并由后端 Complete 时自动调用 OSS ListParts 补齐
         @JsonProperty("eTag")
         @JsonAlias({"etag", "ETag"})
-        private String eTag;
+        private String eTag = "";
     }
 
     @Data

@@ -12,6 +12,8 @@ import {
   deleteVideoLesson,
   initVideoMultipart,
   uploadVideoPart,
+  uploadPartDirectToOss,
+  OssDirectNetworkError,
   completeVideoMultipart,
   abortVideoMultipart,
   uploadVideoCover,
@@ -171,7 +173,20 @@ function cancelVideoUpload() {
   }
 }
 
-async function uploadPartWithRetry(
+function onDialogClosed() {
+  if (videoUploading.value) {
+    cancelVideoUpload();
+  }
+}
+
+function formatUploadSpeed(bytesPerSec: number): string {
+  if (!Number.isFinite(bytesPerSec) || bytesPerSec <= 0) return "";
+  if (bytesPerSec < 1024) return `${Math.round(bytesPerSec)} B/s`;
+  if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
+  return `${(bytesPerSec / (1024 * 1024)).toFixed(2)} MB/s`;
+}
+
+async function uploadPartViaServer(
   uploadId: string,
   objectKey: string,
   partNumber: number,
@@ -179,31 +194,17 @@ async function uploadPartWithRetry(
   signal: AbortSignal,
   onPartProgress: (loadedBytes: number) => void
 ): Promise<{ partNumber: number; eTag: string }> {
-  const maxAttempts = 3;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    if (signal.aborted) {
-      throw new DOMException("Upload aborted", "AbortError");
-    }
-    try {
-      const fd = new FormData();
-      fd.append("uploadId", uploadId);
-      fd.append("objectKey", objectKey);
-      fd.append("partNumber", String(partNumber));
-      fd.append("file", blob, `part_${partNumber}`);
-      const partRes = await uploadVideoPart(fd, {
-        signal,
-        onProgress: loaded => onPartProgress(Math.min(blob.size, loaded))
-      });
-      onPartProgress(blob.size);
-      return partRes.data;
-    } catch (err) {
-      if (signal.aborted || attempt === maxAttempts) {
-        throw err;
-      }
-      onPartProgress(0);
-    }
-  }
-  throw new Error(`分片 ${partNumber} 上传失败`);
+  const fd = new FormData();
+  fd.append("uploadId", uploadId);
+  fd.append("objectKey", objectKey);
+  fd.append("partNumber", String(partNumber));
+  fd.append("file", blob, `part_${partNumber}`);
+  const partRes = await uploadVideoPart(fd, {
+    signal,
+    onProgress: loaded => onPartProgress(Math.min(blob.size, loaded))
+  });
+  onPartProgress(blob.size);
+  return partRes.data;
 }
 
 async function onVideoFileChange(evt: Event) {
@@ -226,26 +227,106 @@ async function onVideoFileChange(evt: Event) {
       contentType: file.type || "video/mp4",
       fileSize: file.size
     });
-    const { uploadId, objectKey, chunkSize } = initRes.data;
+    const {
+      uploadId,
+      objectKey,
+      chunkSize,
+      directUpload,
+      partContentType,
+      partUploadUrls
+    } = initRes.data;
     activeUploadMeta = { uploadId, objectKey };
 
     const sliceSize = chunkSize || 5 * 1024 * 1024;
     const totalChunks = Math.max(1, Math.ceil(file.size / sliceSize));
+    const partUrlMap = new Map<number, string>();
+    for (const item of partUploadUrls || []) {
+      if (item?.partNumber && item?.uploadUrl) {
+        partUrlMap.set(item.partNumber, item.uploadUrl);
+      }
+    }
+
+    let useDirectOss = Boolean(directUpload && partUrlMap.size >= totalChunks);
+    let directSuccessCount = 0;
+    let corsFallbackNotified = false;
+
     const chunkLoadedBytes = new Array<number>(totalChunks).fill(0);
     const completedParts = new Array<{ partNumber: number; eTag: string }>(totalChunks);
     let finishedChunks = 0;
+    const uploadStartedAt = Date.now();
 
     const refreshProgress = () => {
       const uploadedBytes = chunkLoadedBytes.reduce((sum, n) => sum + n, 0);
       const pct = Math.min(98, Math.round((uploadedBytes * 98) / Math.max(1, file.size)));
       uploadProgress.value = pct;
-      uploadStatusText.value = `分片并发上传中：${finishedChunks} / ${totalChunks} 片（${formatFileSize(uploadedBytes)} / ${formatFileSize(file.size)}）`;
+      const elapsedSec = (Date.now() - uploadStartedAt) / 1000;
+      const speedLabel = elapsedSec >= 0.4 ? formatUploadSpeed(uploadedBytes / elapsedSec) : "";
+      const modeLabel = useDirectOss ? "OSS 直传并发中" : "服务器中转上传中";
+      const speedSuffix = speedLabel ? ` · ${speedLabel}` : "";
+      uploadStatusText.value = `${modeLabel}：${finishedChunks} / ${totalChunks} 片（${formatFileSize(uploadedBytes)} / ${formatFileSize(file.size)}${speedSuffix}）`;
+    };
+
+    const uploadOnePartWithRetry = async (
+      partNumber: number,
+      blob: Blob,
+      onPartProgress: (loaded: number) => void
+    ): Promise<{ partNumber: number; eTag: string }> => {
+      const maxAttempts = 3;
+      let fallbackUsedThisPart = false;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        if (abortController.signal.aborted) {
+          throw new DOMException("Upload aborted", "AbortError");
+        }
+        try {
+          const directUrl = useDirectOss ? partUrlMap.get(partNumber) : undefined;
+          if (directUrl) {
+            const directRes = await uploadPartDirectToOss({
+              uploadUrl: directUrl,
+              partNumber,
+              blob,
+              contentType: partContentType || "application/octet-stream",
+              signal: abortController.signal,
+              onProgress: loaded => onPartProgress(Math.min(blob.size, loaded))
+            });
+            directSuccessCount += 1;
+            return directRes;
+          }
+          return await uploadPartViaServer(
+            uploadId,
+            objectKey,
+            partNumber,
+            blob,
+            abortController.signal,
+            onPartProgress
+          );
+        } catch (err) {
+          const errName = (err as Error)?.name;
+          if (abortController.signal.aborted || errName === "AbortError" || errName === "CanceledError") {
+            throw err;
+          }
+          onPartProgress(0);
+          if (err instanceof OssDirectNetworkError && directSuccessCount === 0 && !fallbackUsedThisPart) {
+            fallbackUsedThisPart = true;
+            useDirectOss = false;
+            attempt -= 1;
+            if (!corsFallbackNotified) {
+              corsFallbackNotified = true;
+              ElMessage.warning("当前无法浏览器直传 OSS（请检查 OSS 跨域 CORS 配置），已自动切换服务器中转继续上传");
+            }
+            continue;
+          }
+          if (attempt === maxAttempts) {
+            throw err;
+          }
+        }
+      }
+      throw new Error(`分片 ${partNumber} 上传失败`);
     };
 
     refreshProgress();
 
     let nextIdx = 0;
-    const concurrency = Math.min(3, totalChunks);
+    const concurrency = Math.min(useDirectOss ? 4 : 3, totalChunks);
     const worker = async () => {
       while (nextIdx < totalChunks) {
         const idx = nextIdx++;
@@ -253,17 +334,10 @@ async function onVideoFileChange(evt: Event) {
         const start = idx * sliceSize;
         const end = Math.min(file.size, start + sliceSize);
         const chunkBlob = file.slice(start, end);
-        const result = await uploadPartWithRetry(
-          uploadId,
-          objectKey,
-          idx + 1,
-          chunkBlob,
-          abortController.signal,
-          loaded => {
-            chunkLoadedBytes[idx] = loaded;
-            refreshProgress();
-          }
-        );
+        const result = await uploadOnePartWithRetry(idx + 1, chunkBlob, loaded => {
+          chunkLoadedBytes[idx] = loaded;
+          refreshProgress();
+        });
         completedParts[idx] = result;
         finishedChunks += 1;
         refreshProgress();
@@ -287,16 +361,21 @@ async function onVideoFileChange(evt: Event) {
     form.videoKey = completeRes.data.objectKey;
     form.videoPreviewUrl = completeRes.data.previewUrl;
     uploadProgress.value = 100;
-    uploadStatusText.value = `上传完成（${totalChunks} 片 · ${formatFileSize(file.size)}）`;
-    ElMessage.success("课程视频分片上传完成");
+    const usedModeText = directSuccessCount > 0 ? "OSS 直传" : "服务器中转";
+    uploadStatusText.value = `上传完成（${usedModeText} · ${totalChunks} 片 · ${formatFileSize(file.size)}）`;
+    ElMessage.success(`课程视频${usedModeText}上传完成`);
     activeUploadMeta = null;
   } catch (err: any) {
-    if (abortController.signal.aborted || err?.name === "AbortError") {
+    if (abortController.signal.aborted || err?.name === "AbortError" || err?.name === "CanceledError") {
       uploadStatusText.value = "已取消视频分片上传";
       ElMessage.info("已取消上传");
-    } else if (activeUploadMeta) {
-      void abortVideoMultipart(activeUploadMeta).catch(() => {});
-      uploadStatusText.value = "分片上传失败，请重试";
+    } else {
+      if (activeUploadMeta) {
+        void abortVideoMultipart(activeUploadMeta).catch(() => {});
+      }
+      const msg = err?.message || "分片上传失败，请重试";
+      uploadStatusText.value = msg;
+      ElMessage.error(msg);
     }
   } finally {
     videoUploading.value = false;
@@ -527,6 +606,7 @@ onBeforeUnmount(() => {
       v-model="dialogVisible"
       :title="editLessonId ? '编辑视频课时与课堂笔记' : '新增视频课时'"
       width="720px"
+      @closed="onDialogClosed"
     >
       <el-form label-width="92px">
         <el-form-item label="课时标题" required>

@@ -7,6 +7,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -45,6 +48,8 @@ public class AliyunOssService {
     private static final long MULTIPART_CHUNK_SIZE = 5L * 1024 * 1024;
     private static final long MAX_ATTACHMENT_BYTES = 50L * 1024 * 1024;
     private static final long DEFAULT_SIGN_TTL_SECONDS = 7200L;
+    private static final long PART_UPLOAD_SIGN_TTL_SECONDS = 4L * 3600L;
+    private static final String DIRECT_PART_CONTENT_TYPE = "application/octet-stream";
     private static final Set<String> ALLOWED_ATTACHMENT_EXTS = Set.of(
             "png", "jpg", "jpeg", "webp", "gif",
             "pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "txt", "md", "zip"
@@ -82,7 +87,17 @@ public class AliyunOssService {
 
     public record UploadResult(String objectKey, String previewUrl, String storageType) {}
 
-    public record MultipartInitResult(String uploadId, String objectKey, long chunkSize, String storageType) {}
+    public record MultipartPartUploadUrl(int partNumber, String uploadUrl) {}
+
+    public record MultipartInitResult(
+            String uploadId,
+            String objectKey,
+            long chunkSize,
+            String storageType,
+            boolean directUpload,
+            String partContentType,
+            List<MultipartPartUploadUrl> partUploadUrls
+    ) {}
 
     public record MultipartPartResult(int partNumber, String eTag) {}
 
@@ -182,9 +197,29 @@ public class AliyunOssService {
         String rand = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         String objectKey = "course-videos/" + datePart + "/lesson_" + rand + "." + meta.ext();
 
+        int totalParts = Math.max(1, (int) ((fileSize + MULTIPART_CHUNK_SIZE - 1) / MULTIPART_CHUNK_SIZE));
+        if (totalParts > 10000) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "视频分片总数不能超过 10000 片");
+        }
+
         if (isOssConfigured()) {
             String uploadId = initiateOssMultipartUpload(objectKey, meta.contentType());
-            return new MultipartInitResult(uploadId, objectKey, MULTIPART_CHUNK_SIZE, "ALIYUN_OSS");
+            List<MultipartPartUploadUrl> partUploadUrls = new ArrayList<>(totalParts);
+            for (int partNumber = 1; partNumber <= totalParts; partNumber++) {
+                partUploadUrls.add(new MultipartPartUploadUrl(
+                        partNumber,
+                        generatePresignedPartUploadUrl(objectKey, uploadId, partNumber, PART_UPLOAD_SIGN_TTL_SECONDS)
+                ));
+            }
+            return new MultipartInitResult(
+                    uploadId,
+                    objectKey,
+                    MULTIPART_CHUNK_SIZE,
+                    "ALIYUN_OSS",
+                    true,
+                    DIRECT_PART_CONTENT_TYPE,
+                    partUploadUrls
+            );
         }
 
         String uploadId = UUID.randomUUID().toString().replace("-", "");
@@ -195,7 +230,7 @@ public class AliyunOssService {
             log.error("Failed to create local chunk directory", e);
             throw new BizException(ErrorCode.INTERNAL_ERROR, "初始化本地分片目录失败");
         }
-        return new MultipartInitResult(uploadId, objectKey, MULTIPART_CHUNK_SIZE, "LOCAL");
+        return new MultipartInitResult(uploadId, objectKey, MULTIPART_CHUNK_SIZE, "LOCAL", false, "", List.of());
     }
 
     public MultipartPartResult uploadCourseVideoPart(
@@ -251,6 +286,13 @@ public class AliyunOssService {
         if (parts == null || parts.isEmpty()) {
             throw new BizException(ErrorCode.BAD_REQUEST, "缺少已完成分片信息");
         }
+
+        if (isOssConfigured()) {
+            List<CompletedPart> resolvedParts = resolveCompletedPartsForOss(safeKey, safeUploadId, parts);
+            completeOssMultipartUpload(safeKey, safeUploadId, resolvedParts);
+            return new UploadResult(safeKey, generatePresignedGetUrl(safeKey, DEFAULT_SIGN_TTL_SECONDS), "ALIYUN_OSS");
+        }
+
         List<CompletedPart> sorted = parts.stream()
                 .filter(Objects::nonNull)
                 .peek(part -> {
@@ -260,11 +302,6 @@ public class AliyunOssService {
                 })
                 .sorted(Comparator.comparingInt(CompletedPart::partNumber))
                 .toList();
-
-        if (isOssConfigured()) {
-            completeOssMultipartUpload(safeKey, safeUploadId, sorted);
-            return new UploadResult(safeKey, generatePresignedGetUrl(safeKey, DEFAULT_SIGN_TTL_SECONDS), "ALIYUN_OSS");
-        }
 
         Path chunkDir = resolveChunkDir(safeUploadId);
         Path target = Path.of(uploadDir).toAbsolutePath().normalize().resolve(safeKey).normalize();
@@ -556,6 +593,33 @@ public class AliyunOssService {
                 + "&Signature=" + encodedSig;
     }
 
+    public String generatePresignedPartUploadUrl(String objectKey, String uploadId, int partNumber, long ttlSeconds) {
+        long expires = Instant.now().getEpochSecond() + Math.max(60L, ttlSeconds);
+        return generatePresignedPartUploadUrlAt(objectKey, uploadId, partNumber, expires);
+    }
+
+    String generatePresignedPartUploadUrlAt(String objectKey, String uploadId, int partNumber, long expiresEpochSec) {
+        if (partNumber < 1 || partNumber > 10000) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "分片序号需在 1 ~ 10000 之间");
+        }
+        String cleanKey = sanitizeCourseVideoKey(objectKey);
+        String cleanUploadId = sanitizeUploadId(uploadId);
+        // Aliyun OSS query subresources sorted lexicographically: partNumber then uploadId
+        String canonicalResource = "/" + bucket.trim() + "/" + cleanKey
+                + "?partNumber=" + partNumber + "&uploadId=" + cleanUploadId;
+        String stringToSign = "PUT\n\n" + DIRECT_PART_CONTENT_TYPE + "\n" + expiresEpochSec + "\n" + canonicalResource;
+        String signature = signHmacSha1(accessKeySecret.trim(), stringToSign);
+        String encodedAk = URLEncoder.encode(accessKeyId.trim(), StandardCharsets.UTF_8);
+        String encodedSig = URLEncoder.encode(signature, StandardCharsets.UTF_8);
+        String cleanEndpoint = stripScheme(endpoint);
+        return "https://" + bucket.trim() + "." + cleanEndpoint + "/" + cleanKey
+                + "?partNumber=" + partNumber
+                + "&uploadId=" + URLEncoder.encode(cleanUploadId, StandardCharsets.UTF_8)
+                + "&OSSAccessKeyId=" + encodedAk
+                + "&Expires=" + expiresEpochSec
+                + "&Signature=" + encodedSig;
+    }
+
     static String signHmacSha1(String secret, String data) {
         try {
             Mac mac = Mac.getInstance("HmacSHA1");
@@ -725,11 +789,7 @@ public class AliyunOssService {
                 log.error("OSS init multipart failed: status={}, body={}", resp.statusCode(), resp.body());
                 throw new BizException(ErrorCode.INTERNAL_ERROR, "初始化阿里云 OSS 分片上传失败 (" + resp.statusCode() + ")");
             }
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-            Document doc = factory.newDocumentBuilder()
-                    .parse(new ByteArrayInputStream(resp.body().getBytes(StandardCharsets.UTF_8)));
+            Document doc = parseXmlDocument(resp.body());
             String uploadId = doc.getElementsByTagName("UploadId").item(0).getTextContent();
             if (uploadId == null || uploadId.isBlank()) {
                 throw new BizException(ErrorCode.INTERNAL_ERROR, "OSS 未返回有效 UploadId");
@@ -741,6 +801,115 @@ public class AliyunOssService {
             log.error("OSS init multipart exception for key={}", objectKey, e);
             throw new BizException(ErrorCode.INTERNAL_ERROR, "初始化 OSS 分片上传异常: " + e.getMessage());
         }
+    }
+
+    private List<CompletedPart> resolveCompletedPartsForOss(String objectKey, String uploadId, List<CompletedPart> rawParts) {
+        List<CompletedPart> sorted = rawParts.stream()
+                .filter(Objects::nonNull)
+                .sorted(Comparator.comparingInt(CompletedPart::partNumber))
+                .toList();
+        boolean missingAnyEtag = sorted.stream().anyMatch(p -> p.eTag() == null || p.eTag().isBlank());
+        if (!missingAnyEtag) {
+            return sorted;
+        }
+        Map<Integer, String> ossEtags = listOssPartETags(objectKey, uploadId);
+        List<CompletedPart> resolved = new ArrayList<>(sorted.size());
+        for (CompletedPart part : sorted) {
+            String tag = part.eTag();
+            if (tag == null || tag.isBlank()) {
+                tag = ossEtags.get(part.partNumber());
+            }
+            if (tag == null || tag.isBlank()) {
+                throw new BizException(ErrorCode.BAD_REQUEST, "第 " + part.partNumber() + " 个分片未上传完成或缺少有效 ETag");
+            }
+            resolved.add(new CompletedPart(part.partNumber(), tag));
+        }
+        return resolved;
+    }
+
+    private Map<Integer, String> listOssPartETags(String objectKey, String uploadId) {
+        String cleanEndpoint = stripScheme(endpoint);
+        String resourceQuery = "uploadId=" + uploadId;
+        Map<Integer, String> eTagMap = new HashMap<>();
+        String marker = null;
+
+        try {
+            while (true) {
+                String url = "https://" + bucket.trim() + "." + cleanEndpoint + "/" + objectKey + "?" + resourceQuery
+                        + (marker != null && !marker.isBlank()
+                        ? "&part-number-marker=" + URLEncoder.encode(marker, StandardCharsets.UTF_8)
+                        : "");
+                String dateHeader = GMT_FORMATTER.format(Instant.now());
+                String stringToSign = "GET\n\n\n" + dateHeader + "\n/" + bucket.trim() + "/" + objectKey + "?" + resourceQuery;
+                String authHeader = "OSS " + accessKeyId.trim() + ":" + signHmacSha1(accessKeySecret.trim(), stringToSign);
+
+                HttpRequest req = HttpRequest.newBuilder()
+                        .uri(URI.create(url))
+                        .timeout(Duration.ofSeconds(30))
+                        .header("Date", dateHeader)
+                        .header("Authorization", authHeader)
+                        .GET()
+                        .build();
+                HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+                if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+                    log.error("OSS list parts failed: status={}, body={}", resp.statusCode(), resp.body());
+                    throw new BizException(ErrorCode.INTERNAL_ERROR, "查询 OSS 已上传分片列表失败 (" + resp.statusCode() + ")");
+                }
+                ListPartsPage page = parseListPartsXml(resp.body());
+                eTagMap.putAll(page.partETags());
+                if (!page.truncated() || page.nextMarker() == null || page.nextMarker().isBlank()) {
+                    break;
+                }
+                marker = page.nextMarker();
+            }
+            return eTagMap;
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("OSS list parts exception for key={}", objectKey, e);
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "查询 OSS 已上传分片异常: " + e.getMessage());
+        }
+    }
+
+    public record ListPartsPage(Map<Integer, String> partETags, boolean truncated, String nextMarker) {}
+
+    public static ListPartsPage parseListPartsXml(String xmlBody) {
+        try {
+            Document doc = parseXmlDocument(xmlBody);
+            Map<Integer, String> map = new HashMap<>();
+            NodeList partNodes = doc.getElementsByTagName("Part");
+            for (int i = 0; i < partNodes.getLength(); i++) {
+                Node node = partNodes.item(i);
+                if (node.getNodeType() != Node.ELEMENT_NODE) continue;
+                Element el = (Element) node;
+                String numText = firstTagText(el, "PartNumber");
+                String tagText = firstTagText(el, "ETag");
+                if (!numText.isBlank() && !tagText.isBlank()) {
+                    map.put(Integer.parseInt(numText.trim()), tagText.trim());
+                }
+            }
+            boolean truncated = "true".equalsIgnoreCase(firstTagText(doc.getDocumentElement(), "IsTruncated"));
+            String nextMarker = firstTagText(doc.getDocumentElement(), "NextPartNumberMarker");
+            return new ListPartsPage(map, truncated, nextMarker);
+        } catch (Exception e) {
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "解析 OSS 分片列表 XML 失败: " + e.getMessage());
+        }
+    }
+
+    private static Document parseXmlDocument(String xmlBody) throws Exception {
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        return factory.newDocumentBuilder()
+                .parse(new ByteArrayInputStream(xmlBody.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    private static String firstTagText(Element parent, String tagName) {
+        if (parent == null) return "";
+        NodeList nodes = parent.getElementsByTagName(tagName);
+        if (nodes.getLength() == 0) return "";
+        String text = nodes.item(0).getTextContent();
+        return text == null ? "" : text.trim();
     }
 
     private String uploadOssPart(String objectKey, String uploadId, int partNumber, byte[] bytes) {
