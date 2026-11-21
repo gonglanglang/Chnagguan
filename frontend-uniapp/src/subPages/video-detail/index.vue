@@ -10,14 +10,33 @@
       />
       <view v-if="activeLesson?.videoUrl" class="player-wrap">
         <video
+          v-if="userStore.isAuthenticated"
+          id="courseVideoPlayer"
           :key="activeLesson.id"
           :src="activeLesson.videoUrl"
           :poster="activeLesson.coverImageUrl || detail?.series.coverImageUrl || undefined"
+          :autoplay="shouldAutoPlay"
           controls
           show-center-play-btn
           class="player-video"
+          @play="onVideoPlay"
           @fullscreenchange="onVideoFullscreenChange"
         />
+        <view v-else class="player-gate" @click="requireLoginToWatch">
+          <image
+            v-if="activeLesson.coverImageUrl || detail?.series.coverImageUrl"
+            :src="activeLesson.coverImageUrl || detail?.series.coverImageUrl"
+            mode="aspectFill"
+            class="player-gate__poster"
+          />
+          <view class="player-gate__mask">
+            <view class="player-gate__btn">
+              <app-icon name="play-circle" size="40" color="#ffffff" />
+            </view>
+            <text class="player-gate__title">点击播放课程视频</text>
+            <text class="player-gate__sub">请先登录后观看</text>
+          </view>
+        </view>
       </view>
     </template>
 
@@ -38,15 +57,53 @@
         </text>
       </view>
 
-      <!-- 选集课程列表 -->
-      <view class="section-card">
+      <!-- 当前课时课堂笔记（显示在课程目录上方；备注与附件皆为空时不展示） -->
+      <view v-if="activeLesson && hasActiveLessonNotes" class="section-card">
         <view class="section-card__head">
           <view class="section-card__title-wrap">
-            <app-icon name="video-play" size="17" color="primary" />
-            <text class="section-card__title">课程目录（共 {{ detail.lessons.length }} 节）</text>
+            <app-icon name="notes" size="17" color="primary" />
+            <text class="section-card__title">课堂笔记 · {{ activeLesson.title }}</text>
           </view>
         </view>
 
+        <view v-if="activeLesson.classNotes && activeLesson.classNotes.trim()" class="notes-body">
+          <math-text :key="activeLesson.id" :text="activeLesson.classNotes" />
+        </view>
+
+        <view
+          v-if="activeLesson.notesAttachments && activeLesson.notesAttachments.length > 0"
+          class="att-section"
+          :class="{ 'att-section--divided': Boolean(activeLesson.classNotes && activeLesson.classNotes.trim()) }"
+        >
+          <text class="att-section__title">笔记附件（{{ activeLesson.notesAttachments.length }} 个）</text>
+          <view class="att-list">
+            <view
+              v-for="(att, idx) in activeLesson.notesAttachments"
+              :key="`${activeLesson.id}-att-${idx}`"
+              class="att-row"
+              @click="openAttachment(att)"
+            >
+              <view class="att-row__left">
+                <view class="att-row__icon">
+                  <app-icon
+                    :name="isImageAttachment(att) ? 'camera' : 'notes'"
+                    size="16"
+                    color="primary"
+                  />
+                </view>
+                <view class="att-row__meta">
+                  <text class="att-row__name">{{ att.name }}</text>
+                  <text class="att-row__size">{{ formatFileSize(att.size) }}</text>
+                </view>
+              </view>
+              <text class="att-row__action">{{ isImageAttachment(att) ? "预览" : "打开" }}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 选集课程列表（不展示卡片顶部标题） -->
+      <view class="section-card">
         <view v-if="detail.lessons.length === 0" class="empty-tip">
           该系列暂未上传视频课时
         </view>
@@ -88,66 +145,15 @@
           </view>
         </view>
       </view>
-
-      <!-- 当前课时课堂笔记（备注 + 附件） -->
-      <view v-if="activeLesson" class="section-card">
-        <view class="section-card__head">
-          <view class="section-card__title-wrap">
-            <app-icon name="notes" size="17" color="primary" />
-            <text class="section-card__title">课堂笔记 · {{ activeLesson.title }}</text>
-          </view>
-        </view>
-
-        <view v-if="activeLesson.classNotes" class="notes-body">
-          <math-text :key="activeLesson.id" :text="activeLesson.classNotes" />
-        </view>
-
-        <view
-          v-if="activeLesson.notesAttachments && activeLesson.notesAttachments.length > 0"
-          class="att-section"
-          :class="{ 'att-section--divided': Boolean(activeLesson.classNotes) }"
-        >
-          <text class="att-section__title">笔记附件（{{ activeLesson.notesAttachments.length }} 个）</text>
-          <view class="att-list">
-            <view
-              v-for="(att, idx) in activeLesson.notesAttachments"
-              :key="`${activeLesson.id}-att-${idx}`"
-              class="att-row"
-              @click="openAttachment(att)"
-            >
-              <view class="att-row__left">
-                <view class="att-row__icon">
-                  <app-icon
-                    :name="isImageAttachment(att) ? 'camera' : 'notes'"
-                    size="16"
-                    color="primary"
-                  />
-                </view>
-                <view class="att-row__meta">
-                  <text class="att-row__name">{{ att.name }}</text>
-                  <text class="att-row__size">{{ formatFileSize(att.size) }}</text>
-                </view>
-              </view>
-              <text class="att-row__action">{{ isImageAttachment(att) ? "预览" : "打开" }}</text>
-            </view>
-          </view>
-        </view>
-
-        <view
-          v-if="!activeLesson.classNotes && (!activeLesson.notesAttachments || activeLesson.notesAttachments.length === 0)"
-          class="empty-tip"
-        >
-          本节老师暂未添加课堂笔记与附件
-        </view>
-      </view>
     </view>
   </app-page-shell>
 </template>
 
 <script setup lang="ts">
-import { onLoad } from "@dcloudio/uni-app";
-import { ref } from "vue";
+import { onLoad, onShow } from "@dcloudio/uni-app";
+import { computed, ref } from "vue";
 import { AppVideoAPI } from "@/api/guoguanla";
+import { useUserStore } from "@/store";
 import type { NoteAttachmentItem, VideoLessonItem, VideoSeriesDetail } from "@/types/guoguanla";
 import { getErrorMessage } from "@/utils/error";
 import { enforceOrientationRepeatedly } from "@/utils/orientation";
@@ -161,11 +167,23 @@ definePage({
   },
 });
 
+const userStore = useUserStore();
 const toast = useToast();
 const shellRef = ref<{ scrollToTop: () => void } | null>(null);
 const loading = ref(true);
 const detail = ref<VideoSeriesDetail | null>(null);
 const activeLesson = ref<VideoLessonItem | null>(null);
+const seriesId = ref(0);
+const initialLessonId = ref(0);
+const shouldAutoPlay = ref(false);
+
+const hasActiveLessonNotes = computed(() => {
+  const lesson = activeLesson.value;
+  if (!lesson) return false;
+  const hasNotes = Boolean(lesson.classNotes && lesson.classNotes.trim());
+  const hasAttachments = Array.isArray(lesson.notesAttachments) && lesson.notesAttachments.length > 0;
+  return hasNotes || hasAttachments;
+});
 
 function formatDuration(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -248,6 +266,41 @@ function openAttachment(att: NoteAttachmentItem): void {
   // #endif
 }
 
+function buildCurrentVideoUrl(autoPlay = true): string {
+  const params: string[] = [`id=${seriesId.value}`];
+  if (activeLesson.value?.id) {
+    params.push(`lessonId=${activeLesson.value.id}`);
+  }
+  if (autoPlay) {
+    params.push("autoPlay=1");
+  }
+  return `/subPages/video-detail/index?${params.join("&")}`;
+}
+
+function requireLoginToWatch(): void {
+  const redirect = encodeURIComponent(buildCurrentVideoUrl(true));
+  toast.warning("请先登录后再观看课程视频");
+  uni.redirectTo({
+    url: `/subPages/login/index?redirect=${redirect}`,
+    fail: () => {
+      uni.navigateTo({
+        url: `/subPages/login/index?redirect=${redirect}`,
+      });
+    },
+  });
+}
+
+function onVideoPlay(): void {
+  if (!userStore.isAuthenticated) {
+    try {
+      uni.createVideoContext("courseVideoPlayer").pause();
+    } catch {
+      // ignore pause fallback error
+    }
+    requireLoginToWatch();
+  }
+}
+
 function onVideoFullscreenChange(e: { detail?: { fullScreen?: boolean } }): void {
   if (!e?.detail?.fullScreen) {
     enforceOrientationRepeatedly();
@@ -255,6 +308,7 @@ function onVideoFullscreenChange(e: { detail?: { fullScreen?: boolean } }): void
 }
 
 function selectLesson(lesson: VideoLessonItem): void {
+  shouldAutoPlay.value = false;
   activeLesson.value = lesson;
   shellRef.value?.scrollToTop();
 }
@@ -264,7 +318,10 @@ async function fetchDetail(id: number): Promise<void> {
   try {
     const res = await AppVideoAPI.getSeriesDetail(id);
     detail.value = res;
-    activeLesson.value = res.lessons[0] || null;
+    const matched = initialLessonId.value > 0
+      ? res.lessons.find((item) => item.id === initialLessonId.value)
+      : undefined;
+    activeLesson.value = matched || res.lessons[0] || null;
   } catch (err) {
     toast.error(getErrorMessage(err, "加载教学视频失败"));
   } finally {
@@ -274,11 +331,18 @@ async function fetchDetail(id: number): Promise<void> {
 
 onLoad((query) => {
   const id = Number(query?.id || 0);
+  seriesId.value = id;
+  initialLessonId.value = Number(query?.lessonId || 0);
+  shouldAutoPlay.value = query?.autoPlay === "1";
   if (id > 0) {
     void fetchDetail(id);
   } else {
     loading.value = false;
   }
+});
+
+onShow(() => {
+  enforceOrientationRepeatedly();
 });
 </script>
 
@@ -292,6 +356,56 @@ onLoad((query) => {
   display: block;
   width: 100%;
   height: 420rpx;
+}
+
+.player-gate {
+  position: relative;
+  width: 100%;
+  height: 420rpx;
+  overflow: hidden;
+  background: #0f172a;
+}
+
+.player-gate__poster {
+  width: 100%;
+  height: 100%;
+}
+
+.player-gate__mask {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.56);
+}
+
+.player-gate__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 108rpx;
+  height: 108rpx;
+  background: rgba(22, 163, 74, 0.88);
+  border-radius: 50%;
+  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.28);
+}
+
+.player-gate__title {
+  margin-top: 6rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.player-gate__sub {
+  font-size: 22rpx;
+  color: rgba(255, 255, 255, 0.82);
 }
 
 .state-box {

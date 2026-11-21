@@ -28,7 +28,7 @@ const query = reactive({
   realmCode: "",
   keyword: "",
   pageNum: 1,
-  pageSize: 10
+  pageSize: 15
 });
 
 const dialogVisible = ref(false);
@@ -216,68 +216,85 @@ onMounted(async () => {
       </el-form>
     </el-card>
 
-    <el-card shadow="never">
-      <el-table v-loading="loading" :data="tableData" border stripe>
-        <el-table-column prop="id" label="ID" width="66" align="center" />
-        <el-table-column label="封面" width="140" align="center">
-          <template #default="{ row }">
+    <el-card v-loading="loading" shadow="never">
+      <div
+        v-if="tableData.length > 0"
+        class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+      >
+        <div
+          v-for="row in tableData"
+          :key="row.id"
+          class="group flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-green-500/60 hover:shadow-md"
+        >
+          <div
+            class="relative aspect-video w-full cursor-pointer overflow-hidden bg-slate-900"
+            @click="openLessons(row)"
+          >
             <el-image
               v-if="row.coverImageUrl"
               :src="row.coverImageUrl"
               fit="cover"
-              class="h-16 w-28 rounded border border-slate-200"
+              class="h-full w-full transition duration-300 group-hover:scale-105"
             />
-            <div v-else class="flex h-16 w-28 items-center justify-center rounded bg-slate-100 text-xs text-slate-400">
-              无封面
+            <div
+              v-else
+              class="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-emerald-600 to-green-700 text-white/90"
+            >
+              <GglIcon name="video-play" :size="28" />
+              <span class="text-xs">暂无系列封面</span>
             </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="系列标题与介绍" min-width="260">
-          <template #default="{ row }">
-            <div class="font-bold text-slate-800">{{ row.title }}</div>
-            <div class="mt-1 line-clamp-2 text-xs text-slate-500">
+
+            <div class="pointer-events-none absolute left-2 top-2">
+              <el-tag size="small" :type="row.realmCode ? 'success' : 'info'" effect="dark">
+                {{ row.realmName || "全境界通用" }}
+              </el-tag>
+            </div>
+            <div class="pointer-events-none absolute right-2 top-2">
+              <el-tag size="small" :type="row.enabled === 1 ? 'success' : 'info'">
+                {{ row.enabled === 1 ? "已上架" : "已下架" }}
+              </el-tag>
+            </div>
+            <div class="pointer-events-none absolute bottom-2 right-2 rounded bg-black/65 px-2 py-0.5 text-[11px] font-medium text-white">
+              {{ row.lessonCount }} 节
+            </div>
+          </div>
+
+          <div class="flex flex-1 flex-col p-3">
+            <div
+              class="line-clamp-1 cursor-pointer text-sm font-bold text-slate-800 transition hover:text-green-600"
+              :title="row.title"
+              @click="openLessons(row)"
+            >
+              {{ row.title }}
+            </div>
+            <div class="mt-1 line-clamp-2 min-h-[34px] text-xs leading-relaxed text-slate-500">
               {{ row.intro || "暂无系列介绍" }}
             </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="境界分类" width="120" align="center">
-          <template #default="{ row }">
-            <el-tag size="small" :type="row.realmCode ? 'success' : 'info'">
-              {{ row.realmName || "全境界通用" }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="已传课时" width="110" align="center">
-          <template #default="{ row }">
-            <el-tag size="small" type="primary">{{ row.lessonCount }} 节</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="sortOrder" label="排序" width="80" align="center" />
-        <el-table-column label="上架" width="84" align="center">
-          <template #default="{ row }">
-            <el-switch :model-value="row.enabled === 1" size="small" @change="handleToggleEnabled(row)" />
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="240" align="center">
-          <template #default="{ row }">
-            <div class="inline-flex items-center gap-1 whitespace-nowrap">
-              <el-button link type="success" @click="openLessons(row)">
-                <GglIcon name="video-play" :size="14" class="mr-1" />
-                上传/管理多节视频
-              </el-button>
-              <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-              <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+            <div class="mt-2 flex items-center justify-between text-[11px] text-slate-400">
+              <span>系列 #{{ row.id }}</span>
+              <span>排序 {{ row.sortOrder ?? 0 }}</span>
             </div>
-          </template>
-        </el-table-column>
-      </el-table>
+          </div>
+
+          <div class="mt-auto flex items-center justify-between border-t border-slate-100 bg-slate-50/70 px-3 py-2">
+            <el-switch :model-value="row.enabled === 1" size="small" @change="handleToggleEnabled(row)" />
+            <div class="flex items-center gap-1">
+              <el-button link size="small" type="success" @click="openLessons(row)">管理课时</el-button>
+              <el-button link size="small" type="primary" @click="openEdit(row)">编辑</el-button>
+              <el-button link size="small" type="danger" @click="handleDelete(row)">删除</el-button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <el-empty v-else description="暂无教学视频系列，点击上方「+ 创建教学视频系列」开始创建" />
 
       <div class="mt-4 flex justify-end">
         <el-pagination
           v-model:current-page="query.pageNum"
           v-model:page-size="query.pageSize"
           :total="total"
-          :page-sizes="[10, 20, 50]"
+          :page-sizes="[10, 15, 25, 50]"
           layout="total, sizes, prev, pager, next"
           @current-change="fetchSeries"
           @size-change="fetchSeries"

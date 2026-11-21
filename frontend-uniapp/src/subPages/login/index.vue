@@ -105,7 +105,7 @@ definePage({
   },
 });
 
-const TAB_PAGES = ["/pages/index/index", "/pages/wrong/index", "/pages/mine/index"];
+const TAB_PAGES = ["/pages/index/index", "/pages/cultivate/index", "/pages/wrong/index", "/pages/mine/index"];
 
 const userStore = useUserStore();
 const toast = useToast();
