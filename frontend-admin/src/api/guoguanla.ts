@@ -71,6 +71,39 @@ export interface StudentUser {
   createdAt: string;
 }
 
+export interface QuizSessionItem {
+  itemIndex: number;
+  questionFormat: string;
+  stem: string;
+  options: string[];
+  answerIndex: number;
+  userIndex: number | null;
+  referenceAnswer: string;
+  userAnswerText: string;
+  userAnswerImageUrl: string;
+  userSelfCorrect: boolean | null;
+  correct: boolean;
+  analysis: string;
+}
+
+export interface EssayAnswerItem {
+  id: number;
+  sessionNo: string;
+  itemIndex: number;
+  userId: number;
+  chapterName: string;
+  gateName: string;
+  stem: string;
+  referenceAnswer: string;
+  answerText: string;
+  answerImageUrl: string;
+  selfCorrect: number | null;
+  teacherStatus: number;
+  teacherComment: string;
+  createdAt: string;
+  reviewedAt: string | null;
+}
+
 export interface StudentDetail {
   profile: StudentUser;
   chapterProgress: Array<{
@@ -86,9 +119,12 @@ export interface StudentDetail {
     gradeCode: string;
     chapterName: string;
     gateName: string;
+    questionFormat?: string;
     stem: string;
     options: string[];
     answerIndex: number;
+    referenceAnswer?: string;
+    lastAnswerImageUrl?: string;
     wrongCount: number;
     isMastered: number;
     lastWrongAt: string;
@@ -158,7 +194,7 @@ export interface QuestionItem {
   gateId: number;
   gateName: string;
   questionMode: "STATIC" | "DYNAMIC_TEMPLATE";
-  questionFormat: "SINGLE_CHOICE" | "MULTI_CHOICE" | "FILL_BLANK" | "JUDGE";
+  questionFormat: "SINGLE_CHOICE" | "MULTI_CHOICE" | "FILL_BLANK" | "JUDGE" | "ESSAY";
   stem: string;
   options: string[];
   answer: Record<string, any>;
@@ -180,6 +216,8 @@ export interface GeneratedSample {
   options: string[];
   answerIndex: number;
   analysis: string;
+  questionFormat?: string;
+  referenceAnswer?: string;
 }
 
 export interface SysConfigItem {
@@ -248,6 +286,25 @@ export const createUser = (data: Record<string, any>) =>
 
 export const updateUser = (id: number, data: Record<string, any>) =>
   http.request<ApiResult<void>>("put", `/users/${id}`, { data });
+
+export const updateUserPassword = (id: number, password: string) =>
+  http.request<ApiResult<void>>("put", `/users/${id}/password`, {
+    data: { password }
+  });
+
+export const getUserQuizRecordDetail = (id: number, sessionNo: string) =>
+  http.get<ApiResult<QuizSessionItem[]>, any>(`/users/${id}/quiz-records/${sessionNo}`);
+
+export const getUserEssayAnswers = (id: number, params?: { pageNum?: number; pageSize?: number }) =>
+  http.get<ApiResult<PageData<EssayAnswerItem>>, any>(`/users/${id}/essay-answers`, { params });
+
+export const reviewEssayAnswer = (
+  essayId: number,
+  data: { teacherStatus: number; teacherComment: string }
+) =>
+  http.request<ApiResult<void>>("put", `/users/essay-answers/${essayId}/review`, {
+    data
+  });
 
 export const updateUserRealm = (id: number, realmCode: string) =>
   http.request<ApiResult<void>>("put", `/users/${id}/realm`, {

@@ -72,4 +72,37 @@ class QuestionEngineTests {
             assertTrue(g.getAnswerIndex() >= 0 && g.getAnswerIndex() < 4);
         }
     }
+
+    @Test
+    void latexBracesAndEssayParamTemplateShouldRenderCorrectly() throws Exception {
+        EduQuestion fracQ = new EduQuestion();
+        fracQ.setQuestionMode("DYNAMIC_TEMPLATE");
+        fracQ.setQuestionFormat("SINGLE_CHOICE");
+        fracQ.setTemplateRuleJson(objectMapper.writeValueAsString(Map.of(
+                "type", "PARAM_TEMPLATE",
+                "vars", Map.of("a", List.of(2, 2), "b", List.of(3, 3)),
+                "stemTpl", "计算 $\\frac{{{a}}}{{{b}}} + 1$",
+                "ansExpr", "frac(a + b, b)"
+        )));
+        GeneratedQuestion fracGen = engineService.generateOne(fracQ);
+        assertEquals("计算 $\\frac{2}{3} + 1$", fracGen.getStem());
+        assertEquals(4, fracGen.getOptions().size());
+        assertTrue(fracGen.getOptions().contains("5/3"));
+
+        EduQuestion essayQ = new EduQuestion();
+        essayQ.setQuestionMode("DYNAMIC_TEMPLATE");
+        essayQ.setQuestionFormat("ESSAY");
+        essayQ.setAnalysis("将 $a={{a}}$ 代入计算");
+        essayQ.setTemplateRuleJson(objectMapper.writeValueAsString(Map.of(
+                "type", "PARAM_TEMPLATE",
+                "vars", Map.of("a", List.of(4, 4), "b", List.of(5, 5)),
+                "stemTpl", "已知 $x={{a}}$，求 $x+{{b}}$ 的值并写出过程。",
+                "ansExpr", "解：$x + {{b}} = {{a + b}}$"
+        )));
+        GeneratedQuestion essayGen = engineService.generateOne(essayQ);
+        assertEquals("ESSAY", essayGen.getQuestionFormat());
+        assertTrue(essayGen.getOptions().isEmpty());
+        assertEquals("解：$x + 5 = 9$", essayGen.getReferenceAnswer());
+        assertEquals("将 $a=4$ 代入计算", essayGen.getAnalysis());
+    }
 }

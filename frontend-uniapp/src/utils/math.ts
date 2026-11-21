@@ -81,12 +81,24 @@ function renderReadableMathHtml(latex: string): string {
     .replace(/\\text\{([^{}]*)\}/g, "$1")
     .replace(/\\mathrm\{([^{}]*)\}/g, "$1");
 
+  // 先规范化无花括号的简单分数写法（如 \frac12 -> \frac{1}{2}）
+  out = out
+    .replace(/\\frac\s*([0-9A-Za-z])\s*([0-9A-Za-z])/g, "\\frac{$1}{$2}")
+    .replace(/\\frac\s*([0-9A-Za-z])\s*\{([^{}]+)\}/g, "\\frac{$1}{$2}")
+    .replace(/\\frac\s*\{([^{}]+)\}\s*([0-9A-Za-z])/g, "\\frac{$1}{$2}");
+
   // 支持常见分数与根号的嵌套化简
   for (let i = 0; i < 3; i += 1) {
     out = out
       .replace(
-        /\\frac\{([^{}]+)\}\{([^{}]+)\}/g,
-        (_m, num: string, den: string) => `(${num})/(${den})`,
+        /\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}/g,
+        (_m, num: string, den: string) => {
+          const n = num.trim();
+          const d = den.trim();
+          const simpleN = /^[A-Za-z0-9]+$/.test(n);
+          const simpleD = /^[A-Za-z0-9]+$/.test(d);
+          return `${simpleN ? n : `(${n})`}/${simpleD ? d : `(${d})`}`;
+        },
       )
       .replace(/\\sqrt\[([^{}]+)\]\{([^{}]+)\}/g, (_m, n: string, x: string) => `ⁿ√(${n}:${x})`)
       .replace(/\\sqrt\{([^{}]+)\}/g, (_m, x: string) => `√(${x})`);

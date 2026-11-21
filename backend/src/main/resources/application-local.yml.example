@@ -3,3 +3,11 @@ spring:
   datasource:
     username: root
     password: your_mysql_password
+
+guoguanla:
+  oss:
+    enabled: true
+    endpoint: oss-cn-beijing.aliyuncs.com
+    bucket: chuangguan2026
+    access-key-id: your_oss_access_key_id
+    access-key-secret: your_oss_access_key_secret

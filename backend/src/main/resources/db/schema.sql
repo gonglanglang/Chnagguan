@@ -213,8 +213,10 @@ CREATE TABLE IF NOT EXISTS user_wrong_question (
   gate_name VARCHAR(32) NOT NULL,
   stem_hash CHAR(64) NOT NULL COMMENT '去重哈希',
   stem TEXT NOT NULL COMMENT '错题发生时题干快照',
+  question_format VARCHAR(24) NOT NULL DEFAULT 'SINGLE_CHOICE' COMMENT '题型：SINGLE_CHOICE / ESSAY',
   options_json JSON NOT NULL COMMENT '选项数组',
   answer_json JSON NOT NULL COMMENT '正确答案快照',
+  last_answer_image_key VARCHAR(512) DEFAULT NULL COMMENT '解答题最近一次作答图OSS对象键',
   analysis TEXT DEFAULT NULL,
   wrong_count INT NOT NULL DEFAULT 1 COMMENT '错题次数',
   is_mastered TINYINT NOT NULL DEFAULT 0 COMMENT '0待攻克 1已掌握',
@@ -226,6 +228,33 @@ CREATE TABLE IF NOT EXISTS user_wrong_question (
   UNIQUE KEY uk_user_hash (user_id, stem_hash),
   KEY idx_wrong_user_mastered (user_id, is_mastered, grade_code, last_wrong_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户错题本表';
+
+-- 10.1 学生解答题画板与手写作答记录表
+CREATE TABLE IF NOT EXISTS user_essay_answer (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  session_no VARCHAR(64) NOT NULL COMMENT '所属答题会话流水号',
+  item_index INT NOT NULL DEFAULT 0 COMMENT '会话内题号',
+  user_id BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '学生ID（0表示游客）',
+  question_id BIGINT UNSIGNED DEFAULT NULL,
+  grade_code VARCHAR(16) NOT NULL DEFAULT '',
+  chapter_id BIGINT UNSIGNED DEFAULT NULL,
+  chapter_name VARCHAR(100) NOT NULL DEFAULT '',
+  gate_name VARCHAR(32) NOT NULL DEFAULT '',
+  stem TEXT NOT NULL COMMENT '作答时具体题干快照',
+  reference_answer TEXT DEFAULT NULL COMMENT '参考答案/评分要点',
+  answer_text TEXT DEFAULT NULL COMMENT '学生文字补充作答',
+  answer_image_key VARCHAR(512) DEFAULT NULL COMMENT '阿里云OSS私有对象键或相对存储路径',
+  self_correct TINYINT DEFAULT NULL COMMENT '学生自评：1正确 0有误 NULL待核',
+  teacher_status TINYINT NOT NULL DEFAULT 0 COMMENT '老师批改：0待批改 1通过 2待订正',
+  teacher_comment VARCHAR(512) NOT NULL DEFAULT '',
+  reviewed_by BIGINT UNSIGNED DEFAULT NULL,
+  reviewed_at DATETIME DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_session_item (session_no, item_index),
+  KEY idx_essay_user_time (user_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='学生解答题手写作答记录表';
 
 -- 11. 系统全局配置表
 CREATE TABLE IF NOT EXISTS sys_config (

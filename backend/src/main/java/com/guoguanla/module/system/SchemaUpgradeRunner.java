@@ -50,9 +50,12 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
     @Transactional(rollbackFor = Exception.class)
     public void run(ApplicationArguments args) throws Exception {
         ensureEduRealmTable();
+        ensureUserEssayAnswerTable();
         boolean addedUserRealm = ensureColumn("app_user", "realm_code", "VARCHAR(24) NOT NULL DEFAULT 'lianqi'");
         ensureColumn("user_quiz_record", "realm_code", "VARCHAR(24) DEFAULT NULL");
         ensureColumn("user_quiz_record", "score", "INT DEFAULT NULL");
+        ensureColumn("user_wrong_question", "question_format", "VARCHAR(24) NOT NULL DEFAULT 'SINGLE_CHOICE'");
+        ensureColumn("user_wrong_question", "last_answer_image_key", "VARCHAR(512) DEFAULT NULL");
 
         seedDefaultRealms();
         repairMojibakeRealms();
@@ -80,6 +83,36 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
                   PRIMARY KEY (id),
                   UNIQUE KEY uk_realm_code (realm_code),
                   UNIQUE KEY uk_realm_grade (grade_code)
+                )
+                """);
+    }
+
+    private void ensureUserEssayAnswerTable() {
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS user_essay_answer (
+                  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                  session_no VARCHAR(64) NOT NULL,
+                  item_index INT NOT NULL DEFAULT 0,
+                  user_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+                  question_id BIGINT UNSIGNED DEFAULT NULL,
+                  grade_code VARCHAR(16) NOT NULL DEFAULT '',
+                  chapter_id BIGINT UNSIGNED DEFAULT NULL,
+                  chapter_name VARCHAR(100) NOT NULL DEFAULT '',
+                  gate_name VARCHAR(32) NOT NULL DEFAULT '',
+                  stem TEXT NOT NULL,
+                  reference_answer TEXT DEFAULT NULL,
+                  answer_text TEXT DEFAULT NULL,
+                  answer_image_key VARCHAR(512) DEFAULT NULL,
+                  self_correct TINYINT DEFAULT NULL,
+                  teacher_status TINYINT NOT NULL DEFAULT 0,
+                  teacher_comment VARCHAR(512) NOT NULL DEFAULT '',
+                  reviewed_by BIGINT UNSIGNED DEFAULT NULL,
+                  reviewed_at DATETIME DEFAULT NULL,
+                  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  PRIMARY KEY (id),
+                  UNIQUE KEY uk_session_item (session_no, item_index),
+                  KEY idx_essay_user_time (user_id, created_at)
                 )
                 """);
     }

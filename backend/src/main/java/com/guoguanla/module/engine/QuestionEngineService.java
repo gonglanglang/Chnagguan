@@ -19,13 +19,17 @@ import java.util.regex.Pattern;
 
 /**
  * 混合出题引擎：同时支持静态题、原版 JS 生成器表达式（沙箱 Rhino 执行）与后台参数化 JSON 模板（纯 Java 表达式解析）。
+ * 兼容选择题与解答题。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class QuestionEngineService {
 
-    private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\{\\{([^}]+)}}");
+    /**
+     * 禁止匹配嵌套花括号，使 LaTeX 如 \frac{{{a}}}{{{b}}} 只替换最内层的 {{a}} 与 {{b}}。
+     */
+    private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\{\\{([^{}]+)\\}\\}");
 
     private static final String HELPER_JS = """
             function R(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
@@ -101,8 +105,9 @@ public class QuestionEngineService {
     }
 
     public GeneratedQuestion generateOne(EduQuestion question) {
+        String format = normalizeFormat(question.getQuestionFormat());
         if ("STATIC".equalsIgnoreCase(question.getQuestionMode())) {
-            return fromStatic(question);
+            return fromStatic(question, format);
         }
         String ruleJson = question.getTemplateRuleJson();
         if (ruleJson == null || ruleJson.isBlank()) {
@@ -113,10 +118,10 @@ public class QuestionEngineService {
             String type = ruleNode.path("type").asText("PARAM_TEMPLATE");
             if ("PROTOTYPE_JS_EXPR".equalsIgnoreCase(type)) {
                 String source = ruleNode.path("source").asText("");
-                return executeSandboxedJs(source, question.getAnalysis());
+                return executeSandboxedJs(source, question.getAnalysis(), format);
             }
             if ("PARAM_TEMPLATE".equalsIgnoreCase(type)) {
-                return executeParamTemplate(ruleNode, question.getAnalysis());
+                return executeParamTemplate(ruleNode, question.getAnalysis(), format);
             }
             throw new BizException(ErrorCode.QUESTION_RULE_INVALID, "不支持的动态模板类型: " + type);
         } catch (BizException e) {
@@ -127,20 +132,26 @@ public class QuestionEngineService {
         }
     }
 
-    private GeneratedQuestion fromStatic(EduQuestion q) {
+    private GeneratedQuestion fromStatic(EduQuestion q, String format) {
         try {
+            if ("ESSAY".equalsIgnoreCase(format)) {
+                JsonNode ansNode = JsonHelper.readTree(objectMapper, q.getAnswerJson());
+                String ref = ansNode != null ? ansNode.path("text").asText("") : "";
+                return new GeneratedQuestion(q.getStem(), List.of(), 0, q.getAnalysis(), "ESSAY", ref);
+            }
             List<String> options = q.getOptionsJson() == null || q.getOptionsJson().isBlank()
                     ? List.of()
                     : JsonHelper.readValue(objectMapper, q.getOptionsJson(), new TypeReference<>() {});
             JsonNode ansNode = JsonHelper.readTree(objectMapper, q.getAnswerJson());
             int ansIndex = ansNode != null && ansNode.has("index") ? ansNode.get("index").asInt(0) : 0;
-            return new GeneratedQuestion(q.getStem(), options, ansIndex, q.getAnalysis());
+            String ref = (ansIndex >= 0 && ansIndex < options.size()) ? options.get(ansIndex) : "";
+            return new GeneratedQuestion(q.getStem(), options, ansIndex, q.getAnalysis(), format, ref);
         } catch (Exception e) {
             throw new BizException(ErrorCode.QUESTION_RULE_INVALID, "静态题目 JSON 解析失败: " + e.getMessage());
         }
     }
 
-    private GeneratedQuestion executeSandboxedJs(String fnSource, String analysis) {
+    private GeneratedQuestion executeSandboxedJs(String fnSource, String analysis, String format) {
         if (fnSource == null || fnSource.isBlank()) {
             throw new BizException(ErrorCode.QUESTION_RULE_INVALID, "生成器函数源码为空");
         }
@@ -148,12 +159,19 @@ public class QuestionEngineService {
         try {
             Scriptable scope = cx.initSafeStandardObjects();
             cx.evaluateString(scope, HELPER_JS, "helpers.js", 1, null);
-            // Rhino 对 Unicode 幂次等字符完全支持；确保箭头函数转为可立即调用表达式
             Object raw = cx.evaluateString(scope, "var __genFn = (" + fnSource + "); __genFn();", "generator.js", 1, null);
             if (!(raw instanceof Scriptable obj)) {
                 throw new IllegalStateException("生成器未返回对象");
             }
             String q = Context.toString(ScriptableObject.getProperty(obj, "q"));
+            if ("ESSAY".equalsIgnoreCase(format)) {
+                Object refObj = ScriptableObject.getProperty(obj, "ref");
+                if (refObj == Scriptable.NOT_FOUND) {
+                    refObj = ScriptableObject.getProperty(obj, "ans");
+                }
+                String ref = refObj == Scriptable.NOT_FOUND ? "" : Context.toString(refObj);
+                return new GeneratedQuestion(q, List.of(), 0, analysis, "ESSAY", ref);
+            }
             Object oObj = ScriptableObject.getProperty(obj, "o");
             Object aObj = ScriptableObject.getProperty(obj, "a");
             if (!(oObj instanceof NativeArray arr)) {
@@ -164,13 +182,14 @@ public class QuestionEngineService {
                 opts.add(Context.toString(arr.get(i)));
             }
             int ansIdx = ((Number) Context.jsToJava(aObj, Number.class)).intValue();
-            return new GeneratedQuestion(q, opts, ansIdx, analysis);
+            String ref = (ansIdx >= 0 && ansIdx < opts.size()) ? opts.get(ansIdx) : "";
+            return new GeneratedQuestion(q, opts, ansIdx, analysis, format, ref);
         } finally {
             Context.exit();
         }
     }
 
-    private GeneratedQuestion executeParamTemplate(JsonNode rule, String analysis) {
+    private GeneratedQuestion executeParamTemplate(JsonNode rule, String analysis, String format) {
         Map<String, Number> vars = new LinkedHashMap<>();
         JsonNode varsNode = rule.path("vars");
         if (varsNode.isObject()) {
@@ -199,8 +218,14 @@ public class QuestionEngineService {
             throw new IllegalArgumentException("stemTpl 不能为空");
         }
         String stem = renderTemplate(stemTpl, vars);
-
+        String renderedAnalysis = renderOptionalTemplate(analysis, vars);
         String ansExpr = rule.path("ansExpr").asText("");
+
+        if ("ESSAY".equalsIgnoreCase(format)) {
+            String refAns = renderEssayAnswer(ansExpr, vars);
+            return new GeneratedQuestion(stem, List.of(), 0, renderedAnalysis, "ESSAY", refAns);
+        }
+
         if (ansExpr.isBlank()) {
             throw new IllegalArgumentException("ansExpr 不能为空");
         }
@@ -213,7 +238,9 @@ public class QuestionEngineService {
         JsonNode wrongExprs = rule.path("wrongExprs");
         if (wrongExprs.isArray()) {
             for (JsonNode w : wrongExprs) {
-                String wVal = renderExprOrTpl(w.asText(), vars);
+                String txt = w.asText("").trim();
+                if (txt.isEmpty()) continue;
+                String wVal = renderExprOrTpl(txt, vars);
                 if (!wVal.isBlank() && seen.add(wVal)) {
                     candidates.add(wVal);
                 }
@@ -248,7 +275,31 @@ public class QuestionEngineService {
         }
         Collections.shuffle(options);
         int ansIndex = options.indexOf(ans);
-        return new GeneratedQuestion(stem, options, ansIndex, analysis);
+        return new GeneratedQuestion(stem, options, ansIndex, renderedAnalysis, format, ans);
+    }
+
+    private String renderEssayAnswer(String ansExpr, Map<String, Number> vars) {
+        if (ansExpr == null || ansExpr.isBlank()) {
+            return "";
+        }
+        if (ansExpr.contains("{{")) {
+            return renderTemplate(ansExpr, vars);
+        }
+        try {
+            return SafeParamEvaluator.evalString(ansExpr, vars);
+        } catch (Exception ignored) {
+            return ansExpr.trim();
+        }
+    }
+
+    private String renderOptionalTemplate(String input, Map<String, Number> vars) {
+        if (input == null || input.isBlank()) {
+            return "";
+        }
+        if (!input.contains("{{")) {
+            return input;
+        }
+        return renderTemplate(input, vars);
     }
 
     private String renderExprOrTpl(String input, Map<String, Number> vars) {
@@ -268,5 +319,12 @@ public class QuestionEngineService {
         }
         matcher.appendTail(sb);
         return sb.toString();
+    }
+
+    private String normalizeFormat(String format) {
+        if (format == null || format.isBlank()) {
+            return "SINGLE_CHOICE";
+        }
+        return format.trim().toUpperCase(Locale.ROOT);
     }
 }

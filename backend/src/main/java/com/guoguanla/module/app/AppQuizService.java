@@ -1,10 +1,12 @@
 package com.guoguanla.module.app;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.guoguanla.common.exception.BizException;
 import com.guoguanla.common.result.ErrorCode;
+import com.guoguanla.common.result.PageResult;
 import com.guoguanla.common.security.StpAppUtil;
 import com.guoguanla.common.util.JsonHelper;
 import com.guoguanla.module.app.dto.AppQuizDTO;
@@ -18,9 +20,12 @@ import com.guoguanla.module.bank.mapper.EduGateMapper;
 import com.guoguanla.module.bank.mapper.EduQuestionMapper;
 import com.guoguanla.module.engine.GeneratedQuestion;
 import com.guoguanla.module.engine.QuestionEngineService;
+import com.guoguanla.module.oss.AliyunOssService;
+import com.guoguanla.module.progress.entity.UserEssayAnswer;
 import com.guoguanla.module.progress.entity.UserGateProgress;
 import com.guoguanla.module.progress.entity.UserQuizRecord;
 import com.guoguanla.module.progress.entity.UserWrongQuestion;
+import com.guoguanla.module.progress.mapper.UserEssayAnswerMapper;
 import com.guoguanla.module.progress.mapper.UserGateProgressMapper;
 import com.guoguanla.module.progress.mapper.UserQuizRecordMapper;
 import com.guoguanla.module.progress.mapper.UserWrongQuestionMapper;
@@ -32,6 +37,7 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -49,8 +55,10 @@ public class AppQuizService {
     private final UserGateProgressMapper gateProgressMapper;
     private final UserQuizRecordMapper quizRecordMapper;
     private final UserWrongQuestionMapper wrongMapper;
+    private final UserEssayAnswerMapper essayAnswerMapper;
     private final AppUserMapper userMapper;
     private final QuestionEngineService engineService;
+    private final AliyunOssService ossService;
     private final AppBankService bankService;
     private final RealmHelperService realmHelper;
     private final ObjectMapper objectMapper;
@@ -66,8 +74,12 @@ public class AppQuizService {
         private String stem;
         private List<String> options;
         private Integer answerIndex;
+        private String referenceAnswer;
         private String analysis;
         private Integer userIndex;
+        private String userAnswerText;
+        private String userAnswerImageKey;
+        private Boolean userSelfCorrect;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -127,10 +139,25 @@ public class AppQuizService {
             throw new BizException(ErrorCode.GATE_EMPTY);
         }
 
-        List<EduQuestion> shuffled = new ArrayList<>(pool);
-        Collections.shuffle(shuffled);
-        int takeCount = Math.min(gate.getQuestionCount(), shuffled.size());
-        List<EduQuestion> picked = shuffled.subList(0, takeCount);
+        // 优先纳入管理后台人工录入/导入的题目，防止自定义新题被固定抽题数截断遗漏
+        List<EduQuestion> adminPool = new ArrayList<>();
+        List<EduQuestion> builtInPool = new ArrayList<>();
+        for (EduQuestion q : pool) {
+            if ("ADMIN".equalsIgnoreCase(q.getSource()) || "IMPORT".equalsIgnoreCase(q.getSource())) {
+                adminPool.add(q);
+            } else {
+                builtInPool.add(q);
+            }
+        }
+        Collections.shuffle(adminPool);
+        Collections.shuffle(builtInPool);
+        List<EduQuestion> combined = new ArrayList<>(pool.size());
+        combined.addAll(adminPool);
+        combined.addAll(builtInPool);
+
+        int takeCount = Math.min(gate.getQuestionCount(), combined.size());
+        List<EduQuestion> picked = new ArrayList<>(combined.subList(0, takeCount));
+        Collections.shuffle(picked);
 
         List<SnapshotItem> snapshots = new ArrayList<>(takeCount);
         List<AppQuizVO.ClientQuestionItem> clientItems = new ArrayList<>(takeCount);
@@ -143,7 +170,7 @@ public class AppQuizService {
 
             clientItems.add(AppQuizVO.ClientQuestionItem.builder()
                     .itemIndex(i)
-                    .questionFormat(q.getQuestionFormat())
+                    .questionFormat(snap.getQuestionFormat())
                     .stem(gen.getStem())
                     .options(gen.getOptions())
                     .build());
@@ -225,10 +252,11 @@ public class AppQuizService {
         for (int i = 0; i < picked.size(); i++) {
             EduQuestion q = picked.get(i);
             GeneratedQuestion gen = engineService.generateOne(q);
-            snapshots.add(toSnapshot(i, q, gen));
+            SnapshotItem snap = toSnapshot(i, q, gen);
+            snapshots.add(snap);
             clientItems.add(AppQuizVO.ClientQuestionItem.builder()
                     .itemIndex(i)
-                    .questionFormat(q.getQuestionFormat())
+                    .questionFormat(snap.getQuestionFormat())
                     .stem(gen.getStem())
                     .options(gen.getOptions())
                     .build());
@@ -268,14 +296,67 @@ public class AppQuizService {
                 .build();
     }
 
+    public AppQuizVO.UploadAnswerImageVO uploadEssayImage(String sessionNo, Integer itemIndex, MultipartFile file, String baseOrigin) {
+        UserQuizRecord record = loadAuthorizedSession(sessionNo);
+        AliyunOssService.UploadResult res = ossService.uploadEssayAnswerImage(
+                file, record.getUserId(), record.getSessionNo(), itemIndex, baseOrigin
+        );
+        return AppQuizVO.UploadAnswerImageVO.builder()
+                .objectKey(res.objectKey())
+                .previewUrl(res.previewUrl())
+                .storageType(res.storageType())
+                .build();
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public AppQuizVO.CheckItemVO checkItem(AppQuizDTO.CheckItemReq req) {
+        return checkItem(req, "");
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public AppQuizVO.CheckItemVO checkItem(AppQuizDTO.CheckItemReq req, String baseOrigin) {
         UserQuizRecord record = loadAuthorizedSession(req.getSessionNo());
         List<SnapshotItem> snapshots = readSnapshots(record.getQuestionSnapshotJson());
         if (req.getItemIndex() < 0 || req.getItemIndex() >= snapshots.size()) {
             throw new BizException(ErrorCode.BAD_REQUEST, "题号超出范围");
         }
         SnapshotItem item = snapshots.get(req.getItemIndex());
+        String fmt = normalizeFormat(item.getQuestionFormat());
+
+        if ("ESSAY".equals(fmt)) {
+            String text = req.getAnswerText() == null ? "" : req.getAnswerText().trim();
+            String imageKey = req.getAnswerImageKey() == null ? "" : req.getAnswerImageKey().trim();
+            if (text.isEmpty() && imageKey.isEmpty()) {
+                throw new BizException(ErrorCode.BAD_REQUEST, "请先在绘制面板作答或填写解答内容");
+            }
+            item.setUserAnswerText(text);
+            if (!imageKey.isEmpty()) {
+                item.setUserAnswerImageKey(imageKey);
+            }
+            if (req.getSelfCorrect() != null) {
+                item.setUserSelfCorrect(req.getSelfCorrect());
+            }
+            record.setQuestionSnapshotJson(writeJson(snapshots));
+            quizRecordMapper.updateById(record);
+
+            upsertEssayAnswerRecord(record, item);
+
+            return AppQuizVO.CheckItemVO.builder()
+                    .itemIndex(item.getItemIndex())
+                    .questionFormat("ESSAY")
+                    .correct(Boolean.TRUE.equals(item.getUserSelfCorrect()))
+                    .correctIndex(0)
+                    .referenceAnswer(safeStr(item.getReferenceAnswer()))
+                    .answerText(safeStr(item.getUserAnswerText()))
+                    .answerImageUrl(ossService.resolveViewUrl(item.getUserAnswerImageKey(), baseOrigin))
+                    .selfCorrect(item.getUserSelfCorrect())
+                    .analysis(safeStr(item.getAnalysis()))
+                    .build();
+        }
+
+        if (req.getSelectedIndex() == null) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "选项索引不能为空");
+        }
         item.setUserIndex(req.getSelectedIndex());
         record.setQuestionSnapshotJson(writeJson(snapshots));
         quizRecordMapper.updateById(record);
@@ -283,10 +364,87 @@ public class AppQuizService {
         boolean correct = Objects.equals(item.getAnswerIndex(), req.getSelectedIndex());
         return AppQuizVO.CheckItemVO.builder()
                 .itemIndex(item.getItemIndex())
+                .questionFormat(fmt)
                 .correct(correct)
                 .correctIndex(item.getAnswerIndex())
-                .analysis(item.getAnalysis() == null ? "" : item.getAnalysis())
+                .referenceAnswer(safeStr(item.getReferenceAnswer()))
+                .analysis(safeStr(item.getAnalysis()))
                 .build();
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public AppQuizVO.CheckItemVO gradeEssayItem(AppQuizDTO.EssayGradeReq req, String baseOrigin) {
+        UserQuizRecord record = loadAuthorizedSession(req.getSessionNo());
+        List<SnapshotItem> snapshots = readSnapshots(record.getQuestionSnapshotJson());
+        if (req.getItemIndex() < 0 || req.getItemIndex() >= snapshots.size()) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "题号超出范围");
+        }
+        SnapshotItem item = snapshots.get(req.getItemIndex());
+        if (!"ESSAY".equalsIgnoreCase(item.getQuestionFormat())) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "该题不是解答题");
+        }
+        if (req.getAnswerText() != null) {
+            item.setUserAnswerText(req.getAnswerText().trim());
+        }
+        if (req.getAnswerImageKey() != null && !req.getAnswerImageKey().isBlank()) {
+            item.setUserAnswerImageKey(req.getAnswerImageKey().trim());
+        }
+        item.setUserSelfCorrect(req.getCorrect());
+        record.setQuestionSnapshotJson(writeJson(snapshots));
+        quizRecordMapper.updateById(record);
+
+        upsertEssayAnswerRecord(record, item);
+
+        return AppQuizVO.CheckItemVO.builder()
+                .itemIndex(item.getItemIndex())
+                .questionFormat("ESSAY")
+                .correct(Boolean.TRUE.equals(req.getCorrect()))
+                .correctIndex(0)
+                .referenceAnswer(safeStr(item.getReferenceAnswer()))
+                .answerText(safeStr(item.getUserAnswerText()))
+                .answerImageUrl(ossService.resolveViewUrl(item.getUserAnswerImageKey(), baseOrigin))
+                .selfCorrect(item.getUserSelfCorrect())
+                .analysis(safeStr(item.getAnalysis()))
+                .build();
+    }
+
+    public PageResult<AppQuizVO.EssayAnswerRecordVO> listMyEssayAnswers(Long pageNum, Long pageSize, String baseOrigin) {
+        Long userId = StpAppUtil.getLoginIdAsLong();
+        long p = pageNum == null || pageNum < 1 ? 1L : pageNum;
+        long s = pageSize == null || pageSize < 1 ? 10L : Math.min(pageSize, 50L);
+
+        Map<String, EduRealm> realmByGrade = realmHelper.listAllRealmsForAdmin().stream()
+                .collect(Collectors.toMap(EduRealm::getGradeCode, r -> r, (a, b) -> a));
+
+        Page<UserEssayAnswer> page = essayAnswerMapper.selectPage(
+                new Page<>(p, s),
+                new LambdaQueryWrapper<UserEssayAnswer>()
+                        .eq(UserEssayAnswer::getUserId, userId)
+                        .orderByDesc(UserEssayAnswer::getCreatedAt)
+        );
+        List<AppQuizVO.EssayAnswerRecordVO> records = page.getRecords().stream()
+                .map(e -> {
+                    EduRealm realm = realmByGrade.get(e.getGradeCode());
+                    return AppQuizVO.EssayAnswerRecordVO.builder()
+                            .id(e.getId())
+                            .sessionNo(e.getSessionNo())
+                            .itemIndex(e.getItemIndex())
+                            .realmName(realm != null ? realm.getRealmName() : "")
+                            .chapterName(e.getChapterName())
+                            .gateName(e.getGateName())
+                            .stem(e.getStem())
+                            .referenceAnswer(e.getReferenceAnswer())
+                            .answerText(e.getAnswerText())
+                            .answerImageUrl(ossService.resolveViewUrl(e.getAnswerImageKey(), baseOrigin))
+                            .selfCorrect(e.getSelfCorrect())
+                            .teacherStatus(e.getTeacherStatus())
+                            .teacherComment(e.getTeacherComment())
+                            .createdAt(e.getCreatedAt())
+                            .reviewedAt(e.getReviewedAt())
+                            .build();
+                })
+                .toList();
+        return PageResult.of(records, page.getTotal(), p, s);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -296,13 +454,13 @@ public class AppQuizService {
             throw new BizException(ErrorCode.QUIZ_ALREADY_SUBMITTED);
         }
         List<SnapshotItem> snapshots = readSnapshots(record.getQuestionSnapshotJson());
-        applyBatchAnswers(snapshots, req.getAnswers());
+        applyBatchAnswers(record, snapshots, req.getAnswers());
 
         int correctCount = 0;
         List<SnapshotItem> wrongSnaps = new ArrayList<>();
         List<AppQuizVO.WrongReviewItem> wrongReview = new ArrayList<>();
         for (SnapshotItem item : snapshots) {
-            if (Objects.equals(item.getAnswerIndex(), item.getUserIndex())) {
+            if (isSnapshotItemCorrect(item)) {
                 correctCount++;
             } else {
                 wrongSnaps.add(item);
@@ -418,13 +576,13 @@ public class AppQuizService {
         }
 
         List<SnapshotItem> snapshots = readSnapshots(record.getQuestionSnapshotJson());
-        applyBatchAnswers(snapshots, req.getAnswers());
+        applyBatchAnswers(record, snapshots, req.getAnswers());
 
         int correctCount = 0;
         List<SnapshotItem> wrongSnaps = new ArrayList<>();
         List<AppQuizVO.WrongReviewItem> wrongReview = new ArrayList<>();
         for (SnapshotItem item : snapshots) {
-            if (Objects.equals(item.getAnswerIndex(), item.getUserIndex())) {
+            if (isSnapshotItemCorrect(item)) {
                 correctCount++;
             } else {
                 wrongSnaps.add(item);
@@ -509,38 +667,128 @@ public class AppQuizService {
         return record;
     }
 
-    public void applyBatchAnswers(List<SnapshotItem> snapshots, List<AppQuizDTO.AnswerSelection> answers) {
+    public void applyBatchAnswers(UserQuizRecord record, List<SnapshotItem> snapshots, List<AppQuizDTO.AnswerSelection> answers) {
         if (answers == null || answers.isEmpty()) {
             return;
         }
         for (AppQuizDTO.AnswerSelection sel : answers) {
-            if (sel.getItemIndex() != null && sel.getItemIndex() >= 0 && sel.getItemIndex() < snapshots.size()) {
-                snapshots.get(sel.getItemIndex()).setUserIndex(sel.getSelectedIndex());
+            if (sel.getItemIndex() == null || sel.getItemIndex() < 0 || sel.getItemIndex() >= snapshots.size()) {
+                continue;
+            }
+            SnapshotItem item = snapshots.get(sel.getItemIndex());
+            if ("ESSAY".equalsIgnoreCase(item.getQuestionFormat())) {
+                if (sel.getAnswerText() != null) {
+                    item.setUserAnswerText(sel.getAnswerText().trim());
+                }
+                if (sel.getAnswerImageKey() != null && !sel.getAnswerImageKey().isBlank()) {
+                    item.setUserAnswerImageKey(sel.getAnswerImageKey().trim());
+                }
+                if (sel.getSelfCorrect() != null) {
+                    item.setUserSelfCorrect(sel.getSelfCorrect());
+                }
+                if ((item.getUserAnswerText() != null && !item.getUserAnswerText().isBlank())
+                        || (item.getUserAnswerImageKey() != null && !item.getUserAnswerImageKey().isBlank())) {
+                    upsertEssayAnswerRecord(record, item);
+                }
+            } else if (sel.getSelectedIndex() != null) {
+                item.setUserIndex(sel.getSelectedIndex());
             }
         }
     }
 
+    public boolean isSnapshotItemCorrect(SnapshotItem item) {
+        if ("ESSAY".equalsIgnoreCase(item.getQuestionFormat())) {
+            return Boolean.TRUE.equals(item.getUserSelfCorrect());
+        }
+        return Objects.equals(item.getAnswerIndex(), item.getUserIndex());
+    }
+
+    private void upsertEssayAnswerRecord(UserQuizRecord record, SnapshotItem item) {
+        UserEssayAnswer exist = essayAnswerMapper.selectOne(
+                new LambdaQueryWrapper<UserEssayAnswer>()
+                        .eq(UserEssayAnswer::getSessionNo, record.getSessionNo())
+                        .eq(UserEssayAnswer::getItemIndex, item.getItemIndex())
+                        .last("LIMIT 1")
+        );
+        Integer selfVal = item.getUserSelfCorrect() == null ? null : (item.getUserSelfCorrect() ? 1 : 0);
+        if (exist != null) {
+            exist.setAnswerText(safeStr(item.getUserAnswerText()));
+            if (item.getUserAnswerImageKey() != null && !item.getUserAnswerImageKey().isBlank()) {
+                exist.setAnswerImageKey(item.getUserAnswerImageKey());
+            }
+            if (selfVal != null) {
+                exist.setSelfCorrect(selfVal);
+            }
+            essayAnswerMapper.updateById(exist);
+            return;
+        }
+
+        String chapterName = "";
+        String gateName = "";
+        if ("ADVANCE_EXAM".equals(record.getMode())) {
+            EduRealm r = realmHelper.findByRealmCode(record.getRealmCode());
+            chapterName = (r != null ? r.getRealmName() : "") + "进阶考核";
+            gateName = "进阶考核";
+        } else if ("REDO_WRONG".equals(record.getMode())) {
+            chapterName = "错题重做";
+            gateName = "消灭错题";
+        } else {
+            EduChapter ch = item.getChapterId() != null ? chapterMapper.selectById(item.getChapterId())
+                    : (record.getChapterId() != null ? chapterMapper.selectById(record.getChapterId()) : null);
+            EduGate gt = record.getGateId() != null ? gateMapper.selectById(record.getGateId()) : null;
+            chapterName = ch != null ? ch.getName() : "";
+            gateName = gt != null ? gt.getGateName() : "";
+        }
+
+        UserEssayAnswer ans = new UserEssayAnswer();
+        ans.setSessionNo(record.getSessionNo());
+        ans.setItemIndex(item.getItemIndex());
+        ans.setUserId(record.getUserId() == null ? 0L : record.getUserId());
+        ans.setQuestionId(item.getQuestionId());
+        ans.setGradeCode(safeStr(item.getGradeCode()));
+        ans.setChapterId(item.getChapterId() != null ? item.getChapterId() : record.getChapterId());
+        ans.setChapterName(chapterName);
+        ans.setGateName(gateName);
+        ans.setStem(safeStr(item.getStem()));
+        ans.setReferenceAnswer(safeStr(item.getReferenceAnswer()));
+        ans.setAnswerText(safeStr(item.getUserAnswerText()));
+        ans.setAnswerImageKey(safeStr(item.getUserAnswerImageKey()));
+        ans.setSelfCorrect(selfVal);
+        ans.setTeacherStatus(0);
+        ans.setTeacherComment("");
+        essayAnswerMapper.insert(ans);
+    }
+
     private SnapshotItem toSnapshot(int idx, EduQuestion q, GeneratedQuestion gen) {
+        String fmt = normalizeFormat(gen.getQuestionFormat() != null ? gen.getQuestionFormat() : q.getQuestionFormat());
         SnapshotItem snap = new SnapshotItem();
         snap.setItemIndex(idx);
         snap.setQuestionId(q.getId());
         snap.setChapterId(q.getChapterId());
         snap.setGradeCode(q.getGradeCode());
-        snap.setQuestionFormat(q.getQuestionFormat());
+        snap.setQuestionFormat(fmt);
         snap.setStem(gen.getStem());
-        snap.setOptions(gen.getOptions());
-        snap.setAnswerIndex(gen.getAnswerIndex());
+        snap.setOptions(gen.getOptions() == null ? List.of() : gen.getOptions());
+        snap.setAnswerIndex(gen.getAnswerIndex() == null ? 0 : gen.getAnswerIndex());
+        snap.setReferenceAnswer(safeStr(gen.getReferenceAnswer()));
         snap.setAnalysis(gen.getAnalysis());
         return snap;
     }
 
-    private AppQuizVO.WrongReviewItem toWrongReviewItem(SnapshotItem item) {
-        String rightOpt = (item.getOptions() != null && item.getAnswerIndex() != null
-                && item.getAnswerIndex() < item.getOptions().size())
-                ? item.getOptions().get(item.getAnswerIndex())
-                : "";
+    public AppQuizVO.WrongReviewItem toWrongReviewItem(SnapshotItem item) {
+        String fmt = normalizeFormat(item.getQuestionFormat());
+        String rightOpt;
+        if ("ESSAY".equals(fmt)) {
+            rightOpt = safeStr(item.getReferenceAnswer());
+        } else {
+            rightOpt = (item.getOptions() != null && item.getAnswerIndex() != null
+                    && item.getAnswerIndex() >= 0 && item.getAnswerIndex() < item.getOptions().size())
+                    ? item.getOptions().get(item.getAnswerIndex())
+                    : "";
+        }
         return AppQuizVO.WrongReviewItem.builder()
                 .stem(item.getStem())
+                .questionFormat(fmt)
                 .correctAnswer(rightOpt)
                 .analysis(item.getAnalysis())
                 .build();
@@ -574,7 +822,11 @@ public class AppQuizService {
 
     private void upsertWrongItem(Long userId, String gradeCode, Long chapterId, String chapterName,
                                  String gateName, SnapshotItem item, LocalDateTime now) {
-        String hash = sha256(item.getStem() + "|" + writeJson(item.getOptions()));
+        String fmt = normalizeFormat(item.getQuestionFormat());
+        boolean isEssay = "ESSAY".equals(fmt);
+        String hash = isEssay
+                ? sha256(item.getStem() + "|ESSAY|" + safeStr(item.getReferenceAnswer()))
+                : sha256(item.getStem() + "|" + writeJson(item.getOptions()));
         UserWrongQuestion exist = wrongMapper.selectOne(
                 new LambdaQueryWrapper<UserWrongQuestion>()
                         .eq(UserWrongQuestion::getUserId, userId)
@@ -591,8 +843,12 @@ public class AppQuizService {
             wq.setGateName(gateName);
             wq.setStemHash(hash);
             wq.setStem(item.getStem());
-            wq.setOptionsJson(writeJson(item.getOptions()));
-            wq.setAnswerJson(writeJson(Map.of("index", item.getAnswerIndex())));
+            wq.setQuestionFormat(fmt);
+            wq.setOptionsJson(writeJson(isEssay ? List.of() : item.getOptions()));
+            wq.setAnswerJson(writeJson(isEssay
+                    ? Map.of("text", safeStr(item.getReferenceAnswer()))
+                    : Map.of("index", item.getAnswerIndex() == null ? 0 : item.getAnswerIndex())));
+            wq.setLastAnswerImageKey(safeStr(item.getUserAnswerImageKey()));
             wq.setAnalysis(item.getAnalysis());
             wq.setWrongCount(1);
             wq.setIsMastered(0);
@@ -603,6 +859,9 @@ public class AppQuizService {
             exist.setIsMastered(0);
             exist.setMasteredAt(null);
             exist.setLastWrongAt(now);
+            if (item.getUserAnswerImageKey() != null && !item.getUserAnswerImageKey().isBlank()) {
+                exist.setLastAnswerImageKey(item.getUserAnswerImageKey());
+            }
             wrongMapper.updateById(exist);
         }
     }
@@ -621,6 +880,17 @@ public class AppQuizService {
         } catch (Exception e) {
             throw new BizException(ErrorCode.INTERNAL_ERROR);
         }
+    }
+
+    private String normalizeFormat(String format) {
+        if (format == null || format.isBlank()) {
+            return "SINGLE_CHOICE";
+        }
+        return format.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private String safeStr(String s) {
+        return s == null ? "" : s;
     }
 
     private String sha256(String input) {

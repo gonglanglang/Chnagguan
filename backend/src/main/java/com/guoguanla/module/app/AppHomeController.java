@@ -1,10 +1,14 @@
 package com.guoguanla.module.app;
 
+import com.guoguanla.common.result.PageResult;
 import com.guoguanla.common.result.Result;
+import com.guoguanla.common.util.ServletUrlHelper;
 import com.guoguanla.module.app.dto.AppLoginReq;
+import com.guoguanla.module.app.vo.AppQuizVO;
 import com.guoguanla.module.app.vo.AppUserProfileVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -21,6 +25,7 @@ import java.util.stream.Collectors;
 public class AppHomeController {
 
     private final AppBankService bankService;
+    private final AppQuizService quizService;
 
     @Operation(summary = "首页概览（修仙境界列表、公告与当前学生状态）")
     @GetMapping("/home/summary")
@@ -83,6 +88,16 @@ public class AppHomeController {
     @GetMapping("/user/chapter-records")
     public Result<List<AppUserProfileVO.ChapterCardVO>> chapterRecords() {
         return Result.ok(bankService.listUserChapterRecords());
+    }
+
+    @Operation(summary = "分页获取本人解答题画板作答记录")
+    @GetMapping("/user/essay-answers")
+    public Result<PageResult<AppQuizVO.EssayAnswerRecordVO>> myEssayAnswers(
+            @RequestParam(defaultValue = "1") Long pageNum,
+            @RequestParam(defaultValue = "10") Long pageSize,
+            HttpServletRequest request
+    ) {
+        return Result.ok(quizService.listMyEssayAnswers(pageNum, pageSize, ServletUrlHelper.resolveBaseOrigin(request)));
     }
 
     private Set<Long> parseIds(String csv) {

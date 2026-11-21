@@ -33,12 +33,52 @@ public class UserDetailVO {
         private String gradeCode;
         private String chapterName;
         private String gateName;
+        private String questionFormat;
         private String stem;
         private List<String> options;
         private Integer answerIndex;
+        private String referenceAnswer;
+        private String lastAnswerImageUrl;
         private Integer wrongCount;
         private Integer isMastered;
         private LocalDateTime lastWrongAt;
+    }
+
+    @Data
+    @Builder
+    public static class QuizSessionItemVO {
+        private Integer itemIndex;
+        private String questionFormat;
+        private String stem;
+        private List<String> options;
+        private Integer answerIndex;
+        private Integer userIndex;
+        private String referenceAnswer;
+        private String userAnswerText;
+        private String userAnswerImageUrl;
+        private Boolean userSelfCorrect;
+        private boolean correct;
+        private String analysis;
+    }
+
+    @Data
+    @Builder
+    public static class EssayAnswerItem {
+        private Long id;
+        private String sessionNo;
+        private Integer itemIndex;
+        private Long userId;
+        private String chapterName;
+        private String gateName;
+        private String stem;
+        private String referenceAnswer;
+        private String answerText;
+        private String answerImageUrl;
+        private Integer selfCorrect;
+        private Integer teacherStatus;
+        private String teacherComment;
+        private LocalDateTime createdAt;
+        private LocalDateTime reviewedAt;
     }
 
     @Data

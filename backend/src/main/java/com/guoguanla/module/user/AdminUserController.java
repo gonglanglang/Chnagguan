@@ -3,6 +3,7 @@ package com.guoguanla.module.user;
 import com.guoguanla.common.annotation.OperLog;
 import com.guoguanla.common.result.PageResult;
 import com.guoguanla.common.result.Result;
+import com.guoguanla.common.util.ServletUrlHelper;
 import com.guoguanla.module.user.dto.UserCreateReq;
 import com.guoguanla.module.user.dto.UserQueryReq;
 import com.guoguanla.module.user.dto.UserStatusReq;
@@ -11,10 +12,12 @@ import com.guoguanla.module.user.vo.UserDetailVO;
 import com.guoguanla.module.user.vo.UserPageVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @Tag(name = "管理后台-用户管理")
@@ -33,8 +36,42 @@ public class AdminUserController {
 
     @Operation(summary = "查看用户详细信息与战绩")
     @GetMapping("/{id}")
-    public Result<UserDetailVO> detail(@PathVariable Long id) {
-        return Result.ok(userService.detail(id));
+    public Result<UserDetailVO> detail(@PathVariable Long id, HttpServletRequest request) {
+        return Result.ok(userService.detail(id, ServletUrlHelper.resolveBaseOrigin(request)));
+    }
+
+    @Operation(summary = "查看单次答题会话逐题作答明细")
+    @GetMapping("/{id}/quiz-records/{sessionNo}")
+    public Result<List<UserDetailVO.QuizSessionItemVO>> quizRecordDetail(
+            @PathVariable Long id,
+            @PathVariable String sessionNo,
+            HttpServletRequest request
+    ) {
+        return Result.ok(userService.getQuizRecordDetail(id, sessionNo, ServletUrlHelper.resolveBaseOrigin(request)));
+    }
+
+    @Operation(summary = "分页查看学生解答题画板作答记录")
+    @GetMapping("/{id}/essay-answers")
+    public Result<PageResult<UserDetailVO.EssayAnswerItem>> essayAnswers(
+            @PathVariable Long id,
+            @RequestParam(required = false, defaultValue = "1") Long pageNum,
+            @RequestParam(required = false, defaultValue = "10") Long pageSize,
+            HttpServletRequest request
+    ) {
+        return Result.ok(userService.listUserEssayAnswers(id, pageNum, pageSize, ServletUrlHelper.resolveBaseOrigin(request)));
+    }
+
+    @Operation(summary = "老师批改学生解答题")
+    @OperLog(module = "USER", action = "批改学生解答题")
+    @PutMapping("/essay-answers/{essayId}/review")
+    public Result<Void> reviewEssay(
+            @PathVariable Long essayId,
+            @RequestBody Map<String, Object> body
+    ) {
+        Integer teacherStatus = body.get("teacherStatus") == null ? null : ((Number) body.get("teacherStatus")).intValue();
+        String teacherComment = body.get("teacherComment") == null ? "" : String.valueOf(body.get("teacherComment"));
+        userService.reviewEssayAnswer(essayId, teacherStatus, teacherComment);
+        return Result.ok();
     }
 
     @Operation(summary = "新增学生用户")
@@ -49,6 +86,14 @@ public class AdminUserController {
     @PutMapping("/{id}")
     public Result<Void> update(@PathVariable Long id, @Valid @RequestBody UserUpdateReq req) {
         userService.update(id, req);
+        return Result.ok();
+    }
+
+    @Operation(summary = "修改重置学生登录密码")
+    @OperLog(module = "USER", action = "修改学生密码")
+    @PutMapping("/{id}/password")
+    public Result<Void> updatePassword(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        userService.updatePassword(id, body.get("password"));
         return Result.ok();
     }
 

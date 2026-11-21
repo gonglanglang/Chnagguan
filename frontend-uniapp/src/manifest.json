@@ -2,8 +2,8 @@
     "name" : "过关啦",
     "appid" : "__UNI__A060F1B",
     "description" : "过关啦 - 修仙数学闯关与错题巩固应用",
-    "versionName" : "1.0.0",
-    "versionCode" : "100",
+    "versionName" : "1.0.1",
+    "versionCode" : "101",
     "transformPx" : false,
     "app-plus" : {
         "usingComponents" : true,

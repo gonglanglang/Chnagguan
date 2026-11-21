@@ -133,13 +133,43 @@ export interface QuizStartResult {
 
 export interface CheckItemResult {
   itemIndex: number;
+  questionFormat?: string;
   correct: boolean;
   correctIndex: number;
+  referenceAnswer?: string;
+  answerText?: string;
+  answerImageUrl?: string;
+  selfCorrect?: boolean | null;
   analysis: string;
+}
+
+export interface UploadAnswerImageResult {
+  objectKey: string;
+  previewUrl: string;
+  storageType: string;
+}
+
+export interface EssayAnswerRecord {
+  id: number;
+  sessionNo: string;
+  itemIndex: number;
+  realmName: string;
+  chapterName: string;
+  gateName: string;
+  stem: string;
+  referenceAnswer: string;
+  answerText: string;
+  answerImageUrl: string;
+  selfCorrect: number | null;
+  teacherStatus: number;
+  teacherComment: string;
+  createdAt: string;
+  reviewedAt: string | null;
 }
 
 export interface WrongReviewItem {
   stem: string;
+  questionFormat?: string;
   correctAnswer: string;
   analysis: string;
 }
@@ -169,9 +199,12 @@ export interface WrongQuestionItem {
   chapterId: number | null;
   chapterName: string;
   gateName: string;
+  questionFormat?: string;
   stem: string;
   options: string[];
   answerIndex: number;
+  referenceAnswer?: string;
+  lastAnswerImageUrl?: string;
   analysis: string;
   wrongCount: number;
   lastWrongAt: string;

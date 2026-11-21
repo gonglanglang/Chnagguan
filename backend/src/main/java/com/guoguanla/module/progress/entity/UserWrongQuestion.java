@@ -21,8 +21,10 @@ public class UserWrongQuestion {
     private String gateName;
     private String stemHash;
     private String stem;
+    private String questionFormat;
     private String optionsJson;
     private String answerJson;
+    private String lastAnswerImageKey;
     private String analysis;
     private Integer wrongCount;
     private Integer isMastered;

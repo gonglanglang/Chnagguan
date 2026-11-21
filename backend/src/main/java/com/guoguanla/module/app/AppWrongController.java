@@ -2,10 +2,12 @@ package com.guoguanla.module.app;
 
 import com.guoguanla.common.result.PageResult;
 import com.guoguanla.common.result.Result;
+import com.guoguanla.common.util.ServletUrlHelper;
 import com.guoguanla.module.app.dto.AppQuizDTO;
 import com.guoguanla.module.app.vo.AppQuizVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -25,9 +27,12 @@ public class AppWrongController {
             @RequestParam(required = false) String realmCode,
             @RequestParam(required = false) Long chapterId,
             @RequestParam(defaultValue = "1") Long pageNum,
-            @RequestParam(defaultValue = "20") Long pageSize
+            @RequestParam(defaultValue = "20") Long pageSize,
+            HttpServletRequest request
     ) {
-        return Result.ok(wrongService.page(gradeCode, realmCode, chapterId, pageNum, pageSize));
+        return Result.ok(wrongService.page(
+                gradeCode, realmCode, chapterId, pageNum, pageSize, ServletUrlHelper.resolveBaseOrigin(request)
+        ));
     }
 
     @Operation(summary = "开始错题重做（最多抽取5题）")

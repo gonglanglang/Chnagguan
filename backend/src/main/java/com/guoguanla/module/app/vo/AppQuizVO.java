@@ -40,10 +40,23 @@ public class AppQuizVO {
 
     @Data
     @Builder
+    public static class UploadAnswerImageVO {
+        private String objectKey;
+        private String previewUrl;
+        private String storageType;
+    }
+
+    @Data
+    @Builder
     public static class CheckItemVO {
         private Integer itemIndex;
+        private String questionFormat;
         private boolean correct;
         private Integer correctIndex;
+        private String referenceAnswer;
+        private String answerText;
+        private String answerImageUrl;
+        private Boolean selfCorrect;
         private String analysis;
     }
 
@@ -70,6 +83,7 @@ public class AppQuizVO {
     @Builder
     public static class WrongReviewItem {
         private String stem;
+        private String questionFormat;
         private String correctAnswer;
         private String analysis;
     }
@@ -84,11 +98,34 @@ public class AppQuizVO {
         private Long chapterId;
         private String chapterName;
         private String gateName;
+        private String questionFormat;
         private String stem;
         private List<String> options;
         private Integer answerIndex;
+        private String referenceAnswer;
+        private String lastAnswerImageUrl;
         private String analysis;
         private Integer wrongCount;
         private LocalDateTime lastWrongAt;
+    }
+
+    @Data
+    @Builder
+    public static class EssayAnswerRecordVO {
+        private Long id;
+        private String sessionNo;
+        private Integer itemIndex;
+        private String realmName;
+        private String chapterName;
+        private String gateName;
+        private String stem;
+        private String referenceAnswer;
+        private String answerText;
+        private String answerImageUrl;
+        private Integer selfCorrect;
+        private Integer teacherStatus;
+        private String teacherComment;
+        private LocalDateTime createdAt;
+        private LocalDateTime reviewedAt;
     }
 }

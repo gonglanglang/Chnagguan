@@ -3,7 +3,6 @@ package com.guoguanla.module.app;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.guoguanla.common.exception.BizException;
@@ -13,6 +12,7 @@ import com.guoguanla.common.security.StpAppUtil;
 import com.guoguanla.common.util.JsonHelper;
 import com.guoguanla.module.app.dto.AppQuizDTO;
 import com.guoguanla.module.app.vo.AppQuizVO;
+import com.guoguanla.module.oss.AliyunOssService;
 import com.guoguanla.module.progress.entity.UserQuizRecord;
 import com.guoguanla.module.progress.entity.UserWrongQuestion;
 import com.guoguanla.module.progress.mapper.UserQuizRecordMapper;
@@ -35,9 +35,14 @@ public class AppWrongService {
     private final UserQuizRecordMapper quizRecordMapper;
     private final AppQuizService quizService;
     private final RealmHelperService realmHelper;
+    private final AliyunOssService ossService;
     private final ObjectMapper objectMapper;
 
     public PageResult<AppQuizVO.WrongQuestionVO> page(String gradeCode, String realmCode, Long chapterId, Long pageNum, Long pageSize) {
+        return page(gradeCode, realmCode, chapterId, pageNum, pageSize, "");
+    }
+
+    public PageResult<AppQuizVO.WrongQuestionVO> page(String gradeCode, String realmCode, Long chapterId, Long pageNum, Long pageSize, String baseOrigin) {
         Long userId = StpAppUtil.getLoginIdAsLong();
         long p = pageNum == null || pageNum < 1 ? 1L : pageNum;
         long s = pageSize == null || pageSize < 1 ? 20L : Math.min(pageSize, 100L);
@@ -64,6 +69,7 @@ public class AppWrongService {
         List<AppQuizVO.WrongQuestionVO> items = page.getRecords().stream()
                 .map(w -> {
                     EduRealm realm = realmByGrade.get(w.getGradeCode());
+                    String fmt = normalizeFormat(w.getQuestionFormat());
                     return AppQuizVO.WrongQuestionVO.builder()
                             .id(w.getId())
                             .gradeCode(w.getGradeCode())
@@ -72,9 +78,12 @@ public class AppWrongService {
                             .chapterId(w.getChapterId())
                             .chapterName(w.getChapterName())
                             .gateName(w.getGateName())
+                            .questionFormat(fmt)
                             .stem(w.getStem())
                             .options(parseOptions(w.getOptionsJson()))
                             .answerIndex(parseAnswerIndex(w.getAnswerJson()))
+                            .referenceAnswer(parseReferenceAnswer(w.getAnswerJson()))
+                            .lastAnswerImageUrl(ossService.resolveViewUrl(w.getLastAnswerImageKey(), baseOrigin))
                             .analysis(w.getAnalysis())
                             .wrongCount(w.getWrongCount())
                             .lastWrongAt(w.getLastWrongAt())
@@ -113,23 +122,30 @@ public class AppWrongService {
         List<AppQuizVO.ClientQuestionItem> clientItems = new ArrayList<>(wrongs.size());
         for (int i = 0; i < wrongs.size(); i++) {
             UserWrongQuestion w = wrongs.get(i);
+            String fmt = normalizeFormat(w.getQuestionFormat());
             List<String> opts = parseOptions(w.getOptionsJson());
             int ansIdx = parseAnswerIndex(w.getAnswerJson());
+            String refAns = "ESSAY".equals(fmt)
+                    ? parseReferenceAnswer(w.getAnswerJson())
+                    : ((ansIdx >= 0 && ansIdx < opts.size()) ? opts.get(ansIdx) : "");
 
             AppQuizService.SnapshotItem snap = new AppQuizService.SnapshotItem();
             snap.setItemIndex(i);
             snap.setQuestionId(w.getQuestionId());
+            snap.setChapterId(w.getChapterId());
+            snap.setGradeCode(w.getGradeCode());
             snap.setWrongId(w.getId());
-            snap.setQuestionFormat("SINGLE_CHOICE");
+            snap.setQuestionFormat(fmt);
             snap.setStem(w.getStem());
             snap.setOptions(opts);
             snap.setAnswerIndex(ansIdx);
+            snap.setReferenceAnswer(refAns);
             snap.setAnalysis(w.getAnalysis());
             snapshots.add(snap);
 
             clientItems.add(AppQuizVO.ClientQuestionItem.builder()
                     .itemIndex(i)
-                    .questionFormat("SINGLE_CHOICE")
+                    .questionFormat(fmt)
                     .stem(w.getStem())
                     .options(opts)
                     .build());
@@ -169,7 +185,7 @@ public class AppWrongService {
             throw new BizException(ErrorCode.QUIZ_ALREADY_SUBMITTED);
         }
         List<AppQuizService.SnapshotItem> snapshots = quizService.readSnapshots(record.getQuestionSnapshotJson());
-        quizService.applyBatchAnswers(snapshots, req.getAnswers());
+        quizService.applyBatchAnswers(record, snapshots, req.getAnswers());
 
         int correctCount = 0;
         int masteredCount = 0;
@@ -177,33 +193,29 @@ public class AppWrongService {
         LocalDateTime now = LocalDateTime.now();
 
         for (AppQuizService.SnapshotItem item : snapshots) {
-            boolean right = Objects.equals(item.getAnswerIndex(), item.getUserIndex());
+            boolean right = quizService.isSnapshotItemCorrect(item);
             UserWrongQuestion wq = item.getWrongId() != null ? wrongMapper.selectById(item.getWrongId()) : null;
             if (right) {
                 correctCount++;
-                // 修正原版原型缺陷：重做答对才标记为已掌握并移出错题本！
                 if (wq != null) {
                     wq.setIsMastered(1);
                     wq.setMasteredAt(now);
+                    if (item.getUserAnswerImageKey() != null && !item.getUserAnswerImageKey().isBlank()) {
+                        wq.setLastAnswerImageKey(item.getUserAnswerImageKey());
+                    }
                     wrongMapper.updateById(wq);
                     masteredCount++;
                 }
             } else {
-                // 答错保留并累计错题次数
                 if (wq != null) {
                     wq.setWrongCount((wq.getWrongCount() == null ? 0 : wq.getWrongCount()) + 1);
                     wq.setLastWrongAt(now);
+                    if (item.getUserAnswerImageKey() != null && !item.getUserAnswerImageKey().isBlank()) {
+                        wq.setLastAnswerImageKey(item.getUserAnswerImageKey());
+                    }
                     wrongMapper.updateById(wq);
                 }
-                String rightOpt = (item.getOptions() != null && item.getAnswerIndex() != null
-                        && item.getAnswerIndex() < item.getOptions().size())
-                        ? item.getOptions().get(item.getAnswerIndex())
-                        : "";
-                stillWrong.add(AppQuizVO.WrongReviewItem.builder()
-                        .stem(item.getStem())
-                        .correctAnswer(rightOpt)
-                        .analysis(item.getAnalysis())
-                        .build());
+                stillWrong.add(quizService.toWrongReviewItem(item));
             }
         }
 
@@ -249,6 +261,13 @@ public class AppWrongService {
                 .set(UserWrongQuestion::getMasteredAt, LocalDateTime.now()));
     }
 
+    private String normalizeFormat(String format) {
+        if (format == null || format.isBlank()) {
+            return "SINGLE_CHOICE";
+        }
+        return format.trim().toUpperCase(Locale.ROOT);
+    }
+
     private List<String> parseOptions(String json) {
         return JsonHelper.readStringList(objectMapper, json);
     }
@@ -259,6 +278,15 @@ public class AppWrongService {
             return node != null ? node.path("index").asInt(0) : 0;
         } catch (Exception e) {
             return 0;
+        }
+    }
+
+    private String parseReferenceAnswer(String json) {
+        try {
+            JsonNode node = JsonHelper.readTree(objectMapper, json);
+            return node != null ? node.path("text").asText("") : "";
+        } catch (Exception e) {
+            return "";
         }
     }
 }

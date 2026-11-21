@@ -122,4 +122,66 @@ export function request<T = any>(options: RequestOptions): Promise<T> {
   });
 }
 
+export function uploadFileRequest<T = any>(options: {
+  url: string;
+  filePath: string;
+  name?: string;
+  formData?: Record<string, string>;
+  silent?: boolean;
+  timeout?: number;
+}): Promise<T> {
+  const { url, filePath, name = "file", formData, silent = false, timeout = 30000 } = options;
+  const requestUrl = `${getBaseUrl()}${url.startsWith("/") ? url : `/${url}`}`;
+  const token = getAccessToken();
+  const revision = getAuthSessionRevision();
+  const header: Record<string, string> = {};
+  if (token) {
+    header.Authorization = `Bearer ${token}`;
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    uni.uploadFile({
+      url: requestUrl,
+      filePath,
+      name,
+      formData,
+      header,
+      timeout,
+      success: (res) => {
+        let body: ApiResponse<T> | undefined;
+        try {
+          body = typeof res.data === "string" ? (JSON.parse(res.data) as ApiResponse<T>) : (res.data as any);
+        } catch {
+          body = undefined;
+        }
+        const statusCode = res.statusCode;
+
+        if (statusCode === 401 || body?.code === ApiCode.UNAUTHORIZED) {
+          if (revision === getAuthSessionRevision() && unauthorizedHandler) {
+            unauthorizedHandler();
+          }
+          const msg = body?.message || "登录已过期，请重新登录";
+          showToastMessage(msg, silent);
+          reject(new RequestError(msg, ApiCode.UNAUTHORIZED, statusCode));
+          return;
+        }
+
+        if (statusCode >= 200 && statusCode < 300 && body && body.code === ApiCode.SUCCESS) {
+          resolve(body.data);
+          return;
+        }
+
+        const msg = body?.message || `上传失败 (${statusCode})`;
+        showToastMessage(msg, silent);
+        reject(new RequestError(msg, body?.code ?? statusCode, statusCode));
+      },
+      fail: (err) => {
+        const msg = err.errMsg?.includes("timeout") ? "上传超时，请重试" : "图片上传失败，请检查网络";
+        showToastMessage(msg, silent);
+        reject(new RequestError(msg, "NETWORK_ERROR", 0));
+      },
+    });
+  });
+}
+
 export default request;

@@ -37,6 +37,14 @@
               第 {{ currentIdx + 1 }} / {{ startData.items.length }} 题
             </text>
             <view class="progress-card__tags">
+              <wd-tag
+                v-if="currentItem.questionFormat === 'ESSAY'"
+                type="success"
+                variant="light"
+                size="small"
+              >
+                解答题
+              </wd-tag>
               <wd-tag v-if="startData.suppressedMode" type="warning" variant="light" size="small">
                 压制境界
               </wd-tag>
@@ -66,73 +74,186 @@
             </text>
           </view>
           <view class="question-card__stem">
-            <math-text :text="currentItem.stem" />
+            <math-text :key="`${startData.sessionNo}-${currentItem.itemIndex}-stem`" :text="currentItem.stem" />
           </view>
         </view>
 
-        <view class="options-list">
-          <view
-            v-for="(opt, idx) in currentItem.options"
-            :key="idx"
-            class="option-row"
-            :class="getOptionClass(idx)"
-            @click="handleSelectOption(idx)"
-          >
-            <view class="option-row__badge">{{ LETTERS[idx] || idx + 1 }}</view>
-            <view class="option-row__text">
-              <math-text :text="opt" inline />
-            </view>
-            <view class="option-row__status">
-              <wd-icon
-                v-if="currentFeedback && idx === currentFeedback.correctIndex"
-                name="check-circle-fill"
-                size="18"
-                color="#16a34a"
-              />
-              <wd-icon
-                v-else-if="
-                  currentFeedback &&
-                  idx === currentSelected &&
-                  !currentFeedback.correct
-                "
-                name="close-circle-fill"
-                size="18"
-                color="#ef4444"
-              />
-            </view>
-          </view>
-        </view>
-
-        <view
-          v-if="currentFeedback"
-          class="feedback-card"
-          :class="currentFeedback.correct ? 'feedback-card--pass' : 'feedback-card--fail'"
-        >
-          <view class="feedback-card__head">
-            <wd-icon
-              :name="currentFeedback.correct ? 'check-circle-fill' : 'close-circle-fill'"
-              size="18"
-              :color="currentFeedback.correct ? '#16a34a' : '#ef4444'"
+        <!-- 解答题作答区（题目绘制面板 + OSS 上传 + 自评） -->
+        <template v-if="isCurrentEssay">
+          <template v-if="!currentFeedback">
+            <drawing-board
+              ref="boardRef"
+              :key="`${startData.sessionNo}-${currentItem.itemIndex}`"
+              @change="onBoardChange"
             />
-            <text class="feedback-card__title">
-              {{ currentFeedback.correct ? "回答正确" : "回答有误" }}
-            </text>
-          </view>
-          <view class="feedback-card__ans">
-            正确答案：{{ LETTERS[currentFeedback.correctIndex] || currentFeedback.correctIndex + 1 }}.
-            <math-text :text="currentItem.options[currentFeedback.correctIndex] || ''" inline />
-          </view>
-          <view v-if="currentFeedback.analysis" class="feedback-card__analysis">
-            <math-text :text="currentFeedback.analysis" />
-          </view>
-        </view>
 
-        <view class="bottom-bar">
+            <view class="essay-text-card">
+              <text class="essay-text-card__label">文字答案 / 补充说明（选填）</text>
+              <textarea
+                v-model="essayTextDraft"
+                class="essay-text-card__input"
+                placeholder="可输入最终结论（如 x = 3），手写过程请在上方绘制面板完成"
+                maxlength="500"
+              />
+            </view>
+
+            <view class="bottom-bar">
+              <wd-button
+                type="primary"
+                block
+                :loading="checking"
+                :disabled="!canSubmitEssayDraft"
+                @click="handleSaveEssayAndCheck"
+              >
+                保存绘制至云端并核对参考答案
+              </wd-button>
+            </view>
+          </template>
+
+          <template v-else>
+            <view class="essay-saved-card">
+              <view class="essay-saved-card__head">
+                <text class="essay-saved-card__title">我的已保存作答</text>
+                <wd-tag type="success" variant="light" size="small">已同步云端</wd-tag>
+              </view>
+              <view v-if="currentFeedback.answerText" class="essay-saved-card__text">
+                文字作答：{{ currentFeedback.answerText }}
+              </view>
+              <view v-if="currentFeedback.answerImageUrl" class="essay-saved-card__img-wrap">
+                <image
+                  :src="currentFeedback.answerImageUrl"
+                  mode="aspectFit"
+                  class="essay-saved-card__img"
+                  @click="previewImage(currentFeedback.answerImageUrl)"
+                />
+                <text class="essay-saved-card__tip">点击手写图片可放大查看（托管于阿里云 OSS）</text>
+              </view>
+            </view>
+
+            <view
+              class="feedback-card"
+              :class="
+                currentFeedback.selfCorrect === false ? 'feedback-card--fail' : 'feedback-card--pass'
+              "
+            >
+              <view class="feedback-card__head">
+                <wd-icon
+                  :name="currentFeedback.selfCorrect === false ? 'close-circle-fill' : 'check-circle-fill'"
+                  size="18"
+                  :color="currentFeedback.selfCorrect === false ? '#ef4444' : '#16a34a'"
+                />
+                <text class="feedback-card__title">参考答案与解析</text>
+              </view>
+              <view class="feedback-card__ans">
+                参考答案：
+                <math-text
+                  :text="currentFeedback.referenceAnswer || '本题侧重过程表达，可对照下方思路核对'"
+                  inline
+                />
+              </view>
+              <view v-if="currentFeedback.analysis" class="feedback-card__analysis">
+                <math-text :text="currentFeedback.analysis" />
+              </view>
+            </view>
+
+            <view class="self-grade-card">
+              <text class="self-grade-card__title">请核对过程与结果，完成本题自评：</text>
+              <view class="self-grade-card__btns">
+                <wd-button
+                  size="small"
+                  :type="currentFeedback.selfCorrect === true ? 'success' : 'primary'"
+                  :plain="currentFeedback.selfCorrect !== true"
+                  :loading="checking"
+                  block
+                  @click="handleEssaySelfGrade(true)"
+                >
+                  步骤结果正确（计对）
+                </wd-button>
+                <wd-button
+                  size="small"
+                  :type="currentFeedback.selfCorrect === false ? 'error' : 'warning'"
+                  :plain="currentFeedback.selfCorrect !== false"
+                  :loading="checking"
+                  block
+                  @click="handleEssaySelfGrade(false)"
+                >
+                  有误/未做出（入错题本）
+                </wd-button>
+              </view>
+            </view>
+          </template>
+        </template>
+
+        <!-- 选择题作答区 -->
+        <template v-else>
+          <view class="options-list">
+            <view
+              v-for="(opt, idx) in currentItem.options"
+              :key="idx"
+              class="option-row"
+              :class="getOptionClass(idx)"
+              @click="handleSelectOption(idx)"
+            >
+              <view class="option-row__badge">{{ LETTERS[idx] || idx + 1 }}</view>
+              <view class="option-row__text">
+                <math-text
+                  :key="`${startData.sessionNo}-${currentItem.itemIndex}-op-${idx}`"
+                  :text="opt"
+                  inline
+                />
+              </view>
+              <view class="option-row__status">
+                <wd-icon
+                  v-if="currentFeedback && idx === currentFeedback.correctIndex"
+                  name="check-circle-fill"
+                  size="18"
+                  color="#16a34a"
+                />
+                <wd-icon
+                  v-else-if="
+                    currentFeedback &&
+                    idx === currentSelected &&
+                    !currentFeedback.correct
+                  "
+                  name="close-circle-fill"
+                  size="18"
+                  color="#ef4444"
+                />
+              </view>
+            </view>
+          </view>
+
+          <view
+            v-if="currentFeedback"
+            class="feedback-card"
+            :class="currentFeedback.correct ? 'feedback-card--pass' : 'feedback-card--fail'"
+          >
+            <view class="feedback-card__head">
+              <wd-icon
+                :name="currentFeedback.correct ? 'check-circle-fill' : 'close-circle-fill'"
+                size="18"
+                :color="currentFeedback.correct ? '#16a34a' : '#ef4444'"
+              />
+              <text class="feedback-card__title">
+                {{ currentFeedback.correct ? "回答正确" : "回答有误" }}
+              </text>
+            </view>
+            <view class="feedback-card__ans">
+              正确答案：{{ LETTERS[currentFeedback.correctIndex] || currentFeedback.correctIndex + 1 }}.
+              <math-text :text="currentItem.options[currentFeedback.correctIndex] || ''" inline />
+            </view>
+            <view v-if="currentFeedback.analysis" class="feedback-card__analysis">
+              <math-text :text="currentFeedback.analysis" />
+            </view>
+          </view>
+        </template>
+
+        <view v-if="!isCurrentEssay || currentFeedback" class="bottom-bar">
           <wd-button
             v-if="currentIdx < startData.items.length - 1"
             type="primary"
             block
-            :disabled="!currentFeedback || checking"
+            :disabled="!canGoNext || checking"
             @click="nextQuestion"
           >
             下一题
@@ -142,7 +263,7 @@
             type="primary"
             block
             :loading="submitting"
-            :disabled="!currentFeedback || checking"
+            :disabled="!canGoNext || checking"
             @click="handleSubmit"
           >
             提交交卷
@@ -220,7 +341,7 @@
               <math-text :text="item.stem" />
             </view>
             <view class="review-card__ans">
-              正确答案：<math-text :text="item.correctAnswer" inline />
+              参考答案：<math-text :text="item.correctAnswer || '见解析'" inline />
             </view>
             <view v-if="item.analysis" class="review-card__analysis">
               <math-text :text="item.analysis" />
@@ -246,7 +367,8 @@
 
 <script setup lang="ts">
 import { onLoad } from "@dcloudio/uni-app";
-import { AppQuizAPI, AppRealmExamAPI, AppWrongAPI } from "@/api/guoguanla";
+import { AppQuizAPI, AppRealmExamAPI, AppWrongAPI, type AnswerSubmitPayload } from "@/api/guoguanla";
+import DrawingBoard from "@/components/DrawingBoard.vue";
 import { useUserStore } from "@/store";
 import type { CheckItemResult, QuizStartResult, SubmitResult } from "@/types/guoguanla";
 import { getGuestPassedIds } from "@/utils/auth";
@@ -278,10 +400,27 @@ const submitting = ref(false);
 const startData = ref<QuizStartResult | null>(null);
 const currentIdx = ref(0);
 const selectedMap = ref<Record<number, number>>({});
+const essayTextMap = ref<Record<number, string>>({});
+const essayImageKeyMap = ref<Record<number, string>>({});
 const feedbackMap = ref<Record<number, CheckItemResult>>({});
 const submitResult = ref<SubmitResult | null>(null);
 
+const boardRef = ref<InstanceType<typeof DrawingBoard> | null>(null);
+const boardHasDrawing = ref(false);
+
 const currentItem = computed(() => startData.value?.items?.[currentIdx.value] ?? null);
+const isCurrentEssay = computed(() => currentItem.value?.questionFormat === "ESSAY");
+
+const essayTextDraft = computed({
+  get() {
+    if (!currentItem.value) return "";
+    return essayTextMap.value[currentItem.value.itemIndex] || "";
+  },
+  set(val: string) {
+    if (!currentItem.value) return;
+    essayTextMap.value[currentItem.value.itemIndex] = val;
+  },
+});
 
 const currentSelected = computed(() => {
   if (!currentItem.value) return undefined;
@@ -291,6 +430,19 @@ const currentSelected = computed(() => {
 const currentFeedback = computed(() => {
   if (!currentItem.value) return undefined;
   return feedbackMap.value[currentItem.value.itemIndex];
+});
+
+const canSubmitEssayDraft = computed(() => {
+  return boardHasDrawing.value || essayTextDraft.value.trim().length > 0;
+});
+
+const canGoNext = computed(() => {
+  const fb = currentFeedback.value;
+  if (!fb) return false;
+  if (isCurrentEssay.value) {
+    return fb.selfCorrect === true || fb.selfCorrect === false;
+  }
+  return true;
 });
 
 const progressPercent = computed(() => {
@@ -315,13 +467,25 @@ function getOptionClass(idx: number): string {
   return "option-row--dim";
 }
 
+function onBoardChange(hasContent: boolean): void {
+  boardHasDrawing.value = hasContent;
+}
+
+function previewImage(url?: string): void {
+  if (!url) return;
+  uni.previewImage({ urls: [url] });
+}
+
 async function initQuiz(): Promise<void> {
   loading.value = true;
   loadError.value = "";
   submitResult.value = null;
   currentIdx.value = 0;
   selectedMap.value = {};
+  essayTextMap.value = {};
+  essayImageKeyMap.value = {};
   feedbackMap.value = {};
+  boardHasDrawing.value = false;
 
   try {
     if (mode.value === "ADVANCE_EXAM") {
@@ -370,19 +534,91 @@ async function handleSelectOption(idx: number): Promise<void> {
   }
 }
 
+async function handleSaveEssayAndCheck(): Promise<void> {
+  if (!startData.value || !currentItem.value || checking.value) return;
+  const itemIndex = currentItem.value.itemIndex;
+  const answerText = essayTextDraft.value.trim();
+  const hasDraw = boardRef.value?.hasContent() ?? false;
+
+  if (!hasDraw && !answerText) {
+    toast.info("请先在画板书写或填写文字补充");
+    return;
+  }
+
+  checking.value = true;
+  try {
+    let imageKey = essayImageKeyMap.value[itemIndex] || "";
+    if (hasDraw && boardRef.value) {
+      const tempPath = await boardRef.value.exportImage();
+      const uploaded = await AppQuizAPI.uploadAnswerImage(
+        tempPath,
+        startData.value.sessionNo,
+        itemIndex,
+      );
+      imageKey = uploaded.objectKey;
+      essayImageKeyMap.value[itemIndex] = imageKey;
+    }
+
+    const res = await AppQuizAPI.checkItem({
+      sessionNo: startData.value.sessionNo,
+      itemIndex,
+      answerText,
+      answerImageKey: imageKey,
+    });
+    feedbackMap.value[itemIndex] = res;
+    toast.success("作答已保存，请对照参考答案自评");
+  } catch (err) {
+    toast.error(getErrorMessage(err, "保存作答失败，请重试"));
+  } finally {
+    checking.value = false;
+  }
+}
+
+async function handleEssaySelfGrade(correct: boolean): Promise<void> {
+  if (!startData.value || !currentItem.value || checking.value) return;
+  const itemIndex = currentItem.value.itemIndex;
+  checking.value = true;
+  try {
+    const res = await AppQuizAPI.gradeEssay({
+      sessionNo: startData.value.sessionNo,
+      itemIndex,
+      correct,
+      answerText: essayTextMap.value[itemIndex] || "",
+      answerImageKey: essayImageKeyMap.value[itemIndex] || "",
+    });
+    feedbackMap.value[itemIndex] = res;
+  } catch (err) {
+    toast.error(getErrorMessage(err, "保存自评失败"));
+  } finally {
+    checking.value = false;
+  }
+}
+
 function nextQuestion(): void {
   if (!startData.value) return;
   if (currentIdx.value < startData.value.items.length - 1) {
+    boardHasDrawing.value = false;
     currentIdx.value += 1;
   }
 }
 
 async function handleSubmit(): Promise<void> {
   if (!startData.value || submitting.value) return;
-  const answers = startData.value.items.map((item) => ({
-    itemIndex: item.itemIndex,
-    selectedIndex: selectedMap.value[item.itemIndex] ?? -1,
-  }));
+  const answers: AnswerSubmitPayload[] = startData.value.items.map((item) => {
+    if (item.questionFormat === "ESSAY") {
+      const fb = feedbackMap.value[item.itemIndex];
+      return {
+        itemIndex: item.itemIndex,
+        answerText: essayTextMap.value[item.itemIndex] || fb?.answerText || "",
+        answerImageKey: essayImageKeyMap.value[item.itemIndex] || "",
+        selfCorrect: fb?.selfCorrect ?? false,
+      };
+    }
+    return {
+      itemIndex: item.itemIndex,
+      selectedIndex: selectedMap.value[item.itemIndex] ?? -1,
+    };
+  });
 
   submitting.value = true;
   try {
@@ -426,7 +662,11 @@ function goBack(): void {
 }
 
 function handleExit(): void {
-  if (submitResult.value || Object.keys(selectedMap.value).length === 0) {
+  const hasProgress =
+    Object.keys(selectedMap.value).length > 0 ||
+    Object.keys(feedbackMap.value).length > 0 ||
+    boardHasDrawing.value;
+  if (submitResult.value || !hasProgress) {
     goBack();
     return;
   }
@@ -549,6 +789,101 @@ onLoad((query) => {
   color: var(--color-text);
 }
 
+.essay-text-card {
+  padding: 20rpx 22rpx;
+  margin-top: 16rpx;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 16rpx;
+}
+
+.essay-text-card__label {
+  display: block;
+  margin-bottom: 10rpx;
+  font-size: 24rpx;
+  color: var(--color-text-secondary);
+}
+
+.essay-text-card__input {
+  width: 100%;
+  min-height: 110rpx;
+  padding: 12rpx 16rpx;
+  font-size: 26rpx;
+  color: var(--color-text);
+  background: var(--color-bg-page);
+  border-radius: 12rpx;
+  box-sizing: border-box;
+}
+
+.essay-saved-card {
+  padding: 22rpx 24rpx;
+  margin-top: 20rpx;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 18rpx;
+}
+
+.essay-saved-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.essay-saved-card__title {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.essay-saved-card__text {
+  padding: 12rpx 16rpx;
+  margin-top: 12rpx;
+  font-size: 26rpx;
+  color: var(--color-text);
+  background: var(--color-bg-page);
+  border-radius: 10rpx;
+}
+
+.essay-saved-card__img-wrap {
+  margin-top: 12rpx;
+}
+
+.essay-saved-card__img {
+  width: 100%;
+  height: 320rpx;
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: 12rpx;
+}
+
+.essay-saved-card__tip {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: var(--color-text-muted);
+}
+
+.self-grade-card {
+  padding: 22rpx 24rpx;
+  margin-top: 20rpx;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 18rpx;
+}
+
+.self-grade-card__title {
+  display: block;
+  margin-bottom: 14rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.self-grade-card__btns {
+  display: flex;
+  gap: 16rpx;
+}
+
 .options-list {
   display: flex;
   flex-direction: column;
@@ -562,7 +897,7 @@ onLoad((query) => {
   align-items: center;
   padding: 26rpx 24rpx;
   background: var(--color-bg-card);
-  border: 2rpx solid var(--color-border);
+  border: 2px solid var(--color-border);
   border-radius: 18rpx;
   transition: all 0.15s ease;
 
@@ -666,7 +1001,7 @@ onLoad((query) => {
 }
 
 .bottom-bar {
-  margin-top: 32rpx;
+  margin-top: 28rpx;
 }
 
 .result-card {

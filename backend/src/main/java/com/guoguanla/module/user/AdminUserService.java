@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.guoguanla.common.exception.BizException;
 import com.guoguanla.common.result.ErrorCode;
 import com.guoguanla.common.result.PageResult;
+import com.guoguanla.common.security.StpAdminUtil;
 import com.guoguanla.common.util.JsonHelper;
 import com.guoguanla.module.bank.entity.EduChapter;
 import com.guoguanla.module.bank.entity.EduGate;
@@ -14,9 +15,12 @@ import com.guoguanla.module.bank.entity.EduGrade;
 import com.guoguanla.module.bank.mapper.EduChapterMapper;
 import com.guoguanla.module.bank.mapper.EduGateMapper;
 import com.guoguanla.module.bank.mapper.EduGradeMapper;
+import com.guoguanla.module.oss.AliyunOssService;
+import com.guoguanla.module.progress.entity.UserEssayAnswer;
 import com.guoguanla.module.progress.entity.UserGateProgress;
 import com.guoguanla.module.progress.entity.UserQuizRecord;
 import com.guoguanla.module.progress.entity.UserWrongQuestion;
+import com.guoguanla.module.progress.mapper.UserEssayAnswerMapper;
 import com.guoguanla.module.progress.mapper.UserGateProgressMapper;
 import com.guoguanla.module.progress.mapper.UserQuizRecordMapper;
 import com.guoguanla.module.progress.mapper.UserWrongQuestionMapper;
@@ -52,6 +56,8 @@ public class AdminUserService {
     private final UserGateProgressMapper gateProgressMapper;
     private final UserQuizRecordMapper quizRecordMapper;
     private final UserWrongQuestionMapper wrongMapper;
+    private final UserEssayAnswerMapper essayAnswerMapper;
+    private final AliyunOssService ossService;
     private final RealmHelperService realmHelper;
     private final ObjectMapper objectMapper;
 
@@ -103,6 +109,10 @@ public class AdminUserService {
     }
 
     public UserDetailVO detail(Long userId) {
+        return detail(userId, "");
+    }
+
+    public UserDetailVO detail(Long userId, String baseOrigin) {
         AppUser user = userMapper.selectById(userId);
         if (user == null) {
             throw new BizException(ErrorCode.NOT_FOUND, "学生用户不存在");
@@ -160,18 +170,25 @@ public class AdminUserService {
                         .last("LIMIT 30")
         );
         List<UserDetailVO.WrongItem> wrongItems = wrongs.stream()
-                .map(w -> UserDetailVO.WrongItem.builder()
-                        .id(w.getId())
-                        .gradeCode(w.getGradeCode())
-                        .chapterName(w.getChapterName())
-                        .gateName(w.getGateName())
-                        .stem(w.getStem())
-                        .options(parseOptions(w.getOptionsJson()))
-                        .answerIndex(parseAnswerIndex(w.getAnswerJson()))
-                        .wrongCount(w.getWrongCount())
-                        .isMastered(w.getIsMastered())
-                        .lastWrongAt(w.getLastWrongAt())
-                        .build())
+                .map(w -> {
+                    String fmt = (w.getQuestionFormat() == null || w.getQuestionFormat().isBlank())
+                            ? "SINGLE_CHOICE" : w.getQuestionFormat();
+                    return UserDetailVO.WrongItem.builder()
+                            .id(w.getId())
+                            .gradeCode(w.getGradeCode())
+                            .chapterName(w.getChapterName())
+                            .gateName(w.getGateName())
+                            .questionFormat(fmt)
+                            .stem(w.getStem())
+                            .options(parseOptions(w.getOptionsJson()))
+                            .answerIndex(parseAnswerIndex(w.getAnswerJson()))
+                            .referenceAnswer(parseReferenceAnswer(w.getAnswerJson()))
+                            .lastAnswerImageUrl(ossService.resolveViewUrl(w.getLastAnswerImageKey(), baseOrigin))
+                            .wrongCount(w.getWrongCount())
+                            .isMastered(w.getIsMastered())
+                            .lastWrongAt(w.getLastWrongAt())
+                            .build();
+                })
                 .toList();
 
         List<UserQuizRecord> records = quizRecordMapper.selectList(
@@ -262,7 +279,131 @@ public class AdminUserService {
         if (req.getStatus() != null) {
             user.setStatus(req.getStatus());
         }
+        if (req.getPassword() != null && !req.getPassword().isBlank()) {
+            validateAndApplyPassword(user, req.getPassword());
+        }
         userMapper.updateById(user);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void updatePassword(Long id, String password) {
+        AppUser user = userMapper.selectById(id);
+        if (user == null) {
+            throw new BizException(ErrorCode.NOT_FOUND, "学生用户不存在");
+        }
+        validateAndApplyPassword(user, password);
+        userMapper.updateById(user);
+    }
+
+    private void validateAndApplyPassword(AppUser user, String rawPassword) {
+        String trimmed = rawPassword == null ? "" : rawPassword.trim();
+        if (trimmed.length() < 6 || trimmed.length() > 64) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "登录密码长度需在 6~64 位之间");
+        }
+        user.setPasswordHash(BCrypt.hashpw(trimmed, BCrypt.gensalt()));
+    }
+
+    public List<UserDetailVO.QuizSessionItemVO> getQuizRecordDetail(Long userId, String sessionNo, String baseOrigin) {
+        UserQuizRecord record = quizRecordMapper.selectOne(
+                new LambdaQueryWrapper<UserQuizRecord>()
+                        .eq(UserQuizRecord::getSessionNo, sessionNo)
+                        .eq(UserQuizRecord::getUserId, userId)
+                        .last("LIMIT 1")
+        );
+        if (record == null) {
+            throw new BizException(ErrorCode.NOT_FOUND, "答题记录不存在");
+        }
+        try {
+            JsonNode arr = JsonHelper.readTree(objectMapper, record.getQuestionSnapshotJson());
+            List<UserDetailVO.QuizSessionItemVO> items = new ArrayList<>();
+            if (arr != null && arr.isArray()) {
+                for (JsonNode n : arr) {
+                    String fmt = n.path("questionFormat").asText("SINGLE_CHOICE");
+                    List<String> opts = new ArrayList<>();
+                    if (n.path("options").isArray()) {
+                        for (JsonNode op : n.path("options")) {
+                            opts.add(op.asText(""));
+                        }
+                    }
+                    int ansIdx = n.path("answerIndex").asInt(0);
+                    Integer userIdx = n.hasNonNull("userIndex") ? n.get("userIndex").asInt() : null;
+                    Boolean selfCorrect = n.hasNonNull("userSelfCorrect") ? n.get("userSelfCorrect").asBoolean() : null;
+                    boolean correct = "ESSAY".equalsIgnoreCase(fmt)
+                            ? Boolean.TRUE.equals(selfCorrect)
+                            : Objects.equals(ansIdx, userIdx);
+                    String imgKey = n.path("userAnswerImageKey").asText("");
+                    items.add(UserDetailVO.QuizSessionItemVO.builder()
+                            .itemIndex(n.path("itemIndex").asInt(0))
+                            .questionFormat(fmt)
+                            .stem(n.path("stem").asText(""))
+                            .options(opts)
+                            .answerIndex(ansIdx)
+                            .userIndex(userIdx)
+                            .referenceAnswer(n.path("referenceAnswer").asText(""))
+                            .userAnswerText(n.path("userAnswerText").asText(""))
+                            .userAnswerImageUrl(ossService.resolveViewUrl(imgKey, baseOrigin))
+                            .userSelfCorrect(selfCorrect)
+                            .correct(correct)
+                            .analysis(n.path("analysis").asText(""))
+                            .build());
+                }
+            }
+            return items;
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "解析答题明细失败");
+        }
+    }
+
+    public PageResult<UserDetailVO.EssayAnswerItem> listUserEssayAnswers(Long userId, Long pageNum, Long pageSize, String baseOrigin) {
+        long p = pageNum == null || pageNum < 1 ? 1L : pageNum;
+        long s = pageSize == null || pageSize < 1 ? 10L : Math.min(pageSize, 50L);
+        Page<UserEssayAnswer> page = essayAnswerMapper.selectPage(
+                new Page<>(p, s),
+                new LambdaQueryWrapper<UserEssayAnswer>()
+                        .eq(UserEssayAnswer::getUserId, userId)
+                        .orderByDesc(UserEssayAnswer::getCreatedAt)
+        );
+        List<UserDetailVO.EssayAnswerItem> list = page.getRecords().stream()
+                .map(e -> UserDetailVO.EssayAnswerItem.builder()
+                        .id(e.getId())
+                        .sessionNo(e.getSessionNo())
+                        .itemIndex(e.getItemIndex())
+                        .userId(e.getUserId())
+                        .chapterName(e.getChapterName())
+                        .gateName(e.getGateName())
+                        .stem(e.getStem())
+                        .referenceAnswer(e.getReferenceAnswer())
+                        .answerText(e.getAnswerText())
+                        .answerImageUrl(ossService.resolveViewUrl(e.getAnswerImageKey(), baseOrigin))
+                        .selfCorrect(e.getSelfCorrect())
+                        .teacherStatus(e.getTeacherStatus())
+                        .teacherComment(e.getTeacherComment())
+                        .createdAt(e.getCreatedAt())
+                        .reviewedAt(e.getReviewedAt())
+                        .build())
+                .toList();
+        return PageResult.of(list, page.getTotal(), p, s);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void reviewEssayAnswer(Long essayId, Integer teacherStatus, String teacherComment) {
+        UserEssayAnswer ans = essayAnswerMapper.selectById(essayId);
+        if (ans == null) {
+            throw new BizException(ErrorCode.NOT_FOUND, "解答题作答记录不存在");
+        }
+        int status = (teacherStatus == null || (teacherStatus != 1 && teacherStatus != 2)) ? 1 : teacherStatus;
+        ans.setTeacherStatus(status);
+        ans.setTeacherComment(teacherComment == null ? "" : teacherComment.trim());
+        try {
+            if (StpAdminUtil.isLogin()) {
+                ans.setReviewedBy(StpAdminUtil.getLoginIdAsLong());
+            }
+        } catch (Exception ignored) {
+        }
+        ans.setReviewedAt(LocalDateTime.now());
+        essayAnswerMapper.updateById(ans);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -360,6 +501,15 @@ public class AdminUserService {
             return node != null ? node.path("index").asInt(0) : 0;
         } catch (Exception e) {
             return 0;
+        }
+    }
+
+    private String parseReferenceAnswer(String json) {
+        try {
+            JsonNode node = JsonHelper.readTree(objectMapper, json);
+            return node != null ? node.path("text").asText("") : "";
+        } catch (Exception e) {
+            return "";
         }
     }
 }

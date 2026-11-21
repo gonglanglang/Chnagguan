@@ -252,6 +252,9 @@ public class AdminBankService {
         q.setVersion(1);
         q.setCreatedBy(currentAdminIdOrNull());
         questionMapper.insert(q);
+        if (Objects.equals(q.getEnabled(), 1)) {
+            syncGateQuestionCountIfNeeded(q.getGateId(), req.getSyncGateCount());
+        }
         return q.getId();
     }
 
@@ -265,6 +268,9 @@ public class AdminBankService {
         applyQuestionSaveReq(q, req);
         q.setVersion((q.getVersion() == null ? 1 : q.getVersion()) + 1);
         questionMapper.updateById(q);
+        if (Objects.equals(q.getEnabled(), 1)) {
+            syncGateQuestionCountIfNeeded(q.getGateId(), req.getSyncGateCount());
+        }
     }
 
     public void updateQuestionStatus(Long id, Integer enabled) {
@@ -274,6 +280,9 @@ public class AdminBankService {
         }
         q.setEnabled(enabled);
         questionMapper.updateById(q);
+        if (Objects.equals(enabled, 1)) {
+            syncGateQuestionCountIfNeeded(q.getGateId(), Boolean.TRUE);
+        }
     }
 
     public void deleteQuestion(Long id) {
@@ -290,6 +299,8 @@ public class AdminBankService {
         } else {
             target = new EduQuestion();
             target.setQuestionMode(req.getQuestionMode());
+            target.setQuestionFormat(req.getQuestionFormat() == null ? "SINGLE_CHOICE" : req.getQuestionFormat());
+            target.setStem(req.getStem());
             target.setTemplateRuleJson(writeJson(req.getTemplateRule()));
             target.setAnalysis(req.getAnalysis());
         }
@@ -374,30 +385,68 @@ public class AdminBankService {
     }
 
     private void validateQuestionReq(QuestionSaveReq req) {
+        String fmt = req.getQuestionFormat() == null ? "SINGLE_CHOICE" : req.getQuestionFormat().trim().toUpperCase(Locale.ROOT);
+        req.setQuestionFormat(fmt);
         if ("DYNAMIC_TEMPLATE".equalsIgnoreCase(req.getQuestionMode())) {
             if (req.getTemplateRule() == null || req.getTemplateRule().isEmpty()) {
                 throw new BizException(ErrorCode.BAD_REQUEST, "动态题必须提供 templateRule 规则");
             }
             EduQuestion probe = new EduQuestion();
             probe.setQuestionMode("DYNAMIC_TEMPLATE");
+            probe.setQuestionFormat(fmt);
             probe.setTemplateRuleJson(writeJson(req.getTemplateRule()));
             probe.setAnalysis(req.getAnalysis());
-            // 校验规则能正常试生成一题
             GeneratedQuestion sample = engineService.generateOne(probe);
-            if (req.getOptions() == null || req.getOptions().isEmpty()) {
-                req.setOptions(sample.getOptions());
+            if ("PARAM_TEMPLATE".equalsIgnoreCase(String.valueOf(req.getTemplateRule().get("type")))
+                    || req.getStem() == null || req.getStem().isBlank() || req.getStem().contains("{{")) {
+                req.setStem(sample.getStem());
             }
-            if (req.getAnswer() == null || req.getAnswer().isEmpty()) {
-                req.setAnswer(Map.of("index", sample.getAnswerIndex()));
+            if ("ESSAY".equals(fmt)) {
+                req.setOptions(List.of());
+                req.setAnswer(Map.of("text", sample.getReferenceAnswer() == null ? "" : sample.getReferenceAnswer()));
+            } else {
+                req.setOptions(sample.getOptions());
+                req.setAnswer(Map.of("index", sample.getAnswerIndex() == null ? 0 : sample.getAnswerIndex()));
             }
         } else {
-            if (("SINGLE_CHOICE".equals(req.getQuestionFormat()) || "MULTI_CHOICE".equals(req.getQuestionFormat()) || "JUDGE".equals(req.getQuestionFormat()))
-                    && (req.getOptions() == null || req.getOptions().size() < 2)) {
-                throw new BizException(ErrorCode.BAD_REQUEST, "选择题至少需要 2 个选项");
+            if (req.getStem() == null || req.getStem().isBlank()) {
+                throw new BizException(ErrorCode.BAD_REQUEST, "题干不能为空");
             }
-            if (req.getAnswer() == null || req.getAnswer().isEmpty()) {
-                throw new BizException(ErrorCode.BAD_REQUEST, "请指定标准答案");
+            if ("ESSAY".equals(fmt)) {
+                req.setOptions(List.of());
+                String refText = req.getAnswer() != null && req.getAnswer().get("text") != null
+                        ? String.valueOf(req.getAnswer().get("text"))
+                        : "";
+                req.setAnswer(Map.of("text", refText));
+            } else {
+                if (("SINGLE_CHOICE".equals(fmt) || "MULTI_CHOICE".equals(fmt) || "JUDGE".equals(fmt))
+                        && (req.getOptions() == null || req.getOptions().size() < 2)) {
+                    throw new BizException(ErrorCode.BAD_REQUEST, "选择题至少需要 2 个选项");
+                }
+                if (req.getAnswer() == null || req.getAnswer().isEmpty()) {
+                    throw new BizException(ErrorCode.BAD_REQUEST, "请指定标准答案");
+                }
             }
+        }
+    }
+
+    private void syncGateQuestionCountIfNeeded(Long gateId, Boolean syncFlag) {
+        if (Boolean.FALSE.equals(syncFlag) || gateId == null) {
+            return;
+        }
+        EduGate gate = gateMapper.selectById(gateId);
+        if (gate == null) {
+            return;
+        }
+        long enabledCount = questionMapper.selectCount(
+                new LambdaQueryWrapper<EduQuestion>()
+                        .eq(EduQuestion::getGateId, gateId)
+                        .eq(EduQuestion::getEnabled, 1)
+        );
+        int currentTarget = gate.getQuestionCount() == null ? 0 : gate.getQuestionCount();
+        if (enabledCount > currentTarget) {
+            gate.setQuestionCount((int) enabledCount);
+            gateMapper.updateById(gate);
         }
     }
 

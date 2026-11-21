@@ -89,6 +89,11 @@ const menuGroups = computed<MenuGroup[]>(() => [
         value: userStore.currentRealm.realmName,
       },
       {
+        key: "essay",
+        title: "我的解答作答记录",
+        icon: "edit",
+      },
+      {
         key: "profile",
         title: "个人昵称修改",
         icon: "user",
@@ -145,10 +150,18 @@ function goRealmsOverview(): void {
   uni.navigateTo({ url: "/subPages/levels/index" });
 }
 
+function goEssayRecords(): void {
+  if (!ensureAuthenticated()) return;
+  uni.navigateTo({ url: "/subPages/essay-records/index" });
+}
+
 function handleMenuSelect(key: string): void {
   switch (key) {
     case "realms":
       goRealmsOverview();
+      break;
+    case "essay":
+      goEssayRecords();
       break;
     case "profile":
       goProfile();

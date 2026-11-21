@@ -1,10 +1,11 @@
-import request from "@/utils/request";
+import request, { uploadFileRequest } from "@/utils/request";
 import type {
   AppUserProfile,
   AppVersionInfo,
   AuthResult,
   ChapterCard,
   CheckItemResult,
+  EssayAnswerRecord,
   GateCard,
   HomeSummary,
   LoginPayload,
@@ -12,6 +13,7 @@ import type {
   RealmItem,
   RegisterPayload,
   SubmitResult,
+  UploadAnswerImageResult,
   WrongQuestionItem,
 } from "@/types/guoguanla";
 
@@ -99,7 +101,22 @@ export const AppUserAPI = {
       method: "GET",
     });
   },
+  getEssayAnswers(params?: { pageNum?: number; pageSize?: number }) {
+    return request<PageResult<EssayAnswerRecord>>({
+      url: "/app/user/essay-answers",
+      method: "GET",
+      params,
+    });
+  },
 };
+
+export interface AnswerSubmitPayload {
+  itemIndex: number;
+  selectedIndex?: number;
+  answerText?: string;
+  answerImageKey?: string;
+  selfCorrect?: boolean;
+}
 
 export const AppQuizAPI = {
   start(data: { gateId: number; guestPassedGateIds?: number[] }) {
@@ -109,14 +126,44 @@ export const AppQuizAPI = {
       data,
     });
   },
-  checkItem(data: { sessionNo: string; itemIndex: number; selectedIndex: number }) {
+  uploadAnswerImage(filePath: string, sessionNo: string, itemIndex: number) {
+    return uploadFileRequest<UploadAnswerImageResult>({
+      url: "/app/quiz/upload-answer-image",
+      filePath,
+      formData: {
+        sessionNo,
+        itemIndex: String(itemIndex),
+      },
+    });
+  },
+  checkItem(data: {
+    sessionNo: string;
+    itemIndex: number;
+    selectedIndex?: number;
+    answerText?: string;
+    answerImageKey?: string;
+    selfCorrect?: boolean;
+  }) {
     return request<CheckItemResult>({
       url: "/app/quiz/check-item",
       method: "POST",
       data,
     });
   },
-  submit(data: { sessionNo: string; answers: Array<{ itemIndex: number; selectedIndex: number }> }) {
+  gradeEssay(data: {
+    sessionNo: string;
+    itemIndex: number;
+    correct: boolean;
+    answerText?: string;
+    answerImageKey?: string;
+  }) {
+    return request<CheckItemResult>({
+      url: "/app/quiz/essay-grade",
+      method: "POST",
+      data,
+    });
+  },
+  submit(data: { sessionNo: string; answers: AnswerSubmitPayload[] }) {
     return request<SubmitResult>({
       url: "/app/quiz/submit",
       method: "POST",
@@ -132,7 +179,7 @@ export const AppRealmExamAPI = {
       method: "POST",
     });
   },
-  submit(data: { sessionNo: string; answers: Array<{ itemIndex: number; selectedIndex: number }> }) {
+  submit(data: { sessionNo: string; answers: AnswerSubmitPayload[] }) {
     return request<SubmitResult>({
       url: "/app/realm/exam/submit",
       method: "POST",
@@ -156,7 +203,7 @@ export const AppWrongAPI = {
       data: data ?? {},
     });
   },
-  submitRedo(data: { sessionNo: string; answers: Array<{ itemIndex: number; selectedIndex: number }> }) {
+  submitRedo(data: { sessionNo: string; answers: AnswerSubmitPayload[] }) {
     return request<SubmitResult>({
       url: "/app/wrong-questions/redo/submit",
       method: "POST",

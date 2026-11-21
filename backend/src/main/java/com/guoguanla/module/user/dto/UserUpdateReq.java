@@ -14,4 +14,6 @@ public class UserUpdateReq {
     private String phone;
     private String remark;
     private Integer status;
+    /** 选填：非空时同步重置学生登录密码（至少6位） */
+    private String password;
 }

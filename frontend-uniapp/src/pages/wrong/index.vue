@@ -84,6 +84,12 @@
               </view>
             </view>
 
+            <view v-if="item.lastAnswerImageUrl" class="wrong-card__img-row">
+              <text class="wrong-card__img-label" @click="previewWrongImg(item.lastAnswerImageUrl)">
+                查看上次手写画板作答图 ›
+              </text>
+            </view>
+
             <view v-if="item.analysis" class="wrong-card__analysis">
               解析：<math-text :text="item.analysis" inline />
             </view>
@@ -136,10 +142,18 @@ const loading = ref(false);
 const LETTERS = ["A", "B", "C", "D", "E", "F"];
 
 function formatCorrectAnswer(item: WrongQuestionItem): string {
+  if (item.questionFormat === "ESSAY") {
+    return item.referenceAnswer || "详见下方解析";
+  }
   const idx = item.answerIndex ?? 0;
   const letter = LETTERS[idx] || String(idx + 1);
   const text = item.options?.[idx] ?? "";
   return text ? `${letter}. ${text}` : letter;
+}
+
+function previewWrongImg(url?: string): void {
+  if (!url) return;
+  uni.previewImage({ urls: [url] });
 }
 
 function formatTime(iso: string): string {
@@ -359,6 +373,15 @@ onShow(() => {
 
 .wrong-card__answer-val {
   font-weight: 600;
+  color: var(--color-primary);
+}
+
+.wrong-card__img-row {
+  margin-top: 10rpx;
+}
+
+.wrong-card__img-label {
+  font-size: 24rpx;
   color: var(--color-primary);
 }
 
