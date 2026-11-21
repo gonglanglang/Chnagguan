@@ -89,13 +89,13 @@ const menuGroups = computed<MenuGroup[]>(() => [
       {
         key: "realms",
         title: "修仙境界体系",
-        icon: "trophy",
+        icon: "realm-lotus",
         value: userStore.currentRealm.realmName,
       },
       {
         key: "essay",
         title: "我的解答作答记录",
-        icon: "edit",
+        icon: "brush",
       },
     ],
   },
@@ -105,12 +105,12 @@ const menuGroups = computed<MenuGroup[]>(() => [
       {
         key: "theme",
         title: "主题与深色模式",
-        icon: "skin",
+        icon: "theme",
       },
       {
         key: "cache",
         title: "清理本地缓存",
-        icon: "delete",
+        icon: "clear",
         value: usageText.value,
       },
       {
@@ -127,7 +127,7 @@ const menuGroups = computed<MenuGroup[]>(() => [
       {
         key: "about",
         title: "关于过关啦",
-        icon: "info-circle",
+        icon: "info",
       },
     ],
   },

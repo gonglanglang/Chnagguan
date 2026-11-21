@@ -2,7 +2,7 @@
   <app-page-shell title="修仙境界体系">
     <view class="summary-card">
       <view class="summary-card__badge">
-        <wd-icon name="trophy" size="24" color="var(--color-primary)" />
+        <app-icon name="realm-lotus" size="24" color="primary" />
       </view>
       <view class="summary-card__info">
         <text class="summary-card__title">当前境界：{{ userStore.currentRealm.realmName }}</text>
@@ -22,7 +22,7 @@
         <view class="realm-card__head">
           <view class="realm-card__title-wrap">
             <view class="realm-card__order" :class="item.unlocked ? 'realm-card__order--open' : ''">
-              <wd-icon v-if="item.isCurrent" name="check" size="15" color="#ffffff" />
+              <app-icon v-if="item.isCurrent" name="check" size="15" color="#ffffff" />
               <text v-else>{{ item.realmOrder }}</text>
             </view>
             <view>

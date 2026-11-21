@@ -9,7 +9,7 @@
     >
       <template v-if="selectedChapter" #left>
         <view class="nav-back-btn" @click="exitChapter">
-          <wd-icon name="arrow-left" size="18" color="var(--color-text)" />
+          <app-icon name="back" size="18" color="text" />
           <text class="nav-back-text">返回</text>
         </view>
       </template>
@@ -24,68 +24,22 @@
     >
       <view class="page-body">
       <template v-if="!selectedChapter">
-        <!-- 顶部境界主卡（雅致翡翠渐变收口） -->
-        <view class="realm-hero">
-          <view class="realm-hero__top" @click="goRealmsOverview">
-            <view class="realm-hero__left">
-              <view class="realm-hero__icon">
-                <wd-icon name="trophy" size="22" color="#ffffff" />
-              </view>
-              <view>
-                <view class="realm-hero__title-row">
-                  <text class="realm-hero__name">{{ currentRealm.realmName }}</text>
-                  <text class="realm-hero__badge">{{ currentRealm.difficultyLabel }}</text>
-                </view>
-                <text class="realm-hero__sub">
-                  本境通关 {{ currentRealm.passedGateCount }} / {{ currentRealm.gateCount || 0 }} 关 · 累计 {{ userStore.passedGateCount }} 关
-                </text>
-              </view>
-            </view>
-            <view class="realm-hero__link">
-              <text>境界体系</text>
-              <wd-icon name="right" size="13" color="rgba(255,255,255,0.85)" />
-            </view>
-          </view>
-
-          <view class="realm-hero__bar-wrap">
-            <view class="realm-hero__bar-track">
-              <view
-                class="realm-hero__bar-fill"
-                :style="{ width: calcPercent(currentRealm.passedGateCount, currentRealm.gateCount) + '%' }"
-              />
-            </view>
-            <text class="realm-hero__pct">
-              {{ calcPercent(currentRealm.passedGateCount, currentRealm.gateCount) }}%
-            </text>
-          </view>
-
-          <view class="realm-hero__footer">
-            <template v-if="!userStore.isAuthenticated">
-              <text class="realm-hero__tip">当前游客试玩练气境，登录后可同步进度并进阶</text>
-              <view class="realm-hero__btn" @click="goLogin">去登录</view>
-            </template>
-            <template v-else-if="!userStore.userInfo?.nextRealmName">
-              <text class="realm-hero__tip">已臻化神巅峰，点击下方可压制境界温习各阶题库</text>
-            </template>
-            <template v-else-if="currentRealm.examEligible">
-              <text class="realm-hero__tip">
-                已满考核条件，抽 {{ currentRealm.examQuestionCount }} 题过 {{ currentRealm.examPassScore }} 分即升「{{ userStore.userInfo.nextRealmName }}」
-              </text>
-              <view class="realm-hero__btn" @click="startAdvanceExam">进阶考核</view>
-            </template>
-            <template v-else>
-              <text class="realm-hero__tip">
-                再通 {{ currentRealm.examRemainingGates }} 关开启进阶考（{{ currentRealm.examQuestionCount }}题 · {{ currentRealm.examPassScore }}分及格）
-              </text>
-            </template>
-          </view>
-        </view>
-
         <!-- 六大境界 3x2 网格切换（高境可压制至低境，低境锁定） -->
         <view class="realm-box">
           <view class="realm-box__head">
             <text class="realm-box__title">修炼境界</text>
-            <text class="realm-box__hint">高境可压制做低境题</text>
+            <view class="realm-box__actions">
+              <text
+                v-if="userStore.isAuthenticated && currentRealm.examEligible && userStore.userInfo?.nextRealmName"
+                class="realm-box__exam"
+                @click="startAdvanceExam"
+              >
+                可进阶考核 ›
+              </text>
+              <text v-else class="realm-box__hint" @click="goRealmsOverview">
+                境界体系 ›
+              </text>
+            </view>
           </view>
 
           <view class="realm-grid">
@@ -101,11 +55,11 @@
             >
               <view class="realm-cell__row">
                 <text class="realm-cell__name">{{ r.realmName }}</text>
-                <wd-icon
+                <app-icon
                   v-if="r.isHigher"
                   name="lock"
-                  size="12"
-                  color="var(--color-text-muted)"
+                  size="13"
+                  color="muted"
                 />
                 <text v-else-if="r.isCurrent" class="realm-cell__mark">本境</text>
                 <text v-else class="realm-cell__mark">可压</text>
@@ -123,7 +77,7 @@
         </view>
 
         <view v-if="userStore.appNotice" class="notice-strip">
-          <wd-icon name="notification" size="14" color="var(--color-primary)" />
+          <app-icon name="notice" size="15" color="primary" />
           <text class="notice-strip__text">{{ userStore.appNotice }}</text>
         </view>
 
@@ -165,7 +119,7 @@
                 >
                   {{ chap.passedCount }}/{{ chap.totalGates }} 关
                 </text>
-                <wd-icon name="right" size="14" color="var(--color-text-muted)" />
+                <app-icon name="right" size="14" color="muted" />
               </view>
             </view>
 
@@ -222,7 +176,7 @@
                   'gate-card__index--locked': gate.locked || gate.empty,
                 }"
               >
-                <wd-icon v-if="gate.passed" name="check" size="18" color="#ffffff" />
+                <app-icon v-if="gate.passed" name="check" size="18" color="#ffffff" />
                 <text v-else>{{ String(gate.gateIndex + 1).padStart(2, "0") }}</text>
               </view>
 
@@ -230,7 +184,7 @@
                 <view class="gate-card__title-row">
                   <text class="gate-card__name">{{ gate.gateName }}</text>
                   <view class="gate-card__stars">
-                    <wd-icon
+                    <app-icon
                       v-for="n in gate.star || 1"
                       :key="n"
                       name="star-fill"
@@ -251,7 +205,7 @@
               </template>
               <template v-else-if="gate.locked">
                 <view class="gate-card__lock">
-                  <wd-icon name="lock" size="15" color="var(--color-text-muted)" />
+                  <app-icon name="lock" size="15" color="muted" />
                   <text>未解锁</text>
                 </view>
               </template>
@@ -446,10 +400,6 @@ function startAdvanceExam(): void {
   });
 }
 
-function goLogin(): void {
-  uni.navigateTo({ url: "/subPages/login/index" });
-}
-
 function goRealmsOverview(): void {
   uni.navigateTo({ url: "/subPages/levels/index" });
 }
@@ -489,136 +439,8 @@ onShow(() => {
   color: var(--color-text);
 }
 
-.realm-hero {
-  padding: 28rpx 26rpx 24rpx;
-  color: #ffffff;
-  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
-  border-radius: 22rpx;
-  box-shadow: 0 10rpx 24rpx rgba(22, 163, 74, 0.22);
-}
-
-.realm-hero__top {
-  display: flex;
-  gap: 14rpx;
-  align-items: flex-start;
-  justify-content: space-between;
-}
-
-.realm-hero__left {
-  display: flex;
-  flex: 1;
-  gap: 18rpx;
-  align-items: center;
-  min-width: 0;
-}
-
-.realm-hero__icon {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  width: 76rpx;
-  height: 76rpx;
-  background: rgba(255, 255, 255, 0.18);
-  border-radius: 20rpx;
-}
-
-.realm-hero__title-row {
-  display: flex;
-  gap: 12rpx;
-  align-items: center;
-}
-
-.realm-hero__name {
-  font-size: 38rpx;
-  font-weight: 700;
-  color: #ffffff;
-}
-
-.realm-hero__badge {
-  padding: 4rpx 14rpx;
-  font-size: 20rpx;
-  font-weight: 500;
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 999rpx;
-}
-
-.realm-hero__sub {
-  display: block;
-  margin-top: 6rpx;
-  font-size: 23rpx;
-  color: rgba(255, 255, 255, 0.88);
-}
-
-.realm-hero__link {
-  display: flex;
-  flex-shrink: 0;
-  gap: 4rpx;
-  align-items: center;
-  margin-top: 6rpx;
-  font-size: 23rpx;
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.realm-hero__bar-wrap {
-  display: flex;
-  gap: 16rpx;
-  align-items: center;
-  margin-top: 22rpx;
-}
-
-.realm-hero__bar-track {
-  flex: 1;
-  height: 12rpx;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.22);
-  border-radius: 999rpx;
-}
-
-.realm-hero__bar-fill {
-  height: 100%;
-  background: #ffffff;
-  border-radius: 999rpx;
-  transition: width 0.25s ease;
-}
-
-.realm-hero__pct {
-  font-size: 23rpx;
-  font-weight: 600;
-  color: #ffffff;
-}
-
-.realm-hero__footer {
-  display: flex;
-  gap: 16rpx;
-  align-items: center;
-  justify-content: space-between;
-  padding-top: 18rpx;
-  margin-top: 18rpx;
-  border-top: 1px solid rgba(255, 255, 255, 0.18);
-}
-
-.realm-hero__tip {
-  flex: 1;
-  font-size: 22rpx;
-  line-height: 1.45;
-  color: rgba(255, 255, 255, 0.92);
-}
-
-.realm-hero__btn {
-  flex-shrink: 0;
-  padding: 10rpx 24rpx;
-  font-size: 24rpx;
-  font-weight: 600;
-  color: #15803d;
-  background: #ffffff;
-  border-radius: 999rpx;
-}
-
 .realm-box {
   padding: 22rpx;
-  margin-top: 20rpx;
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
   border-radius: 20rpx;
@@ -636,6 +458,17 @@ onShow(() => {
   font-size: 27rpx;
   font-weight: 600;
   color: var(--color-text);
+}
+
+.realm-box__actions {
+  display: flex;
+  align-items: center;
+}
+
+.realm-box__exam {
+  font-size: 23rpx;
+  font-weight: 600;
+  color: var(--color-primary);
 }
 
 .realm-box__hint {

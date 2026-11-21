@@ -24,6 +24,10 @@ export default defineUniPages({
         text: "首页",
       },
       {
+        pagePath: "pages/cultivate/index",
+        text: "修炼",
+      },
+      {
         pagePath: "pages/wrong/index",
         text: "错题本",
       },

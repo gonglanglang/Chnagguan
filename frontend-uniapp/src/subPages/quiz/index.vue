@@ -10,7 +10,7 @@
       >
         <template #left>
           <view class="nav-exit-btn" @click="handleExit">
-            <wd-icon name="arrow-left" size="18" color="var(--color-text)" />
+            <app-icon name="back" size="18" color="text" />
             <text class="nav-exit-text">{{ submitResult ? "返回" : "退出" }}</text>
           </view>
         </template>
@@ -98,7 +98,7 @@
             />
           </view>
           <view class="essay-pending-banner">
-            <wd-icon name="time" size="16" color="#d97706" />
+            <app-icon name="time" size="16" color="#d97706" />
             <text class="essay-pending-banner__text">作答已提交至云端，等待老师批改点评</text>
           </view>
         </view>
@@ -123,13 +123,13 @@
                 />
               </view>
               <view class="option-row__status">
-                <wd-icon
+                <app-icon
                   v-if="currentFeedback && idx === currentFeedback.correctIndex"
                   name="check-circle-fill"
                   size="18"
                   color="#16a34a"
                 />
-                <wd-icon
+                <app-icon
                   v-else-if="
                     currentFeedback &&
                     idx === currentSelected &&
@@ -149,7 +149,7 @@
             :class="currentFeedback.correct ? 'feedback-card--pass' : 'feedback-card--fail'"
           >
             <view class="feedback-card__head">
-              <wd-icon
+              <app-icon
                 :name="currentFeedback.correct ? 'check-circle-fill' : 'close-circle-fill'"
                 size="18"
                 :color="currentFeedback.correct ? '#16a34a' : '#ef4444'"
@@ -176,7 +176,7 @@
           class="result-card__icon"
           :class="submitResult.passed ? 'result-card__icon--pass' : 'result-card__icon--retry'"
         >
-          <wd-icon
+          <app-icon
             :name="submitResult.passed ? 'check-circle-fill' : 'info-circle'"
             size="40"
             :color="submitResult.passed ? '#16a34a' : '#f59e0b'"
@@ -230,7 +230,7 @@
         </text>
 
         <view v-if="submitResult.promotedRealm" class="promote-banner">
-          <wd-icon name="trophy" size="18" color="var(--color-primary)" />
+          <app-icon name="realm-lotus" size="18" color="primary" />
           <text class="promote-banner__text">
             恭喜突破至「{{ submitResult.promotedRealm.realmName }}」境界
           </text>

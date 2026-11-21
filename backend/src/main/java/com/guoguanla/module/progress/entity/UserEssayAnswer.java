@@ -18,8 +18,10 @@ public class UserEssayAnswer {
     private Long userId;
     private Long questionId;
     private String gradeCode;
+    private String realmCode;
     private Long chapterId;
     private String chapterName;
+    private Long gateId;
     private String gateName;
     private String stem;
     private String referenceAnswer;
@@ -28,6 +30,7 @@ public class UserEssayAnswer {
     private Integer selfCorrect;
     private Integer teacherStatus;
     private String teacherComment;
+    private String teacherImageKey;
     private Long reviewedBy;
     private LocalDateTime reviewedAt;
     private LocalDateTime createdAt;

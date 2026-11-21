@@ -237,8 +237,10 @@ CREATE TABLE IF NOT EXISTS user_essay_answer (
   user_id BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '学生ID（0表示游客）',
   question_id BIGINT UNSIGNED DEFAULT NULL,
   grade_code VARCHAR(16) NOT NULL DEFAULT '',
+  realm_code VARCHAR(24) NOT NULL DEFAULT '' COMMENT '所属修仙境界编码',
   chapter_id BIGINT UNSIGNED DEFAULT NULL,
   chapter_name VARCHAR(100) NOT NULL DEFAULT '',
+  gate_id BIGINT UNSIGNED DEFAULT NULL COMMENT '所属关卡ID',
   gate_name VARCHAR(32) NOT NULL DEFAULT '',
   stem TEXT NOT NULL COMMENT '作答时具体题干快照',
   reference_answer TEXT DEFAULT NULL COMMENT '参考答案/评分要点',
@@ -247,14 +249,50 @@ CREATE TABLE IF NOT EXISTS user_essay_answer (
   self_correct TINYINT DEFAULT NULL COMMENT '学生自评：1正确 0有误 NULL待核',
   teacher_status TINYINT NOT NULL DEFAULT 0 COMMENT '老师批改：0待批改 1通过 2待订正',
   teacher_comment VARCHAR(512) NOT NULL DEFAULT '',
+  teacher_image_key VARCHAR(512) DEFAULT NULL COMMENT '老师PC端画板批注图OSS对象键',
   reviewed_by BIGINT UNSIGNED DEFAULT NULL,
   reviewed_at DATETIME DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uk_session_item (session_no, item_index),
-  KEY idx_essay_user_time (user_id, created_at)
+  KEY idx_essay_user_time (user_id, created_at),
+  KEY idx_essay_gate_unique (user_id, realm_code, chapter_id, gate_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='学生解答题手写作答记录表';
+
+-- 10.2 修炼教学视频系列表
+CREATE TABLE IF NOT EXISTS edu_video_series (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  title VARCHAR(128) NOT NULL COMMENT '系列标题',
+  cover_image_key VARCHAR(512) NOT NULL DEFAULT '' COMMENT '封面图OSS对象键或相对路径',
+  intro TEXT DEFAULT NULL COMMENT '系列介绍',
+  realm_code VARCHAR(24) NOT NULL DEFAULT '' COMMENT '关联修仙境界编码（空为全境界通用）',
+  sort_order INT NOT NULL DEFAULT 0 COMMENT '排序权重',
+  enabled TINYINT NOT NULL DEFAULT 1 COMMENT '1上架 0下架',
+  created_by BIGINT UNSIGNED DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (id),
+  KEY idx_video_series_realm (realm_code, enabled, sort_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='修炼教学视频系列表';
+
+-- 10.3 修炼教学视频课时表
+CREATE TABLE IF NOT EXISTS edu_video_lesson (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  series_id BIGINT UNSIGNED NOT NULL COMMENT '所属系列ID',
+  title VARCHAR(128) NOT NULL COMMENT '节标题',
+  video_key VARCHAR(512) NOT NULL DEFAULT '' COMMENT '视频OSS对象键或相对路径',
+  duration_sec INT NOT NULL DEFAULT 0 COMMENT '时长秒数',
+  class_notes MEDIUMTEXT DEFAULT NULL COMMENT '课堂笔记',
+  sort_order INT NOT NULL DEFAULT 0 COMMENT '排序权重',
+  enabled TINYINT NOT NULL DEFAULT 1 COMMENT '1上架 0下架',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (id),
+  KEY idx_video_lesson_series (series_id, enabled, sort_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='修炼教学视频课时表';
 
 -- 11. 系统全局配置表
 CREATE TABLE IF NOT EXISTS sys_config (

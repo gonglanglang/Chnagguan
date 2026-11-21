@@ -14,6 +14,8 @@ import type {
   RegisterPayload,
   SubmitResult,
   UploadAnswerImageResult,
+  VideoSeriesDetail,
+  VideoSeriesItem,
   WrongQuestionItem,
 } from "@/types/guoguanla";
 
@@ -239,6 +241,24 @@ export const AppVersionAPI = {
       skipAuth: true,
       silent: true,
       timeout: 8000,
+    });
+  },
+};
+
+export const AppVideoAPI = {
+  getSeriesPage(params?: { realmCode?: string; keyword?: string; pageNum?: number; pageSize?: number }) {
+    return request<PageResult<VideoSeriesItem>>({
+      url: "/app/videos/series",
+      method: "GET",
+      params,
+      skipAuth: true,
+    });
+  },
+  getSeriesDetail(seriesId: number) {
+    return request<VideoSeriesDetail>({
+      url: `/app/videos/series/${seriesId}`,
+      method: "GET",
+      skipAuth: true,
     });
   },
 };

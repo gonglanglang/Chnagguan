@@ -51,15 +51,20 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
     public void run(ApplicationArguments args) throws Exception {
         ensureEduRealmTable();
         ensureUserEssayAnswerTable();
+        ensureVideoTables();
         boolean addedUserRealm = ensureColumn("app_user", "realm_code", "VARCHAR(24) NOT NULL DEFAULT 'lianqi'");
         ensureColumn("user_quiz_record", "realm_code", "VARCHAR(24) DEFAULT NULL");
         ensureColumn("user_quiz_record", "score", "INT DEFAULT NULL");
         ensureColumn("user_wrong_question", "question_format", "VARCHAR(24) NOT NULL DEFAULT 'SINGLE_CHOICE'");
         ensureColumn("user_wrong_question", "last_answer_image_key", "VARCHAR(512) DEFAULT NULL");
+        ensureColumn("user_essay_answer", "realm_code", "VARCHAR(24) NOT NULL DEFAULT ''");
+        ensureColumn("user_essay_answer", "gate_id", "BIGINT UNSIGNED DEFAULT NULL");
+        ensureColumn("user_essay_answer", "teacher_image_key", "VARCHAR(512) DEFAULT NULL");
 
         seedDefaultRealms();
         repairMojibakeRealms();
         backfillUserRealms(addedUserRealm);
+        backfillEssayGateKeys();
         upgradeNoticeCopy();
         ensureAppVersionConfigs();
     }
@@ -96,8 +101,10 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
                   user_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
                   question_id BIGINT UNSIGNED DEFAULT NULL,
                   grade_code VARCHAR(16) NOT NULL DEFAULT '',
+                  realm_code VARCHAR(24) NOT NULL DEFAULT '',
                   chapter_id BIGINT UNSIGNED DEFAULT NULL,
                   chapter_name VARCHAR(100) NOT NULL DEFAULT '',
+                  gate_id BIGINT UNSIGNED DEFAULT NULL,
                   gate_name VARCHAR(32) NOT NULL DEFAULT '',
                   stem TEXT NOT NULL,
                   reference_answer TEXT DEFAULT NULL,
@@ -106,6 +113,7 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
                   self_correct TINYINT DEFAULT NULL,
                   teacher_status TINYINT NOT NULL DEFAULT 0,
                   teacher_comment VARCHAR(512) NOT NULL DEFAULT '',
+                  teacher_image_key VARCHAR(512) DEFAULT NULL,
                   reviewed_by BIGINT UNSIGNED DEFAULT NULL,
                   reviewed_at DATETIME DEFAULT NULL,
                   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -115,6 +123,73 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
                   KEY idx_essay_user_time (user_id, created_at)
                 )
                 """);
+    }
+
+    private void ensureVideoTables() {
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS edu_video_series (
+                  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                  title VARCHAR(128) NOT NULL,
+                  cover_image_key VARCHAR(512) NOT NULL DEFAULT '',
+                  intro TEXT DEFAULT NULL,
+                  realm_code VARCHAR(24) NOT NULL DEFAULT '',
+                  sort_order INT NOT NULL DEFAULT 0,
+                  enabled TINYINT NOT NULL DEFAULT 1,
+                  created_by BIGINT UNSIGNED DEFAULT NULL,
+                  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  deleted TINYINT NOT NULL DEFAULT 0,
+                  PRIMARY KEY (id),
+                  KEY idx_video_series_realm (realm_code, enabled, sort_order)
+                )
+                """);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS edu_video_lesson (
+                  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                  series_id BIGINT UNSIGNED NOT NULL,
+                  title VARCHAR(128) NOT NULL,
+                  video_key VARCHAR(512) NOT NULL DEFAULT '',
+                  duration_sec INT NOT NULL DEFAULT 0,
+                  class_notes MEDIUMTEXT DEFAULT NULL,
+                  sort_order INT NOT NULL DEFAULT 0,
+                  enabled TINYINT NOT NULL DEFAULT 1,
+                  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  deleted TINYINT NOT NULL DEFAULT 0,
+                  PRIMARY KEY (id),
+                  KEY idx_video_lesson_series (series_id, enabled, sort_order)
+                )
+                """);
+    }
+
+    private void backfillEssayGateKeys() {
+        for (Map.Entry<String, String> entry : GRADE_TO_REALM.entrySet()) {
+            jdbcTemplate.update(
+                    "UPDATE user_essay_answer SET realm_code = ? WHERE (realm_code IS NULL OR realm_code = '') AND grade_code = ?",
+                    entry.getValue(),
+                    entry.getKey()
+            );
+        }
+        List<Map<String, Object>> missingGateRows = jdbcTemplate.queryForList(
+                "SELECT id, session_no FROM user_essay_answer WHERE gate_id IS NULL"
+        );
+        for (Map<String, Object> row : missingGateRows) {
+            Object idObj = row.get("id");
+            Object sessObj = row.get("session_no");
+            if (idObj == null || sessObj == null) continue;
+            List<Long> gateIds = jdbcTemplate.queryForList(
+                    "SELECT gate_id FROM user_quiz_record WHERE session_no = ? LIMIT 1",
+                    Long.class,
+                    String.valueOf(sessObj)
+            );
+            if (!gateIds.isEmpty() && gateIds.get(0) != null) {
+                jdbcTemplate.update(
+                        "UPDATE user_essay_answer SET gate_id = ? WHERE id = ?",
+                        gateIds.get(0),
+                        ((Number) idObj).longValue()
+                );
+            }
+        }
     }
 
     private boolean ensureColumn(String table, String column, String definition) throws Exception {

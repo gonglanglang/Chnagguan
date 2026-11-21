@@ -422,17 +422,22 @@ public class AppQuizService {
                 new Page<>(p, s),
                 new LambdaQueryWrapper<UserEssayAnswer>()
                         .eq(UserEssayAnswer::getUserId, userId)
-                        .orderByDesc(UserEssayAnswer::getCreatedAt)
+                        .orderByDesc(UserEssayAnswer::getUpdatedAt)
+                        .orderByDesc(UserEssayAnswer::getId)
         );
         List<AppQuizVO.EssayAnswerRecordVO> records = page.getRecords().stream()
                 .map(e -> {
-                    EduRealm realm = realmByGrade.get(e.getGradeCode());
+                    EduRealm realm = e.getRealmCode() != null && !e.getRealmCode().isBlank()
+                            ? realmHelper.findByRealmCode(e.getRealmCode())
+                            : realmByGrade.get(e.getGradeCode());
                     return AppQuizVO.EssayAnswerRecordVO.builder()
                             .id(e.getId())
                             .sessionNo(e.getSessionNo())
                             .itemIndex(e.getItemIndex())
+                            .realmCode(realm != null ? realm.getRealmCode() : safeStr(e.getRealmCode()))
                             .realmName(realm != null ? realm.getRealmName() : "")
                             .chapterName(e.getChapterName())
+                            .gateId(e.getGateId())
                             .gateName(e.getGateName())
                             .stem(e.getStem())
                             .referenceAnswer(e.getReferenceAnswer())
@@ -441,6 +446,7 @@ public class AppQuizService {
                             .selfCorrect(e.getSelfCorrect())
                             .teacherStatus(e.getTeacherStatus())
                             .teacherComment(e.getTeacherComment())
+                            .teacherImageUrl(ossService.resolveViewUrl(e.getTeacherImageKey(), baseOrigin))
                             .createdAt(e.getCreatedAt())
                             .reviewedAt(e.getReviewedAt())
                             .build();
@@ -834,50 +840,117 @@ public class AppQuizService {
     }
 
     private void upsertEssayAnswerRecord(UserQuizRecord record, SnapshotItem item) {
-        UserEssayAnswer exist = essayAnswerMapper.selectOne(
-                new LambdaQueryWrapper<UserEssayAnswer>()
-                        .eq(UserEssayAnswer::getSessionNo, record.getSessionNo())
-                        .eq(UserEssayAnswer::getItemIndex, item.getItemIndex())
-                        .last("LIMIT 1")
-        );
-        Integer selfVal = item.getUserSelfCorrect() == null ? null : (item.getUserSelfCorrect() ? 1 : 0);
-        if (exist != null) {
-            exist.setAnswerText(safeStr(item.getUserAnswerText()));
-            if (item.getUserAnswerImageKey() != null && !item.getUserAnswerImageKey().isBlank()) {
-                exist.setAnswerImageKey(item.getUserAnswerImageKey());
+        Long userId = record.getUserId() == null ? 0L : record.getUserId();
+        Long chapterId = item.getChapterId() != null ? item.getChapterId() : record.getChapterId();
+        Long gateId = record.getGateId();
+        String realmCode = safeStr(record.getRealmCode());
+        if (realmCode.isBlank() && item.getGradeCode() != null && !item.getGradeCode().isBlank()) {
+            EduRealm byGrade = realmHelper.findByGradeCode(item.getGradeCode());
+            if (byGrade != null) {
+                realmCode = safeStr(byGrade.getRealmCode());
             }
-            if (selfVal != null) {
-                exist.setSelfCorrect(selfVal);
-            }
-            essayAnswerMapper.updateById(exist);
-            return;
         }
 
         String chapterName = "";
         String gateName = "";
         if ("ADVANCE_EXAM".equals(record.getMode())) {
-            EduRealm r = realmHelper.findByRealmCode(record.getRealmCode());
+            EduRealm r = realmHelper.findByRealmCode(realmCode);
             chapterName = (r != null ? r.getRealmName() : "") + "进阶考核";
             gateName = "进阶考核";
         } else if ("REDO_WRONG".equals(record.getMode())) {
             chapterName = "错题重做";
             gateName = "消灭错题";
         } else {
-            EduChapter ch = item.getChapterId() != null ? chapterMapper.selectById(item.getChapterId())
-                    : (record.getChapterId() != null ? chapterMapper.selectById(record.getChapterId()) : null);
-            EduGate gt = record.getGateId() != null ? gateMapper.selectById(record.getGateId()) : null;
+            EduChapter ch = chapterId != null ? chapterMapper.selectById(chapterId) : null;
+            EduGate gt = gateId != null ? gateMapper.selectById(gateId) : null;
             chapterName = ch != null ? ch.getName() : "";
             gateName = gt != null ? gt.getGateName() : "";
+        }
+
+        // 同学生 + 同境界 + 同章节 + 同关卡唯一保留最新 1 条，再次提交直接覆盖并重置为待批改
+        UserEssayAnswer exist = null;
+        if (userId > 0L && "GATE".equals(record.getMode()) && chapterId != null && gateId != null) {
+            final String resolvedRealm = realmCode;
+            exist = essayAnswerMapper.selectOne(
+                    new LambdaQueryWrapper<UserEssayAnswer>()
+                            .eq(UserEssayAnswer::getUserId, userId)
+                            .eq(UserEssayAnswer::getChapterId, chapterId)
+                            .eq(UserEssayAnswer::getGateId, gateId)
+                            .and(!resolvedRealm.isBlank(), w -> w.eq(UserEssayAnswer::getRealmCode, resolvedRealm)
+                                    .or().eq(UserEssayAnswer::getRealmCode, ""))
+                            .orderByDesc(UserEssayAnswer::getId)
+                            .last("LIMIT 1")
+            );
+            if (exist == null && !gateName.isBlank()) {
+                exist = essayAnswerMapper.selectOne(
+                        new LambdaQueryWrapper<UserEssayAnswer>()
+                                .eq(UserEssayAnswer::getUserId, userId)
+                                .eq(UserEssayAnswer::getChapterId, chapterId)
+                                .isNull(UserEssayAnswer::getGateId)
+                                .eq(UserEssayAnswer::getGateName, gateName)
+                                .orderByDesc(UserEssayAnswer::getId)
+                                .last("LIMIT 1")
+                );
+            }
+        }
+        if (exist == null) {
+            exist = essayAnswerMapper.selectOne(
+                    new LambdaQueryWrapper<UserEssayAnswer>()
+                            .eq(UserEssayAnswer::getSessionNo, record.getSessionNo())
+                            .eq(UserEssayAnswer::getItemIndex, item.getItemIndex())
+                            .last("LIMIT 1")
+            );
+        }
+
+        Integer selfVal = item.getUserSelfCorrect() == null ? null : (item.getUserSelfCorrect() ? 1 : 0);
+        LocalDateTime now = LocalDateTime.now();
+        if (exist != null) {
+            boolean sameSessionItem = Objects.equals(exist.getSessionNo(), record.getSessionNo())
+                    && Objects.equals(exist.getItemIndex(), item.getItemIndex());
+            exist.setSessionNo(record.getSessionNo());
+            exist.setItemIndex(item.getItemIndex());
+            exist.setQuestionId(item.getQuestionId());
+            exist.setGradeCode(safeStr(item.getGradeCode()));
+            exist.setRealmCode(realmCode);
+            exist.setChapterId(chapterId);
+            exist.setChapterName(chapterName);
+            exist.setGateId(gateId);
+            exist.setGateName(gateName);
+            exist.setStem(safeStr(item.getStem()));
+            exist.setReferenceAnswer(safeStr(item.getReferenceAnswer()));
+            exist.setAnswerText(safeStr(item.getUserAnswerText()));
+
+            if (!sameSessionItem) {
+                exist.setAnswerImageKey(safeStr(item.getUserAnswerImageKey()));
+                exist.setSelfCorrect(selfVal);
+                exist.setTeacherStatus(0);
+                exist.setTeacherComment("");
+                exist.setTeacherImageKey(null);
+                exist.setReviewedBy(null);
+                exist.setReviewedAt(null);
+                exist.setCreatedAt(now);
+            } else {
+                if (item.getUserAnswerImageKey() != null && !item.getUserAnswerImageKey().isBlank()) {
+                    exist.setAnswerImageKey(item.getUserAnswerImageKey());
+                }
+                if (selfVal != null) {
+                    exist.setSelfCorrect(selfVal);
+                }
+            }
+            essayAnswerMapper.updateById(exist);
+            return;
         }
 
         UserEssayAnswer ans = new UserEssayAnswer();
         ans.setSessionNo(record.getSessionNo());
         ans.setItemIndex(item.getItemIndex());
-        ans.setUserId(record.getUserId() == null ? 0L : record.getUserId());
+        ans.setUserId(userId);
         ans.setQuestionId(item.getQuestionId());
         ans.setGradeCode(safeStr(item.getGradeCode()));
-        ans.setChapterId(item.getChapterId() != null ? item.getChapterId() : record.getChapterId());
+        ans.setRealmCode(realmCode);
+        ans.setChapterId(chapterId);
         ans.setChapterName(chapterName);
+        ans.setGateId(gateId);
         ans.setGateName(gateName);
         ans.setStem(safeStr(item.getStem()));
         ans.setReferenceAnswer(safeStr(item.getReferenceAnswer()));
@@ -886,6 +959,7 @@ public class AppQuizService {
         ans.setSelfCorrect(selfVal);
         ans.setTeacherStatus(0);
         ans.setTeacherComment("");
+        ans.setTeacherImageKey(null);
         essayAnswerMapper.insert(ans);
     }
 

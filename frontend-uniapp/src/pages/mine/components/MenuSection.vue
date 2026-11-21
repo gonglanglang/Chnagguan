@@ -12,11 +12,11 @@
           @click="emit('select', item.key)"
         >
           <template #icon>
-            <wd-icon
+            <app-icon
               :name="item.icon"
               size="18"
-              color="var(--color-primary)"
-              class="menu-card__icon"
+              color="primary"
+              custom-class="menu-card__icon"
             />
           </template>
         </wd-cell>

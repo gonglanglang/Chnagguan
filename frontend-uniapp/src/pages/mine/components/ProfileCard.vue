@@ -10,7 +10,7 @@
             class="profile-card__avatar-img"
           />
           <text v-else-if="isLoggedIn" class="profile-card__avatar-text">{{ avatarText }}</text>
-          <wd-icon v-else name="user" size="26" color="var(--color-primary)" />
+          <app-icon v-else name="dao-user" size="26" color="primary" />
         </view>
         <view class="profile-card__info">
           <text class="profile-card__name">
@@ -28,7 +28,7 @@
 
       <view v-if="isLoggedIn" class="profile-card__action" @click="emit('profile')">
         <text class="profile-card__action-text">编辑资料</text>
-        <wd-icon name="right" size="14" color="var(--color-text-muted)" />
+        <app-icon name="right" size="14" color="muted" />
       </view>
       <view v-else class="profile-card__action">
         <wd-button size="small" type="primary" @click="emit('login')">去登录</wd-button>

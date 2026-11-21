@@ -14,6 +14,16 @@ export default {
       meta: {
         title: "学生列表与境界"
       }
+    },
+    {
+      path: "/user/detail/:id",
+      name: "StudentUserDetail",
+      component: () => import("@/views/user/detail/index.vue"),
+      meta: {
+        title: "学生详情与作业批改",
+        showLink: false,
+        activePath: "/user/index"
+      }
     }
   ]
 } satisfies RouteConfigsTable;

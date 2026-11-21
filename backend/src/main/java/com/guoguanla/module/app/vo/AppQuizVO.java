@@ -117,8 +117,10 @@ public class AppQuizVO {
         private Long id;
         private String sessionNo;
         private Integer itemIndex;
+        private String realmCode;
         private String realmName;
         private String chapterName;
+        private Long gateId;
         private String gateName;
         private String stem;
         private String referenceAnswer;
@@ -127,6 +129,7 @@ public class AppQuizVO {
         private Integer selfCorrect;
         private Integer teacherStatus;
         private String teacherComment;
+        private String teacherImageUrl;
         private LocalDateTime createdAt;
         private LocalDateTime reviewedAt;
     }

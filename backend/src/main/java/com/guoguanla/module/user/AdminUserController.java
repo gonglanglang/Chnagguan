@@ -4,6 +4,7 @@ import com.guoguanla.common.annotation.OperLog;
 import com.guoguanla.common.result.PageResult;
 import com.guoguanla.common.result.Result;
 import com.guoguanla.common.util.ServletUrlHelper;
+import com.guoguanla.module.oss.AliyunOssService;
 import com.guoguanla.module.user.dto.UserCreateReq;
 import com.guoguanla.module.user.dto.UserQueryReq;
 import com.guoguanla.module.user.dto.UserStatusReq;
@@ -15,7 +16,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -61,6 +65,48 @@ public class AdminUserController {
         return Result.ok(userService.listUserEssayAnswers(id, pageNum, pageSize, ServletUrlHelper.resolveBaseOrigin(request)));
     }
 
+    @Operation(summary = "获取单条解答题作答详情（独立批改工作台用）")
+    @GetMapping("/essay-answers/{essayId}")
+    public Result<UserDetailVO.EssayAnswerItem> essayAnswerDetail(
+            @PathVariable Long essayId,
+            HttpServletRequest request
+    ) {
+        return Result.ok(userService.getEssayAnswerDetail(essayId, ServletUrlHelper.resolveBaseOrigin(request)));
+    }
+
+    @Operation(summary = "代理读取学生手写原图（同源供 PC 画板批注防跨域污染）")
+    @GetMapping("/essay-answers/{essayId}/image")
+    public ResponseEntity<byte[]> essayAnswerImage(@PathVariable Long essayId) {
+        AliyunOssService.BinaryResource img = userService.readEssayAnswerImage(essayId);
+        MediaType mt;
+        try {
+            mt = MediaType.parseMediaType(img.contentType());
+        } catch (Exception e) {
+            mt = MediaType.IMAGE_PNG;
+        }
+        return ResponseEntity.ok()
+                .contentType(mt)
+                .header("Cache-Control", "no-store")
+                .body(img.bytes());
+    }
+
+    @Operation(summary = "上传老师 PC 端画板批注图")
+    @PostMapping("/essay-answers/{essayId}/review-image")
+    public Result<Map<String, String>> uploadEssayReviewImage(
+            @PathVariable Long essayId,
+            @RequestParam("file") MultipartFile file,
+            HttpServletRequest request
+    ) {
+        AliyunOssService.UploadResult res = userService.uploadEssayReviewImage(
+                essayId, file, ServletUrlHelper.resolveBaseOrigin(request)
+        );
+        return Result.ok(Map.of(
+                "objectKey", res.objectKey(),
+                "previewUrl", res.previewUrl(),
+                "storageType", res.storageType()
+        ));
+    }
+
     @Operation(summary = "老师批改学生解答题")
     @OperLog(module = "USER", action = "批改学生解答题")
     @PutMapping("/essay-answers/{essayId}/review")
@@ -70,7 +116,8 @@ public class AdminUserController {
     ) {
         Integer teacherStatus = body.get("teacherStatus") == null ? null : ((Number) body.get("teacherStatus")).intValue();
         String teacherComment = body.get("teacherComment") == null ? "" : String.valueOf(body.get("teacherComment"));
-        userService.reviewEssayAnswer(essayId, teacherStatus, teacherComment);
+        String teacherImageKey = body.get("teacherImageKey") == null ? null : String.valueOf(body.get("teacherImageKey"));
+        userService.reviewEssayAnswer(essayId, teacherStatus, teacherComment, teacherImageKey);
         return Result.ok();
     }
 

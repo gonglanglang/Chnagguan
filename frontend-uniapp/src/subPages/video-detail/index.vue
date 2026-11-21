@@ -1,0 +1,313 @@
+<template>
+  <app-page-shell ref="shellRef" :title="detail?.series.title || '修炼课堂'">
+    <template #header>
+      <app-navbar
+        :title="detail?.series.title || '修炼课堂'"
+        :show-back="true"
+        :show-home="false"
+        :fixed="false"
+        :placeholder="false"
+      />
+      <view v-if="activeLesson?.videoUrl" class="player-wrap">
+        <video
+          :key="activeLesson.id"
+          :src="activeLesson.videoUrl"
+          :poster="detail?.series.coverImageUrl || undefined"
+          controls
+          show-center-play-btn
+          class="player-video"
+        />
+      </view>
+    </template>
+
+    <view v-if="loading" class="state-box">
+      <wd-loading />
+    </view>
+
+    <view v-else-if="detail" class="detail-body">
+      <view class="series-card">
+        <view class="series-card__head">
+          <text class="series-card__title">{{ detail.series.title }}</text>
+          <wd-tag size="small" type="success" variant="light">
+            {{ detail.series.realmName || "全境界" }}
+          </wd-tag>
+        </view>
+        <text v-if="detail.series.intro" class="series-card__intro">
+          {{ detail.series.intro }}
+        </text>
+      </view>
+
+      <!-- 选集课程列表 -->
+      <view class="section-card">
+        <view class="section-card__head">
+          <view class="section-card__title-wrap">
+            <app-icon name="video-play" size="17" color="primary" />
+            <text class="section-card__title">课程目录（共 {{ detail.lessons.length }} 节）</text>
+          </view>
+        </view>
+
+        <view v-if="detail.lessons.length === 0" class="empty-tip">
+          该系列暂未上传视频课时
+        </view>
+
+        <view v-else class="lesson-list">
+          <view
+            v-for="(lesson, idx) in detail.lessons"
+            :key="lesson.id"
+            class="lesson-row"
+            :class="{ 'lesson-row--active': activeLesson?.id === lesson.id }"
+            @click="selectLesson(lesson)"
+          >
+            <view class="lesson-row__left">
+              <view
+                class="lesson-row__no"
+                :class="{ 'lesson-row__no--active': activeLesson?.id === lesson.id }"
+              >
+                {{ idx + 1 }}
+              </view>
+              <text class="lesson-row__title">{{ lesson.title }}</text>
+            </view>
+            <view class="lesson-row__right">
+              <text v-if="lesson.durationSec > 0" class="lesson-row__dur">
+                {{ formatDuration(lesson.durationSec) }}
+              </text>
+              <app-icon
+                name="play-circle"
+                size="16"
+                :color="activeLesson?.id === lesson.id ? 'primary' : 'muted'"
+              />
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 当前课时课堂笔记 -->
+      <view v-if="activeLesson" class="section-card">
+        <view class="section-card__head">
+          <view class="section-card__title-wrap">
+            <app-icon name="notes" size="17" color="primary" />
+            <text class="section-card__title">课堂笔记 · {{ activeLesson.title }}</text>
+          </view>
+        </view>
+
+        <view v-if="activeLesson.classNotes" class="notes-body">
+          <math-text :key="activeLesson.id" :text="activeLesson.classNotes" />
+        </view>
+        <view v-else class="empty-tip">本节老师暂未添加文字课堂笔记</view>
+      </view>
+    </view>
+  </app-page-shell>
+</template>
+
+<script setup lang="ts">
+import { onLoad } from "@dcloudio/uni-app";
+import { ref } from "vue";
+import { AppVideoAPI } from "@/api/guoguanla";
+import type { VideoLessonItem, VideoSeriesDetail } from "@/types/guoguanla";
+import { getErrorMessage } from "@/utils/error";
+
+definePage({
+  name: "video-detail",
+  layout: "blank",
+  style: {
+    navigationStyle: "custom",
+    navigationBarTitleText: "修炼课堂",
+  },
+});
+
+const toast = useToast();
+const shellRef = ref<{ scrollToTop: () => void } | null>(null);
+const loading = ref(true);
+const detail = ref<VideoSeriesDetail | null>(null);
+const activeLesson = ref<VideoLessonItem | null>(null);
+
+function formatDuration(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function selectLesson(lesson: VideoLessonItem): void {
+  activeLesson.value = lesson;
+  shellRef.value?.scrollToTop();
+}
+
+async function fetchDetail(id: number): Promise<void> {
+  loading.value = true;
+  try {
+    const res = await AppVideoAPI.getSeriesDetail(id);
+    detail.value = res;
+    activeLesson.value = res.lessons[0] || null;
+  } catch (err) {
+    toast.error(getErrorMessage(err, "加载教学视频失败"));
+  } finally {
+    loading.value = false;
+  }
+}
+
+onLoad((query) => {
+  const id = Number(query?.id || 0);
+  if (id > 0) {
+    void fetchDetail(id);
+  } else {
+    loading.value = false;
+  }
+});
+</script>
+
+<style lang="scss" scoped>
+.player-wrap {
+  width: 100%;
+  background: #0f172a;
+}
+
+.player-video {
+  display: block;
+  width: 100%;
+  height: 420rpx;
+}
+
+.state-box {
+  display: flex;
+  justify-content: center;
+  padding: 120rpx 0;
+}
+
+.detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.series-card,
+.section-card {
+  padding: 24rpx;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 18rpx;
+  box-shadow: var(--shadow-sm);
+}
+
+.series-card__head {
+  display: flex;
+  gap: 12rpx;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.series-card__title {
+  flex: 1;
+  font-size: 32rpx;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.series-card__intro {
+  display: block;
+  margin-top: 12rpx;
+  font-size: 25rpx;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+}
+
+.section-card__head {
+  margin-bottom: 16rpx;
+}
+
+.section-card__title-wrap {
+  display: flex;
+  gap: 10rpx;
+  align-items: center;
+}
+
+.section-card__title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.lesson-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.lesson-row {
+  display: flex;
+  gap: 14rpx;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18rpx 16rpx;
+  background: var(--color-bg-page);
+  border: 1px solid transparent;
+  border-radius: 14rpx;
+
+  &--active {
+    background: var(--color-primary-soft);
+    border-color: var(--color-primary);
+  }
+}
+
+.lesson-row__left {
+  display: flex;
+  flex: 1;
+  gap: 14rpx;
+  align-items: center;
+  min-width: 0;
+}
+
+.lesson-row__no {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 44rpx;
+  height: 44rpx;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-card);
+  border-radius: 10rpx;
+
+  &--active {
+    color: #ffffff;
+    background: var(--color-primary);
+  }
+}
+
+.lesson-row__title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 26rpx;
+  font-weight: 500;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.lesson-row__right {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8rpx;
+  align-items: center;
+}
+
+.lesson-row__dur {
+  font-size: 22rpx;
+  color: var(--color-text-muted);
+}
+
+.notes-body {
+  font-size: 27rpx;
+  line-height: 1.7;
+  color: var(--color-text);
+  white-space: pre-wrap;
+}
+
+.empty-tip {
+  padding: 20rpx 0;
+  font-size: 24rpx;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+</style>

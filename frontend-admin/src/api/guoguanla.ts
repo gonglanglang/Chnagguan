@@ -92,17 +92,60 @@ export interface EssayAnswerItem {
   sessionNo: string;
   itemIndex: number;
   userId: number;
+  studentNickname?: string;
+  studentUsername?: string;
+  studentRealmName?: string;
+  realmCode?: string;
+  realmName?: string;
+  chapterId?: number;
   chapterName: string;
+  gateId?: number;
   gateName: string;
   stem: string;
   referenceAnswer: string;
+  analysis?: string;
   answerText: string;
   answerImageUrl: string;
   selfCorrect: number | null;
   teacherStatus: number;
   teacherComment: string;
+  teacherImageUrl?: string;
   createdAt: string;
   reviewedAt: string | null;
+}
+
+export interface VideoSeriesItem {
+  id: number;
+  title: string;
+  coverImageKey: string;
+  coverImageUrl: string;
+  intro: string;
+  realmCode: string;
+  realmName: string;
+  sortOrder: number;
+  enabled: number;
+  lessonCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VideoLessonItem {
+  id: number;
+  seriesId: number;
+  title: string;
+  videoKey: string;
+  videoUrl: string;
+  durationSec: number;
+  classNotes: string;
+  sortOrder: number;
+  enabled: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VideoSeriesDetail {
+  series: VideoSeriesItem;
+  lessons: VideoLessonItem[];
 }
 
 export interface StudentDetail {
@@ -299,9 +342,26 @@ export const getUserQuizRecordDetail = (id: number, sessionNo: string) =>
 export const getUserEssayAnswers = (id: number, params?: { pageNum?: number; pageSize?: number }) =>
   http.get<ApiResult<PageData<EssayAnswerItem>>, any>(`/users/${id}/essay-answers`, { params });
 
+export const getEssayAnswerDetail = (essayId: number) =>
+  http.get<ApiResult<EssayAnswerItem>, any>(`/users/essay-answers/${essayId}`);
+
+export const getEssayAnswerImageBlob = (essayId: number) =>
+  http.request<Blob>("get", `/users/essay-answers/${essayId}/image`, {
+    responseType: "blob"
+  });
+
+export const uploadEssayReviewImage = (essayId: number, formData: FormData) =>
+  http.post<ApiResult<{ objectKey: string; previewUrl: string; storageType: string }>, any>(
+    `/users/essay-answers/${essayId}/review-image`,
+    {
+      data: formData,
+      headers: { "Content-Type": "multipart/form-data" }
+    }
+  );
+
 export const reviewEssayAnswer = (
   essayId: number,
-  data: { teacherStatus: number; teacherComment: string }
+  data: { teacherStatus: number; teacherComment: string; teacherImageKey?: string }
 ) =>
   http.request<ApiResult<void>>("put", `/users/essay-answers/${essayId}/review`, {
     data
@@ -343,6 +403,9 @@ export const updateGate = (gateId: number, data: Record<string, any>) =>
 export const getQuestionPage = (params: Record<string, any>) =>
   http.get<ApiResult<PageData<QuestionItem>>, any>("/questions", { params });
 
+export const getQuestionDetail = (id: number) =>
+  http.get<ApiResult<QuestionItem>, any>(`/questions/${id}`);
+
 export const createQuestion = (data: Record<string, any>) =>
   http.post<ApiResult<number>, any>("/questions", { data });
 
@@ -361,3 +424,53 @@ export const previewGenerateQuestion = (data: Record<string, any>) =>
   http.post<ApiResult<GeneratedSample[]>, any>("/questions/preview-generate", {
     data
   });
+
+// 6. 教学视频管理
+export const getVideoSeriesPage = (params?: Record<string, any>) =>
+  http.get<ApiResult<PageData<VideoSeriesItem>>, any>("/videos/series", { params });
+
+export const getVideoSeriesDetail = (id: number) =>
+  http.get<ApiResult<VideoSeriesDetail>, any>(`/videos/series/${id}`);
+
+export const createVideoSeries = (data: Record<string, any>) =>
+  http.post<ApiResult<number>, any>("/videos/series", { data });
+
+export const updateVideoSeries = (id: number, data: Record<string, any>) =>
+  http.request<ApiResult<void>>("put", `/videos/series/${id}`, { data });
+
+export const deleteVideoSeries = (id: number) =>
+  http.request<ApiResult<void>>("delete", `/videos/series/${id}`);
+
+export const uploadVideoCover = (formData: FormData) =>
+  http.post<ApiResult<{ objectKey: string; previewUrl: string; storageType: string }>, any>(
+    "/videos/upload-cover",
+    {
+      data: formData,
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 120000
+    }
+  );
+
+export const uploadVideoMedia = (formData: FormData, onProgress?: (percent: number) => void) =>
+  http.post<ApiResult<{ objectKey: string; previewUrl: string; storageType: string }>, any>(
+    "/videos/upload-media",
+    {
+      data: formData,
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 600000,
+      onUploadProgress: (evt: any) => {
+        if (onProgress && evt?.total) {
+          onProgress(Math.min(100, Math.round((evt.loaded * 100) / evt.total)));
+        }
+      }
+    }
+  );
+
+export const createVideoLesson = (seriesId: number, data: Record<string, any>) =>
+  http.post<ApiResult<number>, any>(`/videos/series/${seriesId}/lessons`, { data });
+
+export const updateVideoLesson = (lessonId: number, data: Record<string, any>) =>
+  http.request<ApiResult<void>>("put", `/videos/lessons/${lessonId}`, { data });
+
+export const deleteVideoLesson = (lessonId: number) =>
+  http.request<ApiResult<void>>("delete", `/videos/lessons/${lessonId}`);

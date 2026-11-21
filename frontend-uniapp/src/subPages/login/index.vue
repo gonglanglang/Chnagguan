@@ -2,7 +2,7 @@
   <app-page-shell title="账号登录" :show-home="false">
     <view class="login-header">
       <view class="login-logo">
-        <wd-icon name="book" size="28" color="#ffffff" />
+        <app-icon name="book" size="28" color="#ffffff" />
       </view>
       <text class="login-title">过关啦</text>
       <text class="login-subtitle">登录后保存修仙境界、通关记录与错题本</text>

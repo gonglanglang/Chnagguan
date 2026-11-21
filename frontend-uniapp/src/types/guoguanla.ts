@@ -154,8 +154,10 @@ export interface EssayAnswerRecord {
   id: number;
   sessionNo: string;
   itemIndex: number;
+  realmCode?: string;
   realmName: string;
   chapterName: string;
+  gateId?: number;
   gateName: string;
   stem: string;
   referenceAnswer: string;
@@ -164,8 +166,43 @@ export interface EssayAnswerRecord {
   selfCorrect: number | null;
   teacherStatus: number;
   teacherComment: string;
+  teacherImageUrl?: string;
   createdAt: string;
   reviewedAt: string | null;
+}
+
+export interface VideoSeriesItem {
+  id: number;
+  title: string;
+  coverImageKey: string;
+  coverImageUrl: string;
+  intro: string;
+  realmCode: string;
+  realmName: string;
+  sortOrder: number;
+  enabled: number;
+  lessonCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VideoLessonItem {
+  id: number;
+  seriesId: number;
+  title: string;
+  videoKey: string;
+  videoUrl: string;
+  durationSec: number;
+  classNotes: string;
+  sortOrder: number;
+  enabled: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VideoSeriesDetail {
+  series: VideoSeriesItem;
+  lessons: VideoLessonItem[];
 }
 
 export interface WrongReviewItem {

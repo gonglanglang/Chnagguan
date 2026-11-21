@@ -12,11 +12,11 @@
     <view class="app-navbar__content" :style="{ height: resolvedContentHeightPx + 'px' }">
       <view class="app-navbar__left" :style="{ width: leftSlotWidth + 'px' }">
         <view v-if="showBack" class="app-navbar__back" @click="handleBack">
-          <wd-icon :name="backIcon" :size="backIconSize" :color="iconColor" />
+          <app-icon :name="backIcon" :size="backIconSize" :color="iconColor" />
         </view>
 
         <view v-if="showHome" class="app-navbar__home" @click="handleHome">
-          <wd-icon name="home" :size="backIconSize" :color="iconColor" />
+          <app-icon name="gate-home" :size="backIconSize" :color="iconColor" />
         </view>
 
         <slot name="left" />

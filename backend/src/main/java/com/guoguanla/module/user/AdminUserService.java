@@ -13,10 +13,13 @@ import com.guoguanla.module.app.AppQuizService;
 import com.guoguanla.module.bank.entity.EduChapter;
 import com.guoguanla.module.bank.entity.EduGate;
 import com.guoguanla.module.bank.entity.EduGrade;
+import com.guoguanla.module.bank.entity.EduQuestion;
 import com.guoguanla.module.bank.mapper.EduChapterMapper;
 import com.guoguanla.module.bank.mapper.EduGateMapper;
 import com.guoguanla.module.bank.mapper.EduGradeMapper;
+import com.guoguanla.module.bank.mapper.EduQuestionMapper;
 import com.guoguanla.module.oss.AliyunOssService;
+import org.springframework.web.multipart.MultipartFile;
 import com.guoguanla.module.progress.entity.UserEssayAnswer;
 import com.guoguanla.module.progress.entity.UserGateProgress;
 import com.guoguanla.module.progress.entity.UserQuizRecord;
@@ -53,6 +56,7 @@ public class AdminUserService {
     private final EduGradeMapper gradeMapper;
     private final EduChapterMapper chapterMapper;
     private final EduGateMapper gateMapper;
+    private final EduQuestionMapper questionMapper;
     private final EduLevelRuleMapper levelRuleMapper;
     private final UserGateProgressMapper gateProgressMapper;
     private final UserQuizRecordMapper quizRecordMapper;
@@ -376,36 +380,108 @@ public class AdminUserService {
     public PageResult<UserDetailVO.EssayAnswerItem> listUserEssayAnswers(Long userId, Long pageNum, Long pageSize, String baseOrigin) {
         long p = pageNum == null || pageNum < 1 ? 1L : pageNum;
         long s = pageSize == null || pageSize < 1 ? 10L : Math.min(pageSize, 50L);
+        Map<String, EduRealm> realmByCode = realmHelper.listAllRealmsForAdmin().stream()
+                .collect(Collectors.toMap(EduRealm::getRealmCode, r -> r, (a, b) -> a));
+        Map<String, EduRealm> realmByGrade = realmHelper.listAllRealmsForAdmin().stream()
+                .collect(Collectors.toMap(EduRealm::getGradeCode, r -> r, (a, b) -> a));
         Page<UserEssayAnswer> page = essayAnswerMapper.selectPage(
                 new Page<>(p, s),
                 new LambdaQueryWrapper<UserEssayAnswer>()
                         .eq(UserEssayAnswer::getUserId, userId)
-                        .orderByDesc(UserEssayAnswer::getCreatedAt)
+                        .orderByDesc(UserEssayAnswer::getUpdatedAt)
+                        .orderByDesc(UserEssayAnswer::getId)
         );
         List<UserDetailVO.EssayAnswerItem> list = page.getRecords().stream()
-                .map(e -> UserDetailVO.EssayAnswerItem.builder()
-                        .id(e.getId())
-                        .sessionNo(e.getSessionNo())
-                        .itemIndex(e.getItemIndex())
-                        .userId(e.getUserId())
-                        .chapterName(e.getChapterName())
-                        .gateName(e.getGateName())
-                        .stem(e.getStem())
-                        .referenceAnswer(e.getReferenceAnswer())
-                        .answerText(e.getAnswerText())
-                        .answerImageUrl(ossService.resolveViewUrl(e.getAnswerImageKey(), baseOrigin))
-                        .selfCorrect(e.getSelfCorrect())
-                        .teacherStatus(e.getTeacherStatus())
-                        .teacherComment(e.getTeacherComment())
-                        .createdAt(e.getCreatedAt())
-                        .reviewedAt(e.getReviewedAt())
-                        .build())
+                .map(e -> {
+                    EduRealm r = (e.getRealmCode() != null && !e.getRealmCode().isBlank())
+                            ? realmByCode.get(e.getRealmCode())
+                            : realmByGrade.get(e.getGradeCode());
+                    return UserDetailVO.EssayAnswerItem.builder()
+                            .id(e.getId())
+                            .sessionNo(e.getSessionNo())
+                            .itemIndex(e.getItemIndex())
+                            .userId(e.getUserId())
+                            .realmCode(r != null ? r.getRealmCode() : (e.getRealmCode() == null ? "" : e.getRealmCode()))
+                            .realmName(r != null ? r.getRealmName() : "")
+                            .chapterId(e.getChapterId())
+                            .chapterName(e.getChapterName())
+                            .gateId(e.getGateId())
+                            .gateName(e.getGateName())
+                            .stem(e.getStem())
+                            .referenceAnswer(e.getReferenceAnswer())
+                            .answerText(e.getAnswerText())
+                            .answerImageUrl(ossService.resolveViewUrl(e.getAnswerImageKey(), baseOrigin))
+                            .selfCorrect(e.getSelfCorrect())
+                            .teacherStatus(e.getTeacherStatus())
+                            .teacherComment(e.getTeacherComment())
+                            .teacherImageUrl(ossService.resolveViewUrl(e.getTeacherImageKey(), baseOrigin))
+                            .createdAt(e.getCreatedAt())
+                            .reviewedAt(e.getReviewedAt())
+                            .build();
+                })
                 .toList();
         return PageResult.of(list, page.getTotal(), p, s);
     }
 
+    public UserDetailVO.EssayAnswerItem getEssayAnswerDetail(Long essayId, String baseOrigin) {
+        UserEssayAnswer e = essayAnswerMapper.selectById(essayId);
+        if (e == null) {
+            throw new BizException(ErrorCode.NOT_FOUND, "解答题作答记录不存在");
+        }
+        AppUser student = e.getUserId() != null && e.getUserId() > 0 ? userMapper.selectById(e.getUserId()) : null;
+        EduRealm stuRealm = student != null ? realmHelper.resolveUserRealm(student) : null;
+        EduRealm itemRealm = (e.getRealmCode() != null && !e.getRealmCode().isBlank())
+                ? realmHelper.findByRealmCode(e.getRealmCode())
+                : realmHelper.findByGradeCode(e.getGradeCode());
+        EduQuestion q = e.getQuestionId() != null ? questionMapper.selectById(e.getQuestionId()) : null;
+        String analysis = q != null && q.getAnalysis() != null ? q.getAnalysis() : "";
+
+        return UserDetailVO.EssayAnswerItem.builder()
+                .id(e.getId())
+                .sessionNo(e.getSessionNo())
+                .itemIndex(e.getItemIndex())
+                .userId(e.getUserId())
+                .studentNickname(student != null ? student.getNickname() : "游客")
+                .studentUsername(student != null ? student.getUsername() : "-")
+                .studentRealmName(stuRealm != null ? stuRealm.getRealmName() : "")
+                .realmCode(itemRealm != null ? itemRealm.getRealmCode() : (e.getRealmCode() == null ? "" : e.getRealmCode()))
+                .realmName(itemRealm != null ? itemRealm.getRealmName() : "")
+                .chapterId(e.getChapterId())
+                .chapterName(e.getChapterName())
+                .gateId(e.getGateId())
+                .gateName(e.getGateName())
+                .stem(e.getStem())
+                .referenceAnswer(e.getReferenceAnswer())
+                .analysis(analysis)
+                .answerText(e.getAnswerText())
+                .answerImageUrl(ossService.resolveViewUrl(e.getAnswerImageKey(), baseOrigin))
+                .selfCorrect(e.getSelfCorrect())
+                .teacherStatus(e.getTeacherStatus())
+                .teacherComment(e.getTeacherComment())
+                .teacherImageUrl(ossService.resolveViewUrl(e.getTeacherImageKey(), baseOrigin))
+                .createdAt(e.getCreatedAt())
+                .reviewedAt(e.getReviewedAt())
+                .build();
+    }
+
+    public AliyunOssService.BinaryResource readEssayAnswerImage(Long essayId) {
+        UserEssayAnswer e = essayAnswerMapper.selectById(essayId);
+        if (e == null) {
+            throw new BizException(ErrorCode.NOT_FOUND, "解答题作答记录不存在");
+        }
+        return ossService.readObjectBytes(e.getAnswerImageKey());
+    }
+
+    public AliyunOssService.UploadResult uploadEssayReviewImage(Long essayId, MultipartFile file, String baseOrigin) {
+        UserEssayAnswer e = essayAnswerMapper.selectById(essayId);
+        if (e == null) {
+            throw new BizException(ErrorCode.NOT_FOUND, "解答题作答记录不存在");
+        }
+        return ossService.uploadTeacherReviewImage(file, essayId, baseOrigin);
+    }
+
     @Transactional(rollbackFor = Exception.class)
-    public void reviewEssayAnswer(Long essayId, Integer teacherStatus, String teacherComment) {
+    public void reviewEssayAnswer(Long essayId, Integer teacherStatus, String teacherComment, String teacherImageKey) {
         UserEssayAnswer ans = essayAnswerMapper.selectById(essayId);
         if (ans == null) {
             throw new BizException(ErrorCode.NOT_FOUND, "解答题作答记录不存在");
@@ -413,6 +489,9 @@ public class AdminUserService {
         int status = (teacherStatus == null || (teacherStatus != 1 && teacherStatus != 2)) ? 1 : teacherStatus;
         ans.setTeacherStatus(status);
         ans.setTeacherComment(teacherComment == null ? "" : teacherComment.trim());
+        if (teacherImageKey != null && !teacherImageKey.isBlank()) {
+            ans.setTeacherImageKey(teacherImageKey.trim());
+        }
         try {
             if (StpAdminUtil.isLogin()) {
                 ans.setReviewedBy(StpAdminUtil.getLoginIdAsLong());

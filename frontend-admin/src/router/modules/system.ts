@@ -4,7 +4,7 @@ export default {
   meta: {
     icon: "ep/setting",
     title: "境界与进阶设置",
-    rank: 3
+    rank: 4
   },
   children: [
     {

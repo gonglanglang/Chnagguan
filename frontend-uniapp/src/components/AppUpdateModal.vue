@@ -3,7 +3,7 @@
     <view class="update-card">
       <view class="update-card__head">
         <view class="update-card__badge">
-          <wd-icon name="refresh" size="22" color="#ffffff" />
+          <app-icon name="refresh" size="22" color="#ffffff" />
         </view>
         <view class="update-card__title-wrap">
           <text class="update-card__title">发现新版本 v{{ state.latestVersion }}</text>

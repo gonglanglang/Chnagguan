@@ -4,7 +4,7 @@
     <view class="draw-toolbar">
       <view class="toolbar-left">
         <view class="back-btn" @click="handleBack">
-          <wd-icon name="arrow-left" size="18" color="#111827" />
+          <app-icon name="back" size="18" color="#111827" />
           <text class="back-btn__text">返回</text>
         </view>
 

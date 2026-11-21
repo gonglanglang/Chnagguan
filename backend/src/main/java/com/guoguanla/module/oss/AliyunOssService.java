@@ -35,6 +35,7 @@ import java.util.UUID;
 public class AliyunOssService {
 
     private static final long MAX_IMAGE_BYTES = 10L * 1024 * 1024;
+    private static final long MAX_VIDEO_BYTES = 500L * 1024 * 1024;
     private static final long DEFAULT_SIGN_TTL_SECONDS = 7200L;
     private static final DateTimeFormatter GMT_FORMATTER =
             DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.ENGLISH).withZone(ZoneOffset.UTC);
@@ -86,6 +87,108 @@ public class AliyunOssService {
     public UploadResult uploadUserAvatar(MultipartFile file, Long userId, String baseOrigin) {
         String uid = userId == null ? "0" : String.valueOf(userId);
         return uploadImageFile(file, "avatars", "avatar_u" + uid, baseOrigin);
+    }
+
+    public UploadResult uploadTeacherReviewImage(MultipartFile file, Long essayId, String baseOrigin) {
+        String eid = essayId == null ? "0" : String.valueOf(essayId);
+        return uploadImageFile(file, "teacher-reviews", "review_e" + eid, baseOrigin);
+    }
+
+    public UploadResult uploadVideoCover(MultipartFile file, String baseOrigin) {
+        return uploadImageFile(file, "video-covers", "cover", baseOrigin);
+    }
+
+    public UploadResult uploadCourseVideo(MultipartFile file, String baseOrigin) {
+        if (file == null || file.isEmpty()) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "请先选择要上传的视频文件");
+        }
+        if (file.getSize() <= 0 || file.getSize() > MAX_VIDEO_BYTES) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "单个视频文件大小需在 500MB 以内");
+        }
+        MediaMeta meta = detectVideoMeta(file.getContentType(), file.getOriginalFilename());
+        String datePart = LocalDate.now().format(DATE_DIR_FORMATTER);
+        String rand = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        String objectKey = "course-videos/" + datePart + "/lesson_" + rand + "." + meta.ext();
+
+        if (isOssConfigured()) {
+            Path tempFile = null;
+            try {
+                tempFile = Files.createTempFile("ggl-video-", "." + meta.ext());
+                file.transferTo(tempFile);
+                putFileToOss(objectKey, tempFile, meta.contentType(), Duration.ofMinutes(10));
+            } catch (BizException e) {
+                throw e;
+            } catch (IOException e) {
+                log.error("Failed to buffer course video", e);
+                throw new BizException(ErrorCode.INTERNAL_ERROR, "读取视频文件失败");
+            } finally {
+                if (tempFile != null) {
+                    try {
+                        Files.deleteIfExists(tempFile);
+                    } catch (IOException ignored) {
+                    }
+                }
+            }
+            return new UploadResult(objectKey, generatePresignedGetUrl(objectKey, DEFAULT_SIGN_TTL_SECONDS), "ALIYUN_OSS");
+        }
+
+        String relPath = "/downloads/" + objectKey;
+        try {
+            Path target = Path.of(uploadDir).toAbsolutePath().normalize().resolve(objectKey).normalize();
+            Files.createDirectories(target.getParent());
+            file.transferTo(target);
+        } catch (IOException e) {
+            log.error("Failed to save course video locally", e);
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "保存视频文件失败");
+        }
+        return new UploadResult(relPath, resolveViewUrl(relPath, baseOrigin), "LOCAL");
+    }
+
+    public record BinaryResource(byte[] bytes, String contentType) {}
+
+    public BinaryResource readObjectBytes(String keyOrUrl) {
+        if (keyOrUrl == null || keyOrUrl.isBlank()) {
+            throw new BizException(ErrorCode.NOT_FOUND, "图片不存在");
+        }
+        String trimmed = keyOrUrl.trim();
+        if (trimmed.startsWith("/downloads/")) {
+            String rel = trimmed.substring("/downloads/".length());
+            Path base = Path.of(uploadDir).toAbsolutePath().normalize();
+            Path target = base.resolve(rel).normalize();
+            if (!target.startsWith(base) || !Files.exists(target)) {
+                throw new BizException(ErrorCode.NOT_FOUND, "本地图片文件不存在");
+            }
+            try {
+                byte[] bytes = Files.readAllBytes(target);
+                ImageMeta meta = detectImageMeta(bytes, null, target.getFileName().toString());
+                return new BinaryResource(bytes, meta.contentType());
+            } catch (IOException e) {
+                throw new BizException(ErrorCode.INTERNAL_ERROR, "读取图片失败");
+            }
+        }
+        String viewUrl = resolveViewUrl(trimmed, "");
+        if (!viewUrl.startsWith("http://") && !viewUrl.startsWith("https://")) {
+            throw new BizException(ErrorCode.NOT_FOUND, "图片地址无效");
+        }
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(viewUrl))
+                    .timeout(Duration.ofSeconds(15))
+                    .GET()
+                    .build();
+            HttpResponse<byte[]> resp = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+                throw new BizException(ErrorCode.NOT_FOUND, "读取云端图片失败 (" + resp.statusCode() + ")");
+            }
+            byte[] bytes = resp.body();
+            String ct = resp.headers().firstValue("Content-Type").orElse("image/png");
+            return new BinaryResource(bytes, ct);
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Failed to fetch object bytes for key={}", keyOrUrl, e);
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "读取云端图片异常");
+        }
     }
 
     private UploadResult uploadImageFile(MultipartFile file, String folder, String filenamePrefix, String baseOrigin) {
@@ -181,6 +284,36 @@ public class AliyunOssService {
         }
     }
 
+    void putFileToOss(String objectKey, Path filePath, String contentType, Duration timeout) {
+        String cleanEndpoint = stripScheme(endpoint);
+        String url = "https://" + bucket.trim() + "." + cleanEndpoint + "/" + objectKey;
+        String dateHeader = GMT_FORMATTER.format(Instant.now());
+        String stringToSign = "PUT\n\n" + contentType + "\n" + dateHeader + "\n/" + bucket.trim() + "/" + objectKey;
+        String signature = signHmacSha1(accessKeySecret.trim(), stringToSign);
+        String authHeader = "OSS " + accessKeyId.trim() + ":" + signature;
+
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(timeout)
+                    .header("Date", dateHeader)
+                    .header("Content-Type", contentType)
+                    .header("Authorization", authHeader)
+                    .PUT(HttpRequest.BodyPublishers.ofFile(filePath))
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                log.error("OSS file upload failed: status={}, body={}", response.statusCode(), response.body());
+                throw new BizException(ErrorCode.INTERNAL_ERROR, "阿里云 OSS 上传失败 (" + response.statusCode() + ")");
+            }
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("OSS file upload exception for key={}", objectKey, e);
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "上传至阿里云 OSS 异常: " + e.getMessage());
+        }
+    }
+
     String generatePresignedGetUrl(String objectKey, long ttlSeconds) {
         String cleanKey = objectKey.startsWith("/") ? objectKey.substring(1) : objectKey;
         long expires = Instant.now().getEpochSecond() + Math.max(60L, ttlSeconds);
@@ -207,6 +340,22 @@ public class AliyunOssService {
     }
 
     private record ImageMeta(String ext, String contentType) {}
+    private record MediaMeta(String ext, String contentType) {}
+
+    private MediaMeta detectVideoMeta(String contentType, String filename) {
+        String ct = contentType == null ? "" : contentType.toLowerCase(Locale.ROOT);
+        String fn = filename == null ? "" : filename.toLowerCase(Locale.ROOT);
+        if (ct.contains("webm") || fn.endsWith(".webm")) {
+            return new MediaMeta("webm", "video/webm");
+        }
+        if (ct.contains("quicktime") || fn.endsWith(".mov")) {
+            return new MediaMeta("mov", "video/quicktime");
+        }
+        if (ct.contains("mp4") || fn.endsWith(".mp4") || ct.startsWith("video/")) {
+            return new MediaMeta("mp4", "video/mp4");
+        }
+        throw new BizException(ErrorCode.BAD_REQUEST, "仅支持 MP4 / WEBM / MOV 视频格式");
+    }
 
     private ImageMeta detectImageMeta(byte[] bytes, String contentType, String filename) {
         if (bytes.length >= 8

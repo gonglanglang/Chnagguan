@@ -317,12 +317,34 @@ class FeatureRegressionTests {
         assertFalse(essayWrong.path("lastAnswerImageUrl").asText("").isBlank());
         assertEquals("解：原式 $= -8 + 5 = -3$", essayWrong.path("referenceAnswer").asText(""));
 
+        // Admin inspects essay detail + image proxy + uploads PC annotation image + approves
+        mockMvc.perform(get("/api/admin/users/essay-answers/" + essayId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.studentNickname").value("测试小修仙"));
+
+        mockMvc.perform(get("/api/admin/users/essay-answers/" + essayId + "/image")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.IMAGE_PNG));
+
+        MockMultipartFile reviewPng = new MockMultipartFile("file", "review.png", "image/png", MINIMAL_PNG);
+        MvcResult reviewUploadRes = mockMvc.perform(multipart("/api/admin/users/essay-answers/" + essayId + "/review-image")
+                        .file(reviewPng)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.objectKey").isNotEmpty())
+                .andReturn();
+        String reviewImgKey = objectMapper.readTree(reviewUploadRes.getResponse().getContentAsString())
+                .path("data").path("objectKey").asText();
+
         mockMvc.perform(put("/api/admin/users/essay-answers/" + essayId + "/review")
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "teacherStatus", 1,
-                                "teacherComment", "步骤清晰，非常棒"
+                                "teacherComment", "步骤清晰，非常棒",
+                                "teacherImageKey", reviewImgKey
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
@@ -331,6 +353,111 @@ class FeatureRegressionTests {
                         .header("Authorization", "Bearer " + studentToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.records[0].teacherStatus").value(1))
-                .andExpect(jsonPath("$.data.records[0].teacherComment").value("步骤清晰，非常棒"));
+                .andExpect(jsonPath("$.data.records[0].teacherComment").value("步骤清晰，非常棒"))
+                .andExpect(jsonPath("$.data.records[0].teacherImageUrl").isNotEmpty());
+
+        // 6. Re-submit essay in the same realm + chapter + gate -> must overwrite & reset to pending review (still only 1 row)
+        MvcResult startRes2 = mockMvc.perform(post("/api/app/quiz/start")
+                        .header("Authorization", "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("gateId", gate1Id))))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode startData2 = objectMapper.readTree(startRes2.getResponse().getContentAsString()).path("data");
+        String sessionNo2 = startData2.path("sessionNo").asText();
+        Integer essayIdx2 = null;
+        for (JsonNode it : startData2.path("items")) {
+            if ("ESSAY".equals(it.path("questionFormat").asText())) {
+                essayIdx2 = it.path("itemIndex").asInt();
+                break;
+            }
+        }
+        assertNotNull(essayIdx2);
+        mockMvc.perform(post("/api/app/quiz/check-item")
+                        .header("Authorization", "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "sessionNo", sessionNo2,
+                                "itemIndex", essayIdx2,
+                                "answerText", "重交新步骤：-3",
+                                "answerImageKey", imgKey
+                        ))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/app/user/essay-answers?pageNum=1&pageSize=10")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.records[0].id").value(essayId))
+                .andExpect(jsonPath("$.data.records[0].answerText").value("重交新步骤：-3"))
+                .andExpect(jsonPath("$.data.records[0].teacherStatus").value(0))
+                .andExpect(jsonPath("$.data.records[0].teacherComment").value(""));
+
+        // 7. Admin Video Series & Multi-Lesson flow + App Cultivate video APIs
+        MockMultipartFile coverFile = new MockMultipartFile("file", "cover.png", "image/png", MINIMAL_PNG);
+        MvcResult coverUploadRes = mockMvc.perform(multipart("/api/admin/videos/upload-cover")
+                        .file(coverFile)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        String coverKey = objectMapper.readTree(coverUploadRes.getResponse().getContentAsString())
+                .path("data").path("objectKey").asText();
+
+        MockMultipartFile videoFile = new MockMultipartFile("file", "lesson1.mp4", "video/mp4", new byte[] { 0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70 });
+        MvcResult videoUploadRes = mockMvc.perform(multipart("/api/admin/videos/upload-media")
+                        .file(videoFile)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        String videoKey = objectMapper.readTree(videoUploadRes.getResponse().getContentAsString())
+                .path("data").path("objectKey").asText();
+
+        MvcResult seriesCreateRes = mockMvc.perform(post("/api/admin/videos/series")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "title", "练气期一元一次方程精讲",
+                                "coverImageKey", coverKey,
+                                "intro", "从移项变号到分数方程完整通关",
+                                "realmCode", "lianqi",
+                                "enabled", 1
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn();
+        long seriesId = objectMapper.readTree(seriesCreateRes.getResponse().getContentAsString()).path("data").asLong();
+
+        mockMvc.perform(post("/api/admin/videos/series/" + seriesId + "/lessons")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "title", "第1节：移项变号口诀",
+                                "videoKey", videoKey,
+                                "classNotes", "移项要变号，求解 $ax=b$。",
+                                "sortOrder", 1,
+                                "enabled", 1
+                        ))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/admin/videos/series/" + seriesId + "/lessons")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "title", "第2节：去分母与分数化简",
+                                "videoKey", videoKey,
+                                "classNotes", "同乘最小公倍数去分母。",
+                                "sortOrder", 2,
+                                "enabled", 1
+                        ))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/app/videos/series?realmCode=lianqi"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.records[0].lessonCount").value(2))
+                .andExpect(jsonPath("$.data.records[0].coverImageUrl").isNotEmpty());
+
+        mockMvc.perform(get("/api/app/videos/series/" + seriesId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.lessons.length()").value(2))
+                .andExpect(jsonPath("$.data.lessons[0].classNotes").value("移项要变号，求解 $ax=b$。"));
     }
 }

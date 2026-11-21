@@ -1,24 +1,17 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from "vue";
+import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import MathFormulaText from "@/components/MathFormulaText.vue";
 import {
   getUserPage,
-  getUserDetail,
   createUser,
   updateUser,
   updateUserPassword,
   updateUserRealm,
   updateUserStatus,
   deleteUser,
-  getUserQuizRecordDetail,
-  getUserEssayAnswers,
-  reviewEssayAnswer,
   getRealms,
   type StudentUser,
-  type StudentDetail,
-  type QuizSessionItem,
-  type EssayAnswerItem,
   type RealmConfig
 } from "@/api/guoguanla";
 
@@ -26,6 +19,7 @@ defineOptions({
   name: "StudentUserManage"
 });
 
+const router = useRouter();
 const loading = ref(false);
 const tableData = ref<StudentUser[]>([]);
 const total = ref(0);
@@ -37,29 +31,6 @@ const query = reactive({
   status: undefined as number | undefined,
   pageNum: 1,
   pageSize: 10
-});
-
-// 详情抽屉
-const detailVisible = ref(false);
-const detailLoading = ref(false);
-const detailUserId = ref<number | null>(null);
-const detailData = ref<StudentDetail | null>(null);
-const essayList = ref<EssayAnswerItem[]>([]);
-const essayLoading = ref(false);
-
-// 单次作答逐题明细弹窗
-const sessionDialogVisible = ref(false);
-const sessionDetailLoading = ref(false);
-const sessionDetailTitle = ref("");
-const sessionItems = ref<QuizSessionItem[]>([]);
-
-// 老师批改解答题弹窗
-const reviewDialogVisible = ref(false);
-const reviewTarget = ref<EssayAnswerItem | null>(null);
-const reviewSaving = ref(false);
-const reviewForm = reactive({
-  teacherStatus: 1,
-  teacherComment: ""
 });
 
 // 新增 / 编辑弹窗
@@ -119,87 +90,8 @@ function handleReset() {
   fetchUsers();
 }
 
-async function loadUserEssays(userId: number) {
-  essayLoading.value = true;
-  try {
-    const res = await getUserEssayAnswers(userId, { pageNum: 1, pageSize: 20 });
-    essayList.value = res.data.records;
-  } finally {
-    essayLoading.value = false;
-  }
-}
-
-async function openDetail(row: StudentUser) {
-  detailUserId.value = row.id;
-  detailVisible.value = true;
-  detailLoading.value = true;
-  try {
-    const res = await getUserDetail(row.id);
-    detailData.value = res.data;
-  } finally {
-    detailLoading.value = false;
-  }
-  void loadUserEssays(row.id);
-}
-
-async function openSessionDetail(row: StudentDetail["recentRecords"][number]) {
-  if (!detailUserId.value) return;
-  sessionDetailTitle.value = `${row.chapterName} · ${row.gateName}（${row.sessionNo}）`;
-  sessionDialogVisible.value = true;
-  sessionDetailLoading.value = true;
-  try {
-    const res = await getUserQuizRecordDetail(detailUserId.value, row.sessionNo);
-    sessionItems.value = res.data;
-  } finally {
-    sessionDetailLoading.value = false;
-  }
-}
-
-function openReviewDialog(item: EssayAnswerItem) {
-  reviewTarget.value = item;
-  reviewForm.teacherStatus = item.teacherStatus === 2 ? 2 : 1;
-  reviewForm.teacherComment = item.teacherComment || "";
-  reviewDialogVisible.value = true;
-}
-
-async function quickReviewEssay(item: EssayAnswerItem, status: 1 | 2) {
-  reviewSaving.value = true;
-  try {
-    await reviewEssayAnswer(item.id, {
-      teacherStatus: status,
-      teacherComment: item.teacherComment || ""
-    });
-    ElMessage.success(status === 1 ? "已批改通过" : "已标为待订正并记入错题");
-    if (detailUserId.value) {
-      await loadUserEssays(detailUserId.value);
-      const res = await getUserDetail(detailUserId.value);
-      detailData.value = res.data;
-    }
-    fetchUsers();
-  } finally {
-    reviewSaving.value = false;
-  }
-}
-
-async function submitReview() {
-  if (!reviewTarget.value) return;
-  reviewSaving.value = true;
-  try {
-    await reviewEssayAnswer(reviewTarget.value.id, {
-      teacherStatus: reviewForm.teacherStatus,
-      teacherComment: reviewForm.teacherComment.trim()
-    });
-    ElMessage.success("批改结果已保存");
-    reviewDialogVisible.value = false;
-    if (detailUserId.value) {
-      await loadUserEssays(detailUserId.value);
-      const res = await getUserDetail(detailUserId.value);
-      detailData.value = res.data;
-    }
-    fetchUsers();
-  } finally {
-    reviewSaving.value = false;
-  }
+function openDetail(row: StudentUser) {
+  router.push(`/user/detail/${row.id}`);
 }
 
 function openCreate() {
@@ -535,221 +427,6 @@ onMounted(() => {
         <el-button type="primary" :loading="savingRealm" @click="confirmRealmAdjust">
           确认修改
         </el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 学生战绩详情抽屉 -->
-    <el-drawer v-model="detailVisible" title="学生详情、答题记录与批改" size="780px">
-      <div v-loading="detailLoading" class="space-y-6">
-        <template v-if="detailData">
-          <el-descriptions :column="2" border>
-            <el-descriptions-item label="学生姓名">{{ detailData.profile.nickname }}</el-descriptions-item>
-            <el-descriptions-item label="登录账号">{{ detailData.profile.username }}</el-descriptions-item>
-            <el-descriptions-item label="当前境界">
-              <el-tag type="success" size="small">{{ detailData.profile.realmName }}</el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="累计过关">{{ detailData.profile.passedGateCount }} 关</el-descriptions-item>
-            <el-descriptions-item label="备注" :span="2">{{ detailData.profile.remark || "-" }}</el-descriptions-item>
-          </el-descriptions>
-
-          <div>
-            <h4 class="mb-2 font-bold text-gray-800">解答题手写作答与批改（阿里云 OSS 图）</h4>
-            <div v-loading="essayLoading" class="space-y-3">
-              <template v-if="essayList.length">
-                <el-card v-for="item in essayList" :key="item.id" shadow="never">
-                  <div class="flex flex-wrap items-center justify-between gap-2">
-                    <div class="text-xs text-gray-500">
-                      {{ item.chapterName || "解答练习" }} · {{ item.gateName || "-" }} · {{ item.createdAt }}
-                    </div>
-                    <div class="flex flex-wrap items-center gap-1.5 whitespace-nowrap">
-                      <el-tag
-                        size="small"
-                        :type="item.teacherStatus === 1 ? 'success' : item.teacherStatus === 2 ? 'danger' : 'warning'"
-                      >
-                        {{ item.teacherStatus === 1 ? "批改通过" : item.teacherStatus === 2 ? "待订正（已入错题）" : "待批改" }}
-                      </el-tag>
-                      <el-button
-                        v-if="item.teacherStatus !== 1"
-                        link
-                        type="success"
-                        size="small"
-                        @click="quickReviewEssay(item, 1)"
-                      >
-                        判对通过
-                      </el-button>
-                      <el-button
-                        v-if="item.teacherStatus !== 2"
-                        link
-                        type="danger"
-                        size="small"
-                        @click="quickReviewEssay(item, 2)"
-                      >
-                        判错入错题
-                      </el-button>
-                      <el-button link type="primary" size="small" @click="openReviewDialog(item)">
-                        评语批改
-                      </el-button>
-                    </div>
-                  </div>
-                  <div class="mt-2 font-medium text-gray-800">
-                    <MathFormulaText :text="item.stem" />
-                  </div>
-                  <div v-if="item.referenceAnswer" class="mt-1.5 text-xs text-green-700">
-                    参考答案：<MathFormulaText :text="item.referenceAnswer" inline />
-                  </div>
-                  <div v-if="item.answerText" class="mt-2 rounded bg-gray-50 px-3 py-2 text-xs text-gray-700">
-                    学生文字作答：{{ item.answerText }}
-                  </div>
-                  <div v-if="item.answerImageUrl" class="mt-2">
-                    <div class="mb-1 text-xs text-gray-500">手写画板作答图（点击可查看大图）：</div>
-                    <el-image
-                      :src="item.answerImageUrl"
-                      :preview-src-list="[item.answerImageUrl]"
-                      preview-teleported
-                      fit="contain"
-                      class="h-36 w-60 rounded border border-gray-200 bg-white"
-                    />
-                  </div>
-                  <div v-if="item.teacherComment" class="mt-2 text-xs text-green-700">
-                    老师点评：{{ item.teacherComment }}
-                  </div>
-                </el-card>
-              </template>
-              <el-empty v-else description="暂无解答题画板作答记录" :image-size="60" />
-            </div>
-          </div>
-
-          <div>
-            <h4 class="mb-2 font-bold text-gray-800">最近作答与进阶考核记录</h4>
-            <el-table v-if="detailData.recentRecords.length" :data="detailData.recentRecords" size="small" border>
-              <el-table-column prop="chapterName" label="内容" min-width="160" />
-              <el-table-column prop="gateName" label="关卡/目标" min-width="120" />
-              <el-table-column label="得分" width="128" align="center">
-                <template #default="{ row }">
-                  <span class="whitespace-nowrap">
-                    {{ row.correctCount }} / {{ row.totalCount }}
-                    <span v-if="row.mode === 'ADVANCE_EXAM' && row.score !== undefined">
-                      ({{ row.score }}分)
-                    </span>
-                  </span>
-                </template>
-              </el-table-column>
-              <el-table-column label="结果" width="84" align="center">
-                <template #default="{ row }">
-                  <el-tag size="small" class="whitespace-nowrap" :type="row.isPassed === 1 ? 'success' : 'info'">
-                    {{ row.isPassed === 1 ? "通过" : "未过" }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="明细" width="90" align="center">
-                <template #default="{ row }">
-                  <el-button link type="primary" size="small" @click="openSessionDetail(row)">
-                    查看答卷
-                  </el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-            <el-empty v-else description="暂无答题记录" :image-size="60" />
-          </div>
-
-          <div>
-            <h4 class="mb-2 font-bold text-gray-800">章节通关情况</h4>
-            <el-table v-if="detailData.chapterProgress.length" :data="detailData.chapterProgress" size="small" border>
-              <el-table-column prop="chapterName" label="章节" min-width="180" />
-              <el-table-column label="已通关卡" width="124" align="center">
-                <template #default="{ row }">
-                  <span class="whitespace-nowrap">{{ row.passedCount }} / {{ row.totalGates }} 关</span>
-                </template>
-              </el-table-column>
-            </el-table>
-            <el-empty v-else description="暂无章节过关记录" :image-size="60" />
-          </div>
-        </template>
-      </div>
-    </el-drawer>
-
-    <!-- 答题会话逐题详情弹窗 -->
-    <el-dialog v-model="sessionDialogVisible" :title="sessionDetailTitle" width="720px">
-      <div v-loading="sessionDetailLoading" class="max-h-[70vh] space-y-3 overflow-y-auto pr-1">
-        <el-card v-for="item in sessionItems" :key="item.itemIndex" shadow="never">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-bold text-gray-500">
-              第 {{ item.itemIndex + 1 }} 题 · {{ item.questionFormat === "ESSAY" ? "解答题" : "选择题" }}
-            </span>
-            <el-tag size="small" :type="item.correct ? 'success' : 'danger'">
-              {{ item.correct ? "正确" : "错误/未对" }}
-            </el-tag>
-          </div>
-          <div class="mt-1.5 font-medium text-gray-800">
-            <MathFormulaText :text="item.stem" />
-          </div>
-          <template v-if="item.questionFormat === 'ESSAY'">
-            <div v-if="item.userAnswerText" class="mt-2 rounded bg-gray-50 p-2 text-xs text-gray-700">
-              学生文字作答：{{ item.userAnswerText }}
-            </div>
-            <div v-if="item.userAnswerImageUrl" class="mt-2">
-              <div class="mb-1 text-xs text-gray-500">手写作答图片：</div>
-              <el-image
-                :src="item.userAnswerImageUrl"
-                :preview-src-list="[item.userAnswerImageUrl]"
-                preview-teleported
-                fit="contain"
-                class="h-40 w-64 rounded border border-gray-200 bg-white"
-              />
-            </div>
-            <div v-if="item.referenceAnswer" class="mt-2 text-xs text-green-700">
-              参考答案：<MathFormulaText :text="item.referenceAnswer" inline />
-            </div>
-          </template>
-          <template v-else-if="item.options?.length">
-            <div class="mt-2 flex flex-wrap gap-1.5 text-xs">
-              <span
-                v-for="(op, idx) in item.options"
-                :key="idx"
-                class="rounded px-2 py-0.5"
-                :class="
-                  idx === item.answerIndex
-                    ? 'bg-green-100 font-bold text-green-800'
-                    : idx === item.userIndex
-                      ? 'bg-red-100 text-red-700'
-                      : 'bg-gray-100 text-gray-600'
-                "
-              >
-                {{ "ABCD"[idx] }}. <MathFormulaText :text="op" inline />
-                <template v-if="idx === item.userIndex">（学生所选）</template>
-              </span>
-            </div>
-          </template>
-        </el-card>
-      </div>
-    </el-dialog>
-
-    <!-- 老师批改解答题弹窗 -->
-    <el-dialog v-model="reviewDialogVisible" title="批改学生解答题" width="460px">
-      <div v-if="reviewTarget" class="space-y-4">
-        <div class="rounded bg-gray-50 p-3 text-sm text-gray-800">
-          <MathFormulaText :text="reviewTarget.stem" />
-        </div>
-        <el-form label-width="88px">
-          <el-form-item label="批改结论" required>
-            <el-radio-group v-model="reviewForm.teacherStatus">
-              <el-radio :value="1">通过（解答正确）</el-radio>
-              <el-radio :value="2">待订正（步骤或结果有误）</el-radio>
-            </el-radio-group>
-          </el-form-item>
-          <el-form-item label="老师评语">
-            <el-input
-              v-model="reviewForm.teacherComment"
-              type="textarea"
-              :rows="3"
-              placeholder="可选填点评，学生可在个人端查看"
-            />
-          </el-form-item>
-        </el-form>
-      </div>
-      <template #footer>
-        <el-button @click="reviewDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="reviewSaving" @click="submitReview">保存批改</el-button>
       </template>
     </el-dialog>
 

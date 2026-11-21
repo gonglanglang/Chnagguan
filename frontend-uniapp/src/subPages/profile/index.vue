@@ -18,7 +18,7 @@
       </view>
       <view class="avatar-card__right">
         <text class="avatar-card__action">{{ uploadingAvatar ? "上传中..." : "更换" }}</text>
-        <wd-icon name="right" size="14" color="var(--color-text-muted)" />
+        <app-icon name="right" size="14" color="muted" />
       </view>
     </view>
 

@@ -16,30 +16,33 @@
           :key="item.name"
           :name="item.name"
           :title="item.title"
-          :icon="item.icon"
-        />
+        >
+          <template #icon="{ active }">
+            <app-icon
+              :name="item.icon"
+              :size="21"
+              :color="active ? 'primary' : 'muted'"
+            />
+          </template>
+        </wd-tabbar-item>
       </wd-tabbar>
     </view>
   </app-provider>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from "vue";
+import { ref, nextTick, onMounted } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 
-// tabbar 配置：name 与页面路径一一对应，切换时按 name 走 switchTab
 const tabbarList = [
-  { name: "/pages/index/index", title: "首页", icon: "home" },
-  { name: "/pages/wrong/index", title: "错题本", icon: "edit" },
-  { name: "/pages/mine/index", title: "我的", icon: "user" },
+  { name: "/pages/index/index", title: "首页", icon: "gate-home" },
+  { name: "/pages/cultivate/index", title: "修炼", icon: "cultivate-scroll" },
+  { name: "/pages/wrong/index", title: "错题本", icon: "wrong-sword" },
+  { name: "/pages/mine/index", title: "我的", icon: "dao-user" },
 ];
 
-// 当前激活项的页面路径
 const activePath = ref(tabbarList[0].name);
 
-/**
- * 按当前页面同步激活项：mounted 与 onShow 都要执行，切回标签时不能停留在旧值
- */
 function syncActiveTab() {
   const pages = getCurrentPages();
   const currentPage = pages[pages.length - 1];
@@ -50,9 +53,6 @@ function syncActiveTab() {
   }
 }
 
-/**
- * 切换标签：先更新选中态再跳转，避免切换过程中高亮回弹
- */
 function handleTabbarChange({ value }: { value: string }) {
   activePath.value = value;
   nextTick(() => {

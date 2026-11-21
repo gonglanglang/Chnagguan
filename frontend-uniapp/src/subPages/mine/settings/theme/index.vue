@@ -21,11 +21,11 @@
               :style="{ backgroundColor: color.primary }"
               @click="handleSelectColor(color)"
             >
-              <wd-icon
+              <app-icon
                 v-if="currentPrimaryColor === color.primary"
                 name="check"
                 size="14"
-                color="var(--color-text-inverse)"
+                color="#ffffff"
               />
             </view>
           </view>
@@ -48,7 +48,7 @@
       <!-- 自定义颜色 -->
       <wd-cell title="自定义颜色" is-link @click="openCustomColorInput">
         <template #icon>
-          <wd-icon name="edit" size="16" class="mr-12rpx" />
+          <app-icon name="brush" size="16" custom-class="mr-12rpx" />
         </template>
       </wd-cell>
     </wd-cell-group>
@@ -85,7 +85,7 @@
             hover-class="bg-[var(--color-text-placeholder)]/16"
             @click="customColorInputVisible = false"
           >
-            <wd-icon name="close" size="18" class="color-text-secondary" />
+            <app-icon name="close" size="18" color="secondary" />
           </view>
         </view>
 

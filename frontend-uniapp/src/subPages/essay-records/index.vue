@@ -53,6 +53,16 @@
           />
         </view>
 
+        <view v-if="item.teacherImageUrl" class="essay-card__img-wrap">
+          <text class="essay-card__label">老师画板批注：</text>
+          <image
+            :src="item.teacherImageUrl"
+            mode="aspectFit"
+            class="essay-card__img"
+            @click="previewImg(item.teacherImageUrl)"
+          />
+        </view>
+
         <view v-if="item.referenceAnswer" class="essay-card__ref">
           <text class="essay-card__ref-label">参考答案：</text>
           <math-text :text="item.referenceAnswer" inline />

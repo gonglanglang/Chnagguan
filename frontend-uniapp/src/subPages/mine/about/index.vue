@@ -3,7 +3,7 @@
     <view class="about-card">
       <view class="about__header">
         <view class="about__badge">
-          <wd-icon name="book" size="28" color="#ffffff" />
+          <app-icon name="book" size="28" color="#ffffff" />
         </view>
         <view class="about__info">
           <text class="about__title">过关啦</text>

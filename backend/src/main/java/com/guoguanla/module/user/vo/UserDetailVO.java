@@ -68,15 +68,24 @@ public class UserDetailVO {
         private String sessionNo;
         private Integer itemIndex;
         private Long userId;
+        private String studentNickname;
+        private String studentUsername;
+        private String studentRealmName;
+        private String realmCode;
+        private String realmName;
+        private Long chapterId;
         private String chapterName;
+        private Long gateId;
         private String gateName;
         private String stem;
         private String referenceAnswer;
+        private String analysis;
         private String answerText;
         private String answerImageUrl;
         private Integer selfCorrect;
         private Integer teacherStatus;
         private String teacherComment;
+        private String teacherImageUrl;
         private LocalDateTime createdAt;
         private LocalDateTime reviewedAt;
     }

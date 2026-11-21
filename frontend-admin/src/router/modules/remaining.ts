@@ -31,6 +31,24 @@ export default [
     }
   },
   {
+    path: "/bank/question/editor",
+    name: "QuestionEditor",
+    component: () => import("@/views/bank/question/editor/index.vue"),
+    meta: {
+      title: "出题工作台",
+      showLink: false
+    }
+  },
+  {
+    path: "/user/essay-review/:essayId",
+    name: "UserEssayReview",
+    component: () => import("@/views/user/essay-review/index.vue"),
+    meta: {
+      title: "作业画板批改",
+      showLink: false
+    }
+  },
+  {
     path: "/redirect",
     component: Layout,
     meta: {
