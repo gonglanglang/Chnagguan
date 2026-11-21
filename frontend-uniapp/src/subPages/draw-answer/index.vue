@@ -106,24 +106,14 @@
           </view>
         </view>
 
-        <!-- 左下角无限画布悬浮控制条 -->
+        <!-- 左下角极简百分比与全览图标悬浮条 -->
         <view class="stage-hud">
-          <view class="hud-btn" @click="extendPaper('down')">
-            <text class="hud-btn__text">↓ 下移空白</text>
-          </view>
-          <view class="hud-btn" @click="extendPaper('right')">
-            <text class="hud-btn__text">→ 右移空白</text>
+          <view class="hud-zoom-btn" @click="resetZoomTo100">
+            <text class="hud-zoom-label">{{ Math.round(camera.zoom * 100) }}%</text>
           </view>
           <view class="hud-divider" />
-          <view class="hud-icon-btn" @click="adjustZoom(-0.2)">
-            <app-icon name="zoom-out" size="13" color="#475569" />
-          </view>
-          <text class="hud-zoom-label">{{ Math.round(camera.zoom * 100) }}%</text>
-          <view class="hud-icon-btn" @click="adjustZoom(0.2)">
-            <app-icon name="zoom-in" size="13" color="#475569" />
-          </view>
-          <view class="hud-btn" @click="fitContentOrReset">
-            <text class="hud-btn__text">{{ strokes.length > 0 ? "全览" : "复位" }}</text>
+          <view class="hud-icon-btn" @click="fitContentOrReset">
+            <app-icon name="expand" size="12" color="#475569" />
           </view>
         </view>
 
@@ -593,31 +583,21 @@ function endStroke(): void {
   }
 }
 
-function extendPaper(dir: "down" | "right"): void {
-  const cw = canvasWidth.value || 640;
-  const ch = canvasHeight.value || 320;
-  if (dir === "down") {
-    camera.panY -= Math.round(ch * 0.45);
-    redrawAll();
-    notifyExtend("已向下空出书写区");
-  } else {
-    camera.panX -= Math.round(cw * 0.42);
-    redrawAll();
-    notifyExtend("已向右空出书写区");
-  }
-}
-
-function adjustZoom(delta: number): void {
+function resetZoomTo100(): void {
   const cw = canvasWidth.value || 640;
   const ch = canvasHeight.value || 320;
   const oldZoom = camera.zoom;
-  const nextZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Number((oldZoom + delta).toFixed(2))));
-  if (nextZoom === oldZoom) return;
+  if (oldZoom === 1) {
+    camera.panX = 0;
+    camera.panY = 0;
+    redrawAll();
+    return;
+  }
   const centerWorldX = (cw / 2 - camera.panX) / oldZoom;
   const centerWorldY = (ch / 2 - camera.panY) / oldZoom;
-  camera.zoom = nextZoom;
-  camera.panX = cw / 2 - centerWorldX * nextZoom;
-  camera.panY = ch / 2 - centerWorldY * nextZoom;
+  camera.zoom = 1;
+  camera.panX = cw / 2 - centerWorldX;
+  camera.panY = ch / 2 - centerWorldY;
   redrawAll();
 }
 
@@ -1068,14 +1048,16 @@ onUnload(() => {
 }
 
 .draw-toolbar {
+  box-sizing: border-box;
   display: flex;
   flex-shrink: 0;
   gap: 8px;
   align-items: center;
   justify-content: space-between;
-  height: 48px;
-  padding-top: env(safe-area-inset-top);
+  min-height: calc(44px + env(safe-area-inset-top));
+  padding-top: calc(4px + env(safe-area-inset-top));
   padding-right: max(12px, env(safe-area-inset-right));
+  padding-bottom: 4px;
   padding-left: max(12px, env(safe-area-inset-left));
   background: #f7f8fa;
   border-bottom: 1px solid #e5e7eb;
@@ -1198,7 +1180,12 @@ onUnload(() => {
 }
 
 .save-btn {
-  padding: 6px 14px;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 12px;
+  line-height: 1;
   background: #16a34a;
   border-radius: 8px;
 
@@ -1208,9 +1195,11 @@ onUnload(() => {
 }
 
 .save-btn__text {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
+  line-height: 1.2;
   color: #ffffff;
+  white-space: nowrap;
 }
 
 .stage-wrap {
@@ -1257,58 +1246,57 @@ onUnload(() => {
 .stage-hud {
   position: absolute;
   bottom: max(10px, env(safe-area-inset-bottom));
-  left: max(14px, env(safe-area-inset-left));
+  left: max(12px, env(safe-area-inset-left));
   z-index: 12;
-  display: flex;
-  gap: 6px;
+  display: inline-flex;
+  gap: 5px;
   align-items: center;
-  padding: 5px 10px;
-  background: rgba(255, 255, 255, 0.94);
+  height: 26px;
+  padding: 0 8px;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.92);
   border: 1px solid #e2e8f0;
   border-radius: 999px;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
 }
 
-.hud-btn {
-  padding: 3px 8px;
-  background: #f8fafc;
-  border-radius: 999px;
+.hud-zoom-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  padding: 0 2px;
+  line-height: 1;
 
   &:active {
-    background: #dcfce7;
+    opacity: 0.7;
   }
 }
 
-.hud-btn__text {
-  font-size: 11px;
-  font-weight: 500;
-  color: #334155;
-}
-
 .hud-icon-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  background: #f8fafc;
+  width: 20px;
+  height: 20px;
+  line-height: 1;
   border-radius: 999px;
 
   &:active {
-    background: #e2e8f0;
+    background: #f1f5f9;
   }
 }
 
 .hud-divider {
   width: 1px;
-  height: 14px;
+  height: 11px;
   background: #e2e8f0;
 }
 
 .hud-zoom-label {
-  min-width: 34px;
   font-size: 11px;
   font-weight: 600;
+  line-height: 1;
   color: #475569;
   text-align: center;
 }
