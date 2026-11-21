@@ -1,0 +1,94 @@
+package com.guoguanla.module.app.vo;
+
+import lombok.Builder;
+import lombok.Data;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+public class AppQuizVO {
+
+    @Data
+    @Builder
+    public static class StartVO {
+        private String sessionNo;
+        private String mode;
+        private String realmCode;
+        private String realmName;
+        private Integer realmOrder;
+        private boolean suppressedMode;
+        private Integer passScore;
+        private Long chapterId;
+        private String chapterName;
+        private Long gateId;
+        private String gateName;
+        private Integer star;
+        private Integer passCount;
+        private Integer totalCount;
+        private boolean guestMode;
+        private List<ClientQuestionItem> items;
+    }
+
+    @Data
+    @Builder
+    public static class ClientQuestionItem {
+        private Integer itemIndex;
+        private String questionFormat;
+        private String stem;
+        private List<String> options;
+    }
+
+    @Data
+    @Builder
+    public static class CheckItemVO {
+        private Integer itemIndex;
+        private boolean correct;
+        private Integer correctIndex;
+        private String analysis;
+    }
+
+    @Data
+    @Builder
+    public static class SubmitResultVO {
+        private String sessionNo;
+        private String mode;
+        private Integer totalCount;
+        private Integer correctCount;
+        private Integer score;
+        private Integer passScore;
+        private Integer passCount;
+        private boolean passed;
+        private boolean newlyPassed;
+        private Integer totalPassedGates;
+        private AppUserProfileVO.LevelProgress promotedLevel;
+        private AppUserProfileVO.RealmItemVO promotedRealm;
+        private List<WrongReviewItem> wrongItems;
+        private int masteredCount;
+    }
+
+    @Data
+    @Builder
+    public static class WrongReviewItem {
+        private String stem;
+        private String correctAnswer;
+        private String analysis;
+    }
+
+    @Data
+    @Builder
+    public static class WrongQuestionVO {
+        private Long id;
+        private String gradeCode;
+        private String realmCode;
+        private String realmName;
+        private Long chapterId;
+        private String chapterName;
+        private String gateName;
+        private String stem;
+        private List<String> options;
+        private Integer answerIndex;
+        private String analysis;
+        private Integer wrongCount;
+        private LocalDateTime lastWrongAt;
+    }
+}

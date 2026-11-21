@@ -1,0 +1,96 @@
+@use "./theme";
+
+page {
+  font-size: 28rpx;
+  line-height: 1.6;
+  color: var(--color-text);
+  background-color: var(--color-bg-page);
+}
+
+/* #ifdef H5 */
+html,
+body {
+  height: 100%;
+  padding: 0;
+  margin: 0;
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Microsoft YaHei",
+    "Helvetica Neue",
+    Helvetica,
+    sans-serif;
+  background-color: #ebf0ec;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+// 彻底隐藏 H5 端多余的原生 uni-tabbar，避免与 custom <wd-tabbar> 重叠露出第二行文字
+uni-tabbar,
+.uni-tabbar-bottom {
+  display: none !important;
+  height: 0 !important;
+  overflow: hidden !important;
+}
+
+// 桌面浏览器宽屏预览时保持舒适的移动端居中版幅
+@media (min-width: 600px) {
+  #app {
+    position: relative;
+    max-width: 460px;
+    min-height: 100vh;
+    margin: 0 auto;
+    background-color: var(--color-bg-page);
+    box-shadow: 0 4px 32px rgba(15, 23, 42, 0.08);
+  }
+
+  .wd-tabbar.is-fixed,
+  .app-navbar--fixed {
+    right: auto !important;
+    left: 50% !important;
+    width: 100% !important;
+    max-width: 460px !important;
+    transform: translateX(-50%) !important;
+  }
+}
+/* #endif */
+
+.page {
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: 16rpx 24rpx 0;
+  background-color: var(--color-bg-page);
+  --wot-card-margin-horizontal: 0;
+  --wot-card-margin-bottom: 16rpx;
+}
+
+.page--tabbar {
+  padding: 0 0 calc(var(--wot-tabbar-height, 50px) + env(safe-area-inset-bottom));
+}
+
+.color-primary {
+  color: var(--color-primary);
+}
+
+.color-success {
+  color: var(--color-success);
+}
+
+.color-warning {
+  color: var(--color-warning);
+}
+
+.color-danger {
+  color: var(--color-danger);
+}
+
+.color-text-secondary {
+  color: var(--color-text-secondary);
+}
+
+.color-text-placeholder {
+  color: var(--color-text-placeholder);
+}

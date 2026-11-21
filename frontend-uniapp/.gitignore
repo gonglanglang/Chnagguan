@@ -1,0 +1,46 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+.pnpm-store
+.DS_Store
+dist
+unpackage
+*.local
+.history
+
+# 由 @uni-helper/vite-plugin-uni-pages 从 pages.config.ts + definePage 生成，勿手改、勿提交
+src/pages.json
+
+# 生成物：插件在 dev/build 时自动生成
+src/types/auto-imports.d.ts
+src/types/components.d.ts
+src/types/uni-pages.d.ts
+
+# 部署环境覆盖配置与部署脚本，仅本地使用
+.env.youlai
+deploy.mjs
+
+# Editor directories and files
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+launch.json
+.hbuilderx
+
+.vscode
+.claude/
+.cursor/
+.windsurf/
+.agents/
+skills-lock.json

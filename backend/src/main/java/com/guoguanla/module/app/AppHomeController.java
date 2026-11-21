@@ -1,0 +1,98 @@
+package com.guoguanla.module.app;
+
+import com.guoguanla.common.result.Result;
+import com.guoguanla.module.app.dto.AppLoginReq;
+import com.guoguanla.module.app.vo.AppUserProfileVO;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+@Tag(name = "学生端-首页、修仙境界与个人中心")
+@RestController
+@RequestMapping("/api/app")
+@RequiredArgsConstructor
+public class AppHomeController {
+
+    private final AppBankService bankService;
+
+    @Operation(summary = "首页概览（修仙境界列表、公告与当前学生状态）")
+    @GetMapping("/home/summary")
+    public Result<AppUserProfileVO.HomeSummaryVO> homeSummary(@RequestParam(required = false) String guestPassedIds) {
+        return Result.ok(bankService.homeSummary(parseIds(guestPassedIds)));
+    }
+
+    @Operation(summary = "获取全部修仙境界与解锁状态")
+    @GetMapping("/realms")
+    public Result<List<AppUserProfileVO.RealmItemVO>> realms(@RequestParam(required = false) String guestPassedIds) {
+        return Result.ok(bankService.listRealms(parseIds(guestPassedIds)));
+    }
+
+    @Operation(summary = "按修仙境界查询章节及通关状态")
+    @GetMapping("/realms/{realmCode}/chapters")
+    public Result<List<AppUserProfileVO.ChapterCardVO>> chaptersByRealm(
+            @PathVariable String realmCode,
+            @RequestParam(required = false) String guestPassedIds
+    ) {
+        return Result.ok(bankService.listChaptersByRealm(realmCode, parseIds(guestPassedIds)));
+    }
+
+    @Operation(summary = "查询年级下的章节及通关星数（兼容旧路径）")
+    @GetMapping("/grades/{gradeCode}/chapters")
+    public Result<List<AppUserProfileVO.ChapterCardVO>> chapters(
+            @PathVariable String gradeCode,
+            @RequestParam(required = false) String guestPassedIds
+    ) {
+        return Result.ok(bankService.listChaptersByGrade(gradeCode, parseIds(guestPassedIds)));
+    }
+
+    @Operation(summary = "查询章节下 4 道关卡及解锁状态")
+    @GetMapping("/chapters/{chapterId}/gates")
+    public Result<List<AppUserProfileVO.GateCardVO>> gates(
+            @PathVariable Long chapterId,
+            @RequestParam(required = false) String guestPassedIds
+    ) {
+        return Result.ok(bankService.listGatesByChapter(chapterId, parseIds(guestPassedIds)));
+    }
+
+    @Operation(summary = "段位规则列表（兼容旧接口）")
+    @GetMapping("/levels")
+    public Result<List<AppUserProfileVO.LevelItemVO>> levels(@RequestParam(required = false) Integer guestPassedCount) {
+        return Result.ok(bankService.listLevels(guestPassedCount));
+    }
+
+    @Operation(summary = "获取当前学生资料")
+    @GetMapping("/user/profile")
+    public Result<AppUserProfileVO> profile() {
+        return Result.ok(bankService.currentProfile());
+    }
+
+    @Operation(summary = "修改学生昵称")
+    @PutMapping("/user/profile")
+    public Result<AppUserProfileVO> updateProfile(@Valid @RequestBody AppLoginReq.ProfileUpdateReq req) {
+        return Result.ok(bankService.updateProfile(req));
+    }
+
+    @Operation(summary = "获取各章过关战绩")
+    @GetMapping("/user/chapter-records")
+    public Result<List<AppUserProfileVO.ChapterCardVO>> chapterRecords() {
+        return Result.ok(bankService.listUserChapterRecords());
+    }
+
+    private Set<Long> parseIds(String csv) {
+        if (csv == null || csv.isBlank()) {
+            return Set.of();
+        }
+        return Arrays.stream(csv.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .map(Long::valueOf)
+                .collect(Collectors.toSet());
+    }
+}

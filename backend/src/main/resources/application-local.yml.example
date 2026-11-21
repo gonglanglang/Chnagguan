@@ -1,0 +1,5 @@
+# 复制本文件为 application-local.yml 后填入你本机的 MySQL 密码（已加入 .gitignore，不会提交到仓库）
+spring:
+  datasource:
+    username: root
+    password: your_mysql_password
