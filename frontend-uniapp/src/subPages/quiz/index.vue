@@ -32,12 +32,20 @@
 
     <!-- 答题视图 -->
     <template v-else-if="startData && !submitResult && currentItem">
-      <view class="progress-card">
-        <view class="progress-card__top">
-          <text class="progress-card__step">
-            第 {{ currentIdx + 1 }} / {{ startData.items.length }} 题
-          </text>
-          <view class="progress-card__tags">
+      <view class="question-card">
+        <view class="question-card__meta">
+          <view class="question-card__meta-left">
+            <text class="question-card__step">
+              第 {{ currentIdx + 1 }} / {{ startData.items.length }} 题
+            </text>
+            <wd-tag variant="light" size="small">
+              {{ startData.realmName || "修炼答题" }}
+            </wd-tag>
+            <text v-if="startData.chapterName" class="question-card__chapter">
+              {{ startData.chapterName }}
+            </text>
+          </view>
+          <view class="question-card__tags">
             <wd-tag
               v-if="currentItem.questionFormat === 'ESSAY'"
               type="success"
@@ -61,18 +69,6 @@
               </template>
             </wd-tag>
           </view>
-        </view>
-        <wd-progress :percentage="progressPercent" hide-text />
-      </view>
-
-      <view class="question-card">
-        <view class="question-card__meta">
-          <wd-tag variant="light" size="small">
-            {{ startData.realmName || "修炼答题" }}
-          </wd-tag>
-          <text v-if="startData.chapterName" class="question-card__chapter">
-            {{ startData.chapterName }}
-          </text>
         </view>
         <view class="question-card__stem">
           <math-text :key="`${startData.sessionNo}-${currentItem.itemIndex}-stem`" :text="currentItem.stem" />
@@ -376,12 +372,6 @@ const hasFooterBar = computed(() =>
   ),
 );
 
-const progressPercent = computed(() => {
-  const total = startData.value?.items?.length || 0;
-  if (total === 0) return 0;
-  return Math.min(100, Math.round(((currentIdx.value + 1) / total) * 100));
-});
-
 const navbarTitle = computed(() => {
   if (mode.value === "ADVANCE_EXAM") return "境界进阶考核";
   if (mode.value === "WRONG_REDO") return "错题重做";
@@ -637,36 +627,8 @@ onUnload(() => {
   gap: 16rpx;
 }
 
-.progress-card {
-  padding: 22rpx 24rpx;
-  background: var(--color-bg-card);
-  border-radius: 18rpx;
-  box-shadow: var(--shadow-sm);
-}
-
-.progress-card__top {
-  display: flex;
-  gap: 12rpx;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16rpx;
-}
-
-.progress-card__step {
-  font-size: 26rpx;
-  font-weight: 600;
-  color: var(--color-text);
-}
-
-.progress-card__tags {
-  display: flex;
-  gap: 8rpx;
-  align-items: center;
-}
-
 .question-card {
-  padding: 32rpx 28rpx;
-  margin-top: 20rpx;
+  padding: 28rpx;
   background: var(--color-bg-card);
   border-radius: 20rpx;
   box-shadow: var(--shadow-sm);
@@ -674,7 +636,35 @@ onUnload(() => {
 
 .question-card__meta {
   display: flex;
-  gap: 14rpx;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.question-card__meta-left {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  align-items: center;
+  min-width: 0;
+}
+
+.question-card__step {
+  flex-shrink: 0;
+  padding: 4rpx 14rpx;
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #15803d;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 999rpx;
+}
+
+.question-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
   align-items: center;
 }
 

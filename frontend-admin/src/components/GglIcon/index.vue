@@ -55,6 +55,20 @@ const PATHS: Record<string, string> = {
     <path d="M9.4 10.6L14.4 15.6" stroke="currentColor" stroke-width="1.8"/>
     <path d="M11.2 18.4H20" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
   `,
+  hand: `
+    <path d="M9 11.5V6.2C9 5.54 9.54 5 10.2 5C10.86 5 11.4 5.54 11.4 6.2V10.5M11.4 10.5V4.8C11.4 4.14 11.94 3.6 12.6 3.6C13.26 3.6 13.8 4.14 13.8 4.8V10.5M13.8 10.5V5.7C13.8 5.04 14.34 4.5 15 4.5C15.66 4.5 16.2 5.04 16.2 5.7V11M16.2 11V7.6C16.2 6.94 16.74 6.4 17.4 6.4C18.06 6.4 18.6 6.94 18.6 7.6V14.2C18.6 17.6 16.1 20 12.8 20C10.3 20 8.5 18.7 7.1 16.6L5.1 13.4C4.74 12.84 4.92 12.09 5.48 11.74C6.02 11.4 6.72 11.54 7.1 12.04L9 14.3V11.5Z" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+  `,
+  "zoom-in": `
+    <circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.9"/>
+    <path d="M16 16L20 20M8.5 11H13.5M11 8.5V13.5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+  `,
+  "zoom-out": `
+    <circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.9"/>
+    <path d="M16 16L20 20M8.5 11H13.5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+  `,
+  expand: `
+    <path d="M15 4.5H19.5V9M9 19.5H4.5V15M19.5 4.5L13.8 10.2M4.5 19.5L10.2 13.8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+  `,
   undo: `
     <path d="M8.5 7.5H4.5V3.5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="M4.8 7.5C6.8 5.2 9.8 4.2 12.8 4.8C16.7 5.6 19.4 9.1 19 13.1C18.6 16.9 15.4 19.6 11.6 19.6C8.8 19.6 6.4 18.1 5.2 15.8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>

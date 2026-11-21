@@ -1,99 +1,148 @@
 <template>
-  <view class="draw-page">
-    <!-- 顶部极简工具栏 -->
-    <view class="draw-toolbar">
-      <view class="toolbar-left">
-        <view class="back-btn" @click="handleBack">
-          <app-icon name="back" size="18" color="#111827" />
-          <text class="back-btn__text">返回</text>
+  <view class="draw-root">
+    <!-- 离屏完整导出画布：置于不透明主页面背后（视口内避免 Android WebView 离屏裁剪导致导白图） -->
+    <canvas
+      v-if="exportCanvasW > 0 && exportCanvasH > 0"
+      id="drawExportCanvas"
+      canvas-id="drawExportCanvas"
+      class="draw-export-canvas"
+      :style="{ width: `${exportCanvasW}px`, height: `${exportCanvasH}px` }"
+    />
+
+    <view class="draw-page">
+      <!-- 顶部极简工具栏 -->
+      <view class="draw-toolbar">
+        <view class="toolbar-left">
+          <view class="back-btn" @click="handleBack">
+            <app-icon name="back" size="18" color="#111827" />
+            <text class="back-btn__text">返回</text>
+          </view>
+
+          <view v-if="stem" class="stem-pill" @click="showStemModal = true">
+            <text class="stem-pill__tag">题干</text>
+            <view class="stem-pill__math">
+              <math-text :text="stem" inline />
+            </view>
+          </view>
         </view>
 
-        <view v-if="stem" class="stem-pill" @click="showStemModal = true">
-          <text class="stem-pill__tag">题干</text>
-          <view class="stem-pill__math">
-            <math-text :text="stem" inline />
+        <view class="toolbar-right">
+          <view class="color-group">
+            <view
+              v-for="c in PEN_COLORS"
+              :key="c"
+              class="color-dot"
+              :class="{ 'color-dot--active': !handMode && !eraserMode && activeColor === c }"
+              :style="{ backgroundColor: c }"
+              @click="selectPen(c)"
+            />
+          </view>
+
+          <view
+            class="tool-btn"
+            :class="{ 'tool-btn--active': handMode }"
+            @click="toggleHandMode"
+          >
+            <app-icon name="hand" size="13" :color="handMode ? '#16a34a' : '#374151'" />
+            <text class="tool-btn__text">移动</text>
+          </view>
+          <view
+            class="tool-btn"
+            :class="{ 'tool-btn--active': !handMode && eraserMode }"
+            @click="toggleEraser"
+          >
+            <text class="tool-btn__text">橡皮</text>
+          </view>
+          <view
+            class="tool-btn"
+            :class="{ 'tool-btn--disabled': strokes.length === 0 || saving }"
+            @click="undoStroke"
+          >
+            <text class="tool-btn__text">撤销</text>
+          </view>
+          <view
+            class="tool-btn"
+            :class="{ 'tool-btn--disabled': strokes.length === 0 || saving }"
+            @click="clearBoard"
+          >
+            <text class="tool-btn__text">清空</text>
+          </view>
+
+          <view
+            class="save-btn"
+            :class="{ 'save-btn--disabled': saving }"
+            @click="handleSave"
+          >
+            <text class="save-btn__text">{{ saving ? "保存中..." : "完成保存" }}</text>
           </view>
         </view>
       </view>
 
-      <view class="toolbar-right">
-        <view class="color-group">
-          <view
-            v-for="c in PEN_COLORS"
-            :key="c"
-            class="color-dot"
-            :class="{ 'color-dot--active': !eraserMode && activeColor === c }"
-            :style="{ backgroundColor: c }"
-            @click="selectPen(c)"
+      <!-- 画布容器：悬浮控制条作为兄弟节点渲染，防止被 canvas-stage 的 @touchstart.prevent 吞掉点击 -->
+      <view class="stage-wrap">
+        <view
+          class="canvas-stage"
+          @touchstart.stop.prevent="onTouchStart"
+          @touchmove.stop.prevent="onTouchMove"
+          @touchend.stop="onTouchEnd"
+          @touchcancel.stop="onTouchEnd"
+          @mousedown="onMouseDown"
+          @mousemove="onMouseMove"
+          @mouseup="onMouseUp"
+          @mouseleave="onMouseUp"
+        >
+          <canvas
+            v-if="canvasWidth > 0 && canvasHeight > 0"
+            id="drawAnswerCanvas"
+            canvas-id="drawAnswerCanvas"
+            class="draw-canvas"
+            :style="{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }"
+            :disable-scroll="true"
           />
+          <view v-if="!hasDrawn && !handMode" class="canvas-placeholder">
+            <text class="canvas-placeholder__text">
+              写至边缘会自动延申画布 · 支持双指缩放平移或点击底部延申
+            </text>
+          </view>
         </view>
 
-        <view
-          class="tool-btn"
-          :class="{ 'tool-btn--active': eraserMode }"
-          @click="toggleEraser"
-        >
-          <text class="tool-btn__text">橡皮</text>
-        </view>
-        <view
-          class="tool-btn"
-          :class="{ 'tool-btn--disabled': strokes.length === 0 || saving }"
-          @click="undoStroke"
-        >
-          <text class="tool-btn__text">撤销</text>
-        </view>
-        <view
-          class="tool-btn"
-          :class="{ 'tool-btn--disabled': strokes.length === 0 || saving }"
-          @click="clearBoard"
-        >
-          <text class="tool-btn__text">清空</text>
+        <!-- 左下角自动延申与缩放悬浮条 -->
+        <view class="stage-hud">
+          <view class="hud-btn" @click="extendPaper('down')">
+            <text class="hud-btn__text">↓ 向下延申</text>
+          </view>
+          <view class="hud-btn" @click="extendPaper('right')">
+            <text class="hud-btn__text">→ 向右延申</text>
+          </view>
+          <view class="hud-divider" />
+          <view class="hud-icon-btn" @click="adjustZoom(-0.2)">
+            <app-icon name="zoom-out" size="13" color="#475569" />
+          </view>
+          <text class="hud-zoom-label">{{ Math.round(camera.zoom * 100) }}%</text>
+          <view class="hud-icon-btn" @click="adjustZoom(0.2)">
+            <app-icon name="zoom-in" size="13" color="#475569" />
+          </view>
+          <view class="hud-btn" @click="resetViewport">
+            <text class="hud-btn__text">复位</text>
+          </view>
         </view>
 
-        <view
-          class="save-btn"
-          :class="{ 'save-btn--disabled': saving }"
-          @click="handleSave"
-        >
-          <text class="save-btn__text">{{ saving ? "保存中..." : "完成保存" }}</text>
+        <!-- 画布自动延申轻量提示 -->
+        <view v-if="extendHint" class="extend-toast">
+          <text class="extend-toast__text">{{ extendHint }}</text>
         </view>
       </view>
-    </view>
 
-    <!-- 纯净横屏绘制区（事件绑定在外层 view，避免 uni-canvas 修饰符事件对象异常） -->
-    <view
-      class="canvas-stage"
-      @touchstart.stop.prevent="onTouchStart"
-      @touchmove.stop.prevent="onTouchMove"
-      @touchend.stop="onTouchEnd"
-      @touchcancel.stop="onTouchEnd"
-      @mousedown="onMouseDown"
-      @mousemove="onMouseMove"
-      @mouseup="onMouseUp"
-      @mouseleave="onMouseUp"
-    >
-      <canvas
-        v-if="canvasWidth > 0 && canvasHeight > 0"
-        id="drawAnswerCanvas"
-        canvas-id="drawAnswerCanvas"
-        class="draw-canvas"
-        :style="{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }"
-        :disable-scroll="true"
-      />
-      <view v-if="!hasDrawn" class="canvas-placeholder">
-        <text class="canvas-placeholder__text">请在此横屏空白区书写解题过程</text>
-      </view>
-    </view>
-
-    <!-- 点击顶部题干可查看完整公式排版 -->
-    <view v-if="showStemModal" class="stem-modal-mask" @click="showStemModal = false">
-      <view class="stem-modal" @click.stop>
-        <view class="stem-modal__head">
-          <text class="stem-modal__title">当前题目</text>
-          <text class="stem-modal__close" @click="showStemModal = false">收起</text>
-        </view>
-        <view class="stem-modal__body">
-          <math-text :text="stem" />
+      <!-- 点击顶部题干可查看完整公式排版 -->
+      <view v-if="showStemModal" class="stem-modal-mask" @click="showStemModal = false">
+        <view class="stem-modal" @click.stop>
+          <view class="stem-modal__head">
+            <text class="stem-modal__title">当前题目</text>
+            <text class="stem-modal__close" @click="showStemModal = false">收起</text>
+          </view>
+          <view class="stem-modal__body">
+            <math-text :text="stem" />
+          </view>
         </view>
       </view>
     </view>
@@ -102,7 +151,7 @@
 
 <script setup lang="ts">
 import { onBackPress, onLoad, onShow, onUnload } from "@dcloudio/uni-app";
-import { getCurrentInstance, nextTick } from "vue";
+import { getCurrentInstance, nextTick, reactive } from "vue";
 import { AppQuizAPI } from "@/api/guoguanla";
 import { getErrorMessage } from "@/utils/error";
 import { lockLandscapeOrientation, lockPortraitOrientation } from "@/utils/orientation";
@@ -126,6 +175,7 @@ interface Point {
 interface Stroke {
   color: string;
   width: number;
+  eraser?: boolean;
   points: Point[];
 }
 
@@ -136,8 +186,21 @@ interface StageRect {
   height: number;
 }
 
+interface TouchPointLike {
+  x?: number;
+  y?: number;
+  clientX?: number;
+  clientY?: number;
+  pageX?: number;
+  pageY?: number;
+}
+
 const PEN_COLORS = ["#111827", "#2563eb", "#dc2626"];
 const ACTIVE_ESSAY_PROMPT_KEY = "ggl_active_essay_prompt";
+const MIN_ZOOM = 0.45;
+const MAX_ZOOM = 2.4;
+const MAX_WORLD_SIZE = 4200;
+const MAX_EXPORT_DIM = 1800;
 
 const instance = getCurrentInstance()?.proxy;
 const toast = useToast();
@@ -149,25 +212,48 @@ const answerText = ref("");
 
 const activeColor = ref("#111827");
 const eraserMode = ref(false);
+const handMode = ref(false);
 const strokes = ref<Stroke[]>([]);
 const hasDrawn = ref(false);
 const saving = ref(false);
 const showStemModal = ref(false);
+const extendHint = ref("");
 
 const canvasWidth = ref(0);
 const canvasHeight = ref(0);
+const worldWidth = ref(0);
+const worldHeight = ref(0);
+const exportCanvasW = ref(0);
+const exportCanvasH = ref(0);
+
+const camera = reactive({
+  panX: 0,
+  panY: 0,
+  zoom: 1,
+});
+
 let stageRect: StageRect = { left: 0, top: 0, width: 0, height: 0 };
 let ctx: UniApp.CanvasContext | null = null;
 let drawing = false;
 let lastPoint: Point | null = null;
 let currentStroke: Stroke | null = null;
+let strokeStartedAt = 0;
+let strokeMaxWorldX = 0;
+let strokeMaxWorldY = 0;
 let pendingPoints: Point[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
+let redrawTimer: ReturnType<typeof setTimeout> | null = null;
+let extendHintTimer: ReturnType<typeof setTimeout> | null = null;
 let lastTouchTs = 0;
 let mouseActive = false;
+let singlePanning = false;
+let singlePanLast: Point | null = null;
+let gestureActive = false;
+let ignoreRemainingFinger = false;
+let gestureStartDist = 1;
+let gestureStartZoom = 1;
+let gestureAnchorWorld: Point = { x: 0, y: 0 };
 let measureTimers: ReturnType<typeof setTimeout>[] = [];
-
-
 
 function clearTimers(): void {
   measureTimers.forEach((t) => clearTimeout(t));
@@ -176,6 +262,25 @@ function clearTimers(): void {
     clearTimeout(flushTimer);
     flushTimer = null;
   }
+  if (redrawTimer !== null) {
+    clearTimeout(redrawTimer);
+    redrawTimer = null;
+  }
+  if (extendHintTimer !== null) {
+    clearTimeout(extendHintTimer);
+    extendHintTimer = null;
+  }
+}
+
+function notifyExtend(msg: string): void {
+  extendHint.value = msg;
+  if (extendHintTimer !== null) {
+    clearTimeout(extendHintTimer);
+  }
+  extendHintTimer = setTimeout(() => {
+    extendHint.value = "";
+    extendHintTimer = null;
+  }, 1600);
 }
 
 function refreshStageRect(): void {
@@ -214,9 +319,13 @@ function measureCanvas(): void {
         width: w,
         height: h,
       };
+      if (worldWidth.value < w) worldWidth.value = w;
+      if (worldHeight.value < h) worldHeight.value = h;
+
       if (w !== canvasWidth.value || h !== canvasHeight.value) {
         canvasWidth.value = w;
         canvasHeight.value = h;
+        clampPan();
         void nextTick(() => {
           ctx = uni.createCanvasContext("drawAnswerCanvas", instance);
           redrawAll();
@@ -233,10 +342,21 @@ function onWindowResize(): void {
 function selectPen(color: string): void {
   activeColor.value = color;
   eraserMode.value = false;
+  handMode.value = false;
 }
 
 function toggleEraser(): void {
   eraserMode.value = !eraserMode.value;
+  if (eraserMode.value) {
+    handMode.value = false;
+  }
+}
+
+function toggleHandMode(): void {
+  handMode.value = !handMode.value;
+  if (handMode.value) {
+    eraserMode.value = false;
+  }
 }
 
 function getStrokeColor(): string {
@@ -247,19 +367,62 @@ function getStrokeWidth(): number {
   return eraserMode.value ? 18 : 3;
 }
 
-function clampPoint(x: number, y: number): Point {
-  const maxX = canvasWidth.value > 0 ? canvasWidth.value : 9999;
-  const maxY = canvasHeight.value > 0 ? canvasHeight.value : 9999;
+function clampPan(): void {
+  const cw = canvasWidth.value || stageRect.width || 600;
+  const ch = canvasHeight.value || stageRect.height || 320;
+  const scaledW = Math.max(cw, worldWidth.value) * camera.zoom;
+  const scaledH = Math.max(ch, worldHeight.value) * camera.zoom;
+  const minX = Math.min(24, cw - scaledW - 36);
+  const maxX = 36;
+  const minY = Math.min(24, ch - scaledH - 36);
+  const maxY = 36;
+  camera.panX = Math.max(minX, Math.min(maxX, camera.panX));
+  camera.panY = Math.max(minY, Math.min(maxY, camera.panY));
+}
+
+function screenToWorld(sx: number, sy: number): Point {
   return {
-    x: Math.max(0, Math.min(maxX, x)),
-    y: Math.max(0, Math.min(maxY, y)),
+    x: Math.max(0, Math.min(MAX_WORLD_SIZE, (sx - camera.panX) / camera.zoom)),
+    y: Math.max(0, Math.min(MAX_WORLD_SIZE, (sy - camera.panY) / camera.zoom)),
   };
 }
 
-function extractPoint(e: unknown): Point | null {
+function worldToScreen(pt: Point): Point {
+  return {
+    x: camera.panX + pt.x * camera.zoom,
+    y: camera.panY + pt.y * camera.zoom,
+  };
+}
+
+function ensurePaperCovers(wx: number, wy: number): boolean {
+  let grew = false;
+  if (wx > worldWidth.value - 64 && worldWidth.value < MAX_WORLD_SIZE) {
+    worldWidth.value = Math.min(MAX_WORLD_SIZE, Math.max(worldWidth.value + 320, Math.ceil((wx + 320) / 80) * 80));
+    grew = true;
+  }
+  if (wy > worldHeight.value - 56 && worldHeight.value < MAX_WORLD_SIZE) {
+    worldHeight.value = Math.min(MAX_WORLD_SIZE, Math.max(worldHeight.value + 240, Math.ceil((wy + 240) / 80) * 80));
+    grew = true;
+  }
+  return grew;
+}
+
+function touchToStagePoint(t: TouchPointLike): Point | null {
+  const cx = t.clientX ?? t.pageX;
+  const cy = t.clientY ?? t.pageY;
+  if (typeof cx === "number" && typeof cy === "number") {
+    return { x: cx - stageRect.left, y: cy - stageRect.top };
+  }
+  if (typeof t.x === "number" && typeof t.y === "number") {
+    return { x: t.x, y: t.y };
+  }
+  return null;
+}
+
+function extractScreenPoint(e: unknown): Point | null {
   const evt = e as {
-    touches?: Array<{ x?: number; y?: number; clientX?: number; clientY?: number; pageX?: number; pageY?: number }>;
-    changedTouches?: Array<{ x?: number; y?: number; clientX?: number; clientY?: number; pageX?: number; pageY?: number }>;
+    touches?: TouchPointLike[];
+    changedTouches?: TouchPointLike[];
     detail?: { x?: number; y?: number };
     clientX?: number;
     clientY?: number;
@@ -268,54 +431,79 @@ function extractPoint(e: unknown): Point | null {
   };
   const touch = evt?.touches?.[0] || evt?.changedTouches?.[0];
   if (touch) {
-    const cx = touch.clientX ?? touch.pageX;
-    const cy = touch.clientY ?? touch.pageY;
-    if (typeof cx === "number" && typeof cy === "number") {
-      return clampPoint(cx - stageRect.left, cy - stageRect.top);
-    }
-    if (typeof touch.x === "number" && typeof touch.y === "number") {
-      return clampPoint(touch.x, touch.y);
-    }
+    const pt = touchToStagePoint(touch);
+    if (pt) return pt;
   }
   if (typeof evt?.clientX === "number" && typeof evt?.clientY === "number") {
-    return clampPoint(evt.clientX - stageRect.left, evt.clientY - stageRect.top);
+    return { x: evt.clientX - stageRect.left, y: evt.clientY - stageRect.top };
   }
   if (typeof evt?.pageX === "number" && typeof evt?.pageY === "number") {
-    return clampPoint(evt.pageX - stageRect.left, evt.pageY - stageRect.top);
+    return { x: evt.pageX - stageRect.left, y: evt.pageY - stageRect.top };
   }
   if (evt?.detail && typeof evt.detail.x === "number" && typeof evt.detail.y === "number") {
-    return clampPoint(evt.detail.x - stageRect.left, evt.detail.y - stageRect.top);
+    return { x: evt.detail.x - stageRect.left, y: evt.detail.y - stageRect.top };
   }
   return null;
 }
 
-function redrawAll(): void {
-  if (!ctx || canvasWidth.value <= 0 || canvasHeight.value <= 0) return;
-  ctx.setFillStyle("#ffffff");
-  ctx.fillRect(0, 0, canvasWidth.value, canvasHeight.value);
-
-  for (const s of strokes.value) {
+function drawStrokeList(
+  targetCtx: UniApp.CanvasContext,
+  list: Stroke[],
+  mapPoint: (pt: Point) => Point,
+  scale: number,
+): void {
+  for (const s of list) {
     if (!s.points.length) continue;
-    ctx.setStrokeStyle(s.color);
-    ctx.setFillStyle(s.color);
-    ctx.setLineWidth(s.width);
-    ctx.setLineCap("round");
-    ctx.setLineJoin("round");
+    const strokeW = Math.max(1, s.width * scale);
+    targetCtx.setStrokeStyle(s.color);
+    targetCtx.setFillStyle(s.color);
+    targetCtx.setLineWidth(strokeW);
+    targetCtx.setLineCap("round");
+    targetCtx.setLineJoin("round");
 
     if (s.points.length === 1) {
-      ctx.beginPath();
-      ctx.arc(s.points[0].x, s.points[0].y, s.width / 2, 0, Math.PI * 2);
-      ctx.fill();
+      const p0 = mapPoint(s.points[0]);
+      targetCtx.beginPath();
+      targetCtx.arc(p0.x, p0.y, strokeW / 2, 0, Math.PI * 2);
+      targetCtx.fill();
     } else {
-      ctx.beginPath();
-      ctx.moveTo(s.points[0].x, s.points[0].y);
+      const p0 = mapPoint(s.points[0]);
+      targetCtx.beginPath();
+      targetCtx.moveTo(p0.x, p0.y);
       for (let i = 1; i < s.points.length; i += 1) {
-        ctx.lineTo(s.points[i].x, s.points[i].y);
+        const pi = mapPoint(s.points[i]);
+        targetCtx.lineTo(pi.x, pi.y);
       }
-      ctx.stroke();
+      targetCtx.stroke();
     }
   }
+}
+
+function redrawAll(): void {
+  if (!ctx || canvasWidth.value <= 0 || canvasHeight.value <= 0) return;
+
+  // 外围浅灰工作台背景，便于平移缩放时清晰识别可延申白纸边缘
+  ctx.setFillStyle("#eef2f6");
+  ctx.fillRect(0, 0, canvasWidth.value, canvasHeight.value);
+
+  const sheetW = Math.max(canvasWidth.value, worldWidth.value) * camera.zoom;
+  const sheetH = Math.max(canvasHeight.value, worldHeight.value) * camera.zoom;
+  ctx.setFillStyle("#ffffff");
+  ctx.fillRect(camera.panX, camera.panY, sheetW, sheetH);
+  ctx.setStrokeStyle("#cbd5e1");
+  ctx.setLineWidth(1);
+  ctx.strokeRect(camera.panX, camera.panY, sheetW, sheetH);
+
+  drawStrokeList(ctx, strokes.value, worldToScreen, camera.zoom);
   ctx.draw(false);
+}
+
+function scheduleRedraw(): void {
+  if (redrawTimer !== null) return;
+  redrawTimer = setTimeout(() => {
+    redrawTimer = null;
+    redrawAll();
+  }, 16);
 }
 
 function flushPendingSegments(): void {
@@ -328,55 +516,93 @@ function flushPendingSegments(): void {
   const pts = pendingPoints;
   pendingPoints = [];
 
+  const fromScreen = worldToScreen(lastPoint);
   ctx.setStrokeStyle(currentStroke.color);
-  ctx.setLineWidth(currentStroke.width);
+  ctx.setLineWidth(Math.max(1, currentStroke.width * camera.zoom));
   ctx.setLineCap("round");
   ctx.setLineJoin("round");
   ctx.beginPath();
-  ctx.moveTo(lastPoint.x, lastPoint.y);
+  ctx.moveTo(fromScreen.x, fromScreen.y);
   for (const pt of pts) {
-    ctx.lineTo(pt.x, pt.y);
+    const sp = worldToScreen(pt);
+    ctx.lineTo(sp.x, sp.y);
   }
   ctx.stroke();
   ctx.draw(true);
   lastPoint = pts[pts.length - 1];
 }
 
-function beginStroke(pt: Point): void {
+function abortTinyStrokeIfNeeded(): void {
+  if (!drawing) return;
+  if (Date.now() - strokeStartedAt < 220 && (!currentStroke || currentStroke.points.length <= 4)) {
+    if (flushTimer !== null) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    drawing = false;
+    lastPoint = null;
+    currentStroke = null;
+    pendingPoints = [];
+    hasDrawn.value = strokes.value.length > 0;
+    redrawAll();
+  } else {
+    endStroke();
+  }
+}
+
+function beginStroke(screenPt: Point): void {
   if (!ctx) {
     ctx = uni.createCanvasContext("drawAnswerCanvas", instance);
     redrawAll();
   }
+  const worldPt = screenToWorld(screenPt.x, screenPt.y);
+  const grew = !eraserMode.value && ensurePaperCovers(worldPt.x, worldPt.y);
+  if (grew && camera.zoom < 0.99) {
+    redrawAll();
+  }
+
   pendingPoints = [];
   if (flushTimer !== null) {
     clearTimeout(flushTimer);
     flushTimer = null;
   }
   drawing = true;
+  strokeStartedAt = Date.now();
+  strokeMaxWorldX = worldPt.x;
+  strokeMaxWorldY = worldPt.y;
   hasDrawn.value = true;
-  lastPoint = pt;
+  lastPoint = worldPt;
   currentStroke = {
     color: getStrokeColor(),
     width: getStrokeWidth(),
-    points: [pt],
+    eraser: eraserMode.value,
+    points: [worldPt],
   };
 
+  const sp = worldToScreen(worldPt);
   ctx.setFillStyle(currentStroke.color);
   ctx.beginPath();
-  ctx.arc(pt.x, pt.y, currentStroke.width / 2, 0, Math.PI * 2);
+  ctx.arc(sp.x, sp.y, Math.max(1, currentStroke.width * camera.zoom) / 2, 0, Math.PI * 2);
   ctx.fill();
   ctx.draw(true);
 }
 
-function moveStroke(pt: Point): void {
+function moveStroke(screenPt: Point): void {
   if (!drawing || !lastPoint || !currentStroke || !ctx) return;
+  const worldPt = screenToWorld(screenPt.x, screenPt.y);
   const refPt = pendingPoints[pendingPoints.length - 1] || lastPoint;
-  const dx = pt.x - refPt.x;
-  const dy = pt.y - refPt.y;
-  if (dx * dx + dy * dy < 2.25) return;
+  const dx = worldPt.x - refPt.x;
+  const dy = worldPt.y - refPt.y;
+  if ((dx * dx + dy * dy) * camera.zoom * camera.zoom < 2.25) return;
 
-  currentStroke.points.push(pt);
-  pendingPoints.push(pt);
+  if (!currentStroke.eraser) {
+    ensurePaperCovers(worldPt.x, worldPt.y);
+  }
+  if (worldPt.x > strokeMaxWorldX) strokeMaxWorldX = worldPt.x;
+  if (worldPt.y > strokeMaxWorldY) strokeMaxWorldY = worldPt.y;
+
+  currentStroke.points.push(worldPt);
+  pendingPoints.push(worldPt);
   if (flushTimer === null) {
     flushTimer = setTimeout(flushPendingSegments, 16);
   }
@@ -385,51 +611,236 @@ function moveStroke(pt: Point): void {
 function endStroke(): void {
   if (!drawing) return;
   flushPendingSegments();
-  if (currentStroke && currentStroke.points.length > 0) {
-    strokes.value = [...strokes.value, currentStroke];
+  const finished = currentStroke;
+  if (finished && finished.points.length > 0) {
+    strokes.value = [...strokes.value, finished];
   }
   drawing = false;
   lastPoint = null;
   currentStroke = null;
+
+  // 若笔迹贴近底部或右侧视口边缘，自动延申白纸并温和推进视野，释放新书写空间
+  if (finished && !finished.eraser && canvasWidth.value > 0 && canvasHeight.value > 0) {
+    const endScreen = worldToScreen({ x: strokeMaxWorldX, y: strokeMaxWorldY });
+    let shifted = false;
+    let hint = "";
+    if (endScreen.y > canvasHeight.value - 42 && worldHeight.value < MAX_WORLD_SIZE) {
+      const targetWorldH = Math.ceil(strokeMaxWorldY + canvasHeight.value / camera.zoom + 160);
+      worldHeight.value = Math.min(MAX_WORLD_SIZE, Math.max(worldHeight.value + 240, targetWorldH));
+      camera.panY -= Math.round(canvasHeight.value * 0.34);
+      shifted = true;
+      hint = "已自动向下延申画布";
+    } else if (endScreen.x > canvasWidth.value - 48 && worldWidth.value < MAX_WORLD_SIZE) {
+      const targetWorldW = Math.ceil(strokeMaxWorldX + canvasWidth.value / camera.zoom + 200);
+      worldWidth.value = Math.min(MAX_WORLD_SIZE, Math.max(worldWidth.value + 320, targetWorldW));
+      camera.panX -= Math.round(canvasWidth.value * 0.28);
+      shifted = true;
+      hint = "已自动向右延申画布";
+    }
+    if (shifted) {
+      clampPan();
+      redrawAll();
+      notifyExtend(hint);
+    }
+  }
+}
+
+function extendPaper(dir: "down" | "right"): void {
+  const cw = canvasWidth.value || 640;
+  const ch = canvasHeight.value || 320;
+  if (dir === "down") {
+    const stepScreen = Math.round(ch * 0.45);
+    const needWorldH = Math.ceil((ch - camera.panY + stepScreen) / camera.zoom + 120);
+    worldHeight.value = Math.min(MAX_WORLD_SIZE, Math.max(worldHeight.value + 260, needWorldH));
+    camera.panY -= stepScreen;
+    clampPan();
+    redrawAll();
+    notifyExtend("已向下延申画布");
+  } else {
+    const stepScreen = Math.round(cw * 0.42);
+    const needWorldW = Math.ceil((cw - camera.panX + stepScreen) / camera.zoom + 160);
+    worldWidth.value = Math.min(MAX_WORLD_SIZE, Math.max(worldWidth.value + 340, needWorldW));
+    camera.panX -= stepScreen;
+    clampPan();
+    redrawAll();
+    notifyExtend("已向右延申画布");
+  }
+}
+
+function adjustZoom(delta: number): void {
+  const cw = canvasWidth.value || 640;
+  const ch = canvasHeight.value || 320;
+  const oldZoom = camera.zoom;
+  const nextZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Number((oldZoom + delta).toFixed(2))));
+  if (nextZoom === oldZoom) return;
+  const centerWorldX = (cw / 2 - camera.panX) / oldZoom;
+  const centerWorldY = (ch / 2 - camera.panY) / oldZoom;
+  camera.zoom = nextZoom;
+  camera.panX = cw / 2 - centerWorldX * nextZoom;
+  camera.panY = ch / 2 - centerWorldY * nextZoom;
+  clampPan();
+  redrawAll();
+}
+
+function resetViewport(): void {
+  camera.zoom = 1;
+  camera.panX = 0;
+  camera.panY = 0;
+  redrawAll();
+}
+
+function getTwoTouches(e: unknown): [Point, Point] | null {
+  const evt = e as { touches?: TouchPointLike[] };
+  if (!evt?.touches || evt.touches.length < 2) return null;
+  const p0 = touchToStagePoint(evt.touches[0]);
+  const p1 = touchToStagePoint(evt.touches[1]);
+  if (!p0 || !p1) return null;
+  return [p0, p1];
 }
 
 function onTouchStart(e: unknown): void {
   if (saving.value) return;
   lastTouchTs = Date.now();
   refreshStageRect();
-  const pt = extractPoint(e);
-  if (pt) beginStroke(pt);
+
+  const pair = getTwoTouches(e);
+  if (pair) {
+    abortTinyStrokeIfNeeded();
+    singlePanning = false;
+    gestureActive = true;
+    ignoreRemainingFinger = false;
+    const [p0, p1] = pair;
+    const midX = (p0.x + p1.x) / 2;
+    const midY = (p0.y + p1.y) / 2;
+    gestureStartDist = Math.max(12, Math.hypot(p1.x - p0.x, p1.y - p0.y));
+    gestureStartZoom = camera.zoom;
+    gestureAnchorWorld = {
+      x: (midX - camera.panX) / camera.zoom,
+      y: (midY - camera.panY) / camera.zoom,
+    };
+    return;
+  }
+
+  ignoreRemainingFinger = false;
+  const pt = extractScreenPoint(e);
+  if (!pt) return;
+  if (handMode.value) {
+    singlePanning = true;
+    singlePanLast = pt;
+  } else {
+    beginStroke(pt);
+  }
 }
 
 function onTouchMove(e: unknown): void {
-  if (!drawing || saving.value) return;
+  if (saving.value) return;
   lastTouchTs = Date.now();
-  const pt = extractPoint(e);
-  if (pt) moveStroke(pt);
+
+  const pair = getTwoTouches(e);
+  if (pair) {
+    if (!gestureActive) {
+      abortTinyStrokeIfNeeded();
+      gestureActive = true;
+      const [p0, p1] = pair;
+      const midX = (p0.x + p1.x) / 2;
+      const midY = (p0.y + p1.y) / 2;
+      gestureStartDist = Math.max(12, Math.hypot(p1.x - p0.x, p1.y - p0.y));
+      gestureStartZoom = camera.zoom;
+      gestureAnchorWorld = {
+        x: (midX - camera.panX) / camera.zoom,
+        y: (midY - camera.panY) / camera.zoom,
+      };
+      return;
+    }
+    const [p0, p1] = pair;
+    const midX = (p0.x + p1.x) / 2;
+    const midY = (p0.y + p1.y) / 2;
+    const dist = Math.max(12, Math.hypot(p1.x - p0.x, p1.y - p0.y));
+    const nextZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, gestureStartZoom * (dist / gestureStartDist)));
+    camera.zoom = nextZoom;
+    camera.panX = midX - gestureAnchorWorld.x * nextZoom;
+    camera.panY = midY - gestureAnchorWorld.y * nextZoom;
+    clampPan();
+    scheduleRedraw();
+    return;
+  }
+
+  if (ignoreRemainingFinger || gestureActive) return;
+
+  const pt = extractScreenPoint(e);
+  if (!pt) return;
+  if (singlePanning && singlePanLast) {
+    camera.panX += pt.x - singlePanLast.x;
+    camera.panY += pt.y - singlePanLast.y;
+    singlePanLast = pt;
+    clampPan();
+    scheduleRedraw();
+    return;
+  }
+
+  if (drawing) {
+    moveStroke(pt);
+  }
 }
 
-function onTouchEnd(): void {
+function onTouchEnd(e: unknown): void {
   lastTouchTs = Date.now();
-  endStroke();
+  const evt = e as { touches?: TouchPointLike[] };
+  const remaining = evt?.touches?.length || 0;
+  if (gestureActive) {
+    if (remaining === 0) {
+      gestureActive = false;
+      ignoreRemainingFinger = false;
+    } else {
+      gestureActive = false;
+      ignoreRemainingFinger = true;
+    }
+    return;
+  }
+  if (remaining === 0) {
+    ignoreRemainingFinger = false;
+    singlePanning = false;
+    singlePanLast = null;
+    endStroke();
+  }
 }
 
 function onMouseDown(e: unknown): void {
   if (saving.value || Date.now() - lastTouchTs < 800) return;
   mouseActive = true;
   refreshStageRect();
-  const pt = extractPoint(e);
-  if (pt) beginStroke(pt);
+  const pt = extractScreenPoint(e);
+  if (!pt) return;
+  if (handMode.value) {
+    singlePanning = true;
+    singlePanLast = pt;
+  } else {
+    beginStroke(pt);
+  }
 }
 
 function onMouseMove(e: unknown): void {
-  if (!mouseActive || !drawing || saving.value || Date.now() - lastTouchTs < 800) return;
-  const pt = extractPoint(e);
-  if (pt) moveStroke(pt);
+  if (!mouseActive || saving.value || Date.now() - lastTouchTs < 800) return;
+  const pt = extractScreenPoint(e);
+  if (!pt) return;
+  if (singlePanning && singlePanLast) {
+    camera.panX += pt.x - singlePanLast.x;
+    camera.panY += pt.y - singlePanLast.y;
+    singlePanLast = pt;
+    clampPan();
+    scheduleRedraw();
+    return;
+  }
+  if (drawing) {
+    moveStroke(pt);
+  }
 }
 
 function onMouseUp(): void {
   if (!mouseActive) return;
   mouseActive = false;
+  singlePanning = false;
+  singlePanLast = null;
   endStroke();
 }
 
@@ -444,22 +855,88 @@ function clearBoard(): void {
   if (saving.value || (strokes.value.length === 0 && !hasDrawn.value)) return;
   strokes.value = [];
   hasDrawn.value = false;
-  redrawAll();
+  worldWidth.value = Math.max(0, canvasWidth.value);
+  worldHeight.value = Math.max(0, canvasHeight.value);
+  resetViewport();
 }
 
-function exportCanvasTempFile(): Promise<string> {
+async function exportCanvasTempFile(): Promise<string> {
+  // 计算所有有效笔迹的完整外接包围盒，确保自动延申或缩放后仍导出完整无裁剪解答图
+  const inkStrokes = strokes.value.filter((s) => !s.eraser && s.points.length > 0);
+  const scanList = inkStrokes.length > 0 ? inkStrokes : strokes.value;
+
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+
+  for (const s of scanList) {
+    const half = s.width / 2;
+    for (const pt of s.points) {
+      if (pt.x - half < minX) minX = pt.x - half;
+      if (pt.y - half < minY) minY = pt.y - half;
+      if (pt.x + half > maxX) maxX = pt.x + half;
+      if (pt.y + half > maxY) maxY = pt.y + half;
+    }
+  }
+
+  if (!Number.isFinite(minX)) {
+    minX = 0;
+    minY = 0;
+    maxX = canvasWidth.value || 800;
+    maxY = canvasHeight.value || 420;
+  }
+
+  const pad = 40;
+  const originX = Math.max(0, Math.floor(minX - pad));
+  const originY = Math.max(0, Math.floor(minY - pad));
+  const rawW = Math.max(480, Math.ceil(maxX + pad) - originX);
+  const rawH = Math.max(280, Math.ceil(maxY + pad) - originY);
+  const scale = Math.min(1, MAX_EXPORT_DIM / Math.max(rawW, rawH));
+  const outW = Math.max(120, Math.round(rawW * scale));
+  const outH = Math.max(120, Math.round(rawH * scale));
+
+  exportCanvasW.value = outW;
+  exportCanvasH.value = outH;
+  await nextTick();
+  await new Promise((resolve) => setTimeout(resolve, 80));
+
+  const exportCtx = uni.createCanvasContext("drawExportCanvas", instance);
+  exportCtx.setFillStyle("#ffffff");
+  exportCtx.fillRect(0, 0, outW, outH);
+  drawStrokeList(
+    exportCtx,
+    strokes.value,
+    (pt) => ({ x: (pt.x - originX) * scale, y: (pt.y - originY) * scale }),
+    scale,
+  );
+
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    const fallback = setTimeout(done, 700);
+    exportCtx.draw(false, () => {
+      clearTimeout(fallback);
+      setTimeout(done, 90);
+    });
+  });
+
   return new Promise((resolve, reject) => {
     const sys = uni.getSystemInfoSync();
     const dpr = Math.min(2, sys.pixelRatio || 2);
     uni.canvasToTempFilePath(
       {
-        canvasId: "drawAnswerCanvas",
+        canvasId: "drawExportCanvas",
         x: 0,
         y: 0,
-        width: canvasWidth.value,
-        height: canvasHeight.value,
-        destWidth: Math.round(canvasWidth.value * dpr),
-        destHeight: Math.round(canvasHeight.value * dpr),
+        width: outW,
+        height: outH,
+        destWidth: Math.round(outW * dpr),
+        destHeight: Math.round(outH * dpr),
         fileType: "png",
         quality: 0.92,
         success: (res) => resolve(res.tempFilePath),
@@ -537,6 +1014,8 @@ async function handleSave(): Promise<void> {
     toast.error(getErrorMessage(err, "保存手写解答失败，请重试"));
   } finally {
     saving.value = false;
+    exportCanvasW.value = 0;
+    exportCanvasH.value = 0;
   }
 }
 
@@ -596,7 +1075,25 @@ onUnload(() => {
 </script>
 
 <style lang="scss" scoped>
+.draw-root {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.draw-export-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
 .draw-page {
+  position: relative;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   width: 100vw;
@@ -608,13 +1105,13 @@ onUnload(() => {
 .draw-toolbar {
   display: flex;
   flex-shrink: 0;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
   justify-content: space-between;
   height: 48px;
   padding-top: env(safe-area-inset-top);
-  padding-right: max(14px, env(safe-area-inset-right));
-  padding-left: max(14px, env(safe-area-inset-left));
+  padding-right: max(12px, env(safe-area-inset-right));
+  padding-left: max(12px, env(safe-area-inset-left));
   background: #f7f8fa;
   border-bottom: 1px solid #e5e7eb;
 }
@@ -706,7 +1203,10 @@ onUnload(() => {
 }
 
 .tool-btn {
-  padding: 5px 10px;
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  padding: 5px 9px;
   background: #ffffff;
   border: 1px solid #d1d5db;
   border-radius: 8px;
@@ -748,13 +1248,22 @@ onUnload(() => {
   color: #ffffff;
 }
 
+.stage-wrap {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .canvas-stage {
   position: relative;
   flex: 1;
   width: 100%;
+  height: 100%;
   min-height: 0;
   overflow: hidden;
-  background: #ffffff;
+  background: #eef2f6;
 }
 
 .draw-canvas {
@@ -770,12 +1279,91 @@ onUnload(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0 24px;
   pointer-events: none;
 }
 
 .canvas-placeholder__text {
-  font-size: 14px;
-  color: #cbd5e1;
+  font-size: 13px;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.stage-hud {
+  position: absolute;
+  bottom: max(10px, env(safe-area-inset-bottom));
+  left: max(14px, env(safe-area-inset-left));
+  z-index: 12;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 5px 10px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+.hud-btn {
+  padding: 3px 8px;
+  background: #f8fafc;
+  border-radius: 999px;
+
+  &:active {
+    background: #dcfce7;
+  }
+}
+
+.hud-btn__text {
+  font-size: 11px;
+  font-weight: 500;
+  color: #334155;
+}
+
+.hud-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: #f8fafc;
+  border-radius: 999px;
+
+  &:active {
+    background: #e2e8f0;
+  }
+}
+
+.hud-divider {
+  width: 1px;
+  height: 14px;
+  background: #e2e8f0;
+}
+
+.hud-zoom-label {
+  min-width: 34px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  text-align: center;
+}
+
+.extend-toast {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  z-index: 15;
+  padding: 4px 12px;
+  pointer-events: none;
+  background: rgba(22, 163, 74, 0.92);
+  border-radius: 999px;
+  transform: translateX(-50%);
+}
+
+.extend-toast__text {
+  font-size: 12px;
+  font-weight: 500;
+  color: #ffffff;
 }
 
 .stem-modal-mask {

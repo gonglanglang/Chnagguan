@@ -947,11 +947,19 @@ onMounted(async () => {
 
           <!-- 学生端可滚动内容区 -->
           <div class="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
-            <!-- 进度条卡 -->
-            <div class="rounded-xl bg-white p-3 shadow-2xs">
-              <div class="mb-2 flex items-center justify-between text-xs">
-                <span class="font-semibold text-slate-800">第 1 / {{ selectedGate?.questionCount || 3 }} 题</span>
-                <div class="flex items-center gap-1">
+            <!-- 题干卡（题号直接置于题目前方，取消顶部进度条） -->
+            <div class="rounded-xl bg-white p-3.5 shadow-2xs">
+              <div class="flex flex-wrap items-center justify-between gap-1.5 text-[11px] text-slate-400">
+                <div class="flex min-w-0 items-center gap-1.5">
+                  <span class="shrink-0 rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-[11px] font-bold text-green-700">
+                    第 1 / {{ selectedGate?.questionCount || 3 }} 题
+                  </span>
+                  <span class="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">
+                    {{ selectedRealm?.realmName || "练气" }}
+                  </span>
+                  <span class="truncate">{{ selectedChapter?.name || "章节练习" }}</span>
+                </div>
+                <div class="flex shrink-0 items-center gap-1">
                   <span
                     v-if="form.questionFormat === 'ESSAY'"
                     class="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700"
@@ -962,19 +970,6 @@ onMounted(async () => {
                     答对 {{ selectedGate?.passCount || 2 }} 题过关
                   </span>
                 </div>
-              </div>
-              <div class="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-                <div class="h-full w-1/3 rounded-full bg-[#16a34a]" />
-              </div>
-            </div>
-
-            <!-- 题干卡 -->
-            <div class="rounded-xl bg-white p-3.5 shadow-2xs">
-              <div class="flex items-center gap-2 text-[11px] text-slate-400">
-                <span class="rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">
-                  {{ selectedRealm?.realmName || "练气" }}
-                </span>
-                <span class="truncate">{{ selectedChapter?.name || "章节练习" }}</span>
               </div>
               <div class="mt-2.5 text-[15px] font-medium leading-relaxed text-slate-800">
                 <MathFormulaText :text="phoneStem" />
