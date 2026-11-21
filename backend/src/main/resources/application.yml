@@ -54,8 +54,8 @@ guoguanla:
     token: ${GITHUB_TOKEN:}
   oss:
     enabled: ${OSS_ENABLED:false}
-    endpoint: ${OSS_ENDPOINT:oss-cn-beijing.aliyuncs.com}
-    bucket: ${OSS_BUCKET:chuangguan2026}
+    endpoint: ${OSS_ENDPOINT:oss-cn-shenzhen.aliyuncs.com}
+    bucket: ${OSS_BUCKET:chuangguang}
     access-key-id: ${OSS_ACCESS_KEY_ID:}
     access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
     dir-prefix: ${OSS_DIR_PREFIX:essay-answers}

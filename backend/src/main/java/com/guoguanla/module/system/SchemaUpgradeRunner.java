@@ -60,6 +60,7 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
         ensureColumn("user_essay_answer", "realm_code", "VARCHAR(24) NOT NULL DEFAULT ''");
         ensureColumn("user_essay_answer", "gate_id", "BIGINT UNSIGNED DEFAULT NULL");
         ensureColumn("user_essay_answer", "teacher_image_key", "VARCHAR(512) DEFAULT NULL");
+        ensureColumn("edu_video_lesson", "cover_image_key", "VARCHAR(512) NOT NULL DEFAULT ''");
         ensureColumn("edu_video_lesson", "notes_attachments", "TEXT DEFAULT NULL");
 
         seedDefaultRealms();
@@ -149,6 +150,7 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
                   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
                   series_id BIGINT UNSIGNED NOT NULL,
                   title VARCHAR(128) NOT NULL,
+                  cover_image_key VARCHAR(512) NOT NULL DEFAULT '',
                   video_key VARCHAR(512) NOT NULL DEFAULT '',
                   duration_sec INT NOT NULL DEFAULT 0,
                   class_notes MEDIUMTEXT DEFAULT NULL,

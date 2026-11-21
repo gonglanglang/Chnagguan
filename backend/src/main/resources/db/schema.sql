@@ -282,6 +282,7 @@ CREATE TABLE IF NOT EXISTS edu_video_lesson (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   series_id BIGINT UNSIGNED NOT NULL COMMENT '所属系列ID',
   title VARCHAR(128) NOT NULL COMMENT '节标题',
+  cover_image_key VARCHAR(512) NOT NULL DEFAULT '' COMMENT '小节封面图OSS对象键或相对路径',
   video_key VARCHAR(512) NOT NULL DEFAULT '' COMMENT '视频OSS对象键或相对路径',
   duration_sec INT NOT NULL DEFAULT 0 COMMENT '时长秒数',
   class_notes MEDIUMTEXT DEFAULT NULL COMMENT '课堂笔记备注',

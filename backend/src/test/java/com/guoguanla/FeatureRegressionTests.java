@@ -538,6 +538,7 @@ class FeatureRegressionTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "title", "第3节：分片视频与附件讲义",
+                                "coverImageKey", coverKey,
                                 "videoKey", mergedVideoKey,
                                 "classNotes", "请结合附件讲义预习重点。",
                                 "notesAttachments", List.of(Map.of(
@@ -554,6 +555,7 @@ class FeatureRegressionTests {
         mockMvc.perform(get("/api/app/videos/series/" + seriesId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.lessons.length()").value(3))
+                .andExpect(jsonPath("$.data.lessons[2].coverImageUrl").isNotEmpty())
                 .andExpect(jsonPath("$.data.lessons[2].classNotes").value("请结合附件讲义预习重点。"))
                 .andExpect(jsonPath("$.data.lessons[2].notesAttachments[0].name").value("有理数讲义.pdf"))
                 .andExpect(jsonPath("$.data.lessons[2].notesAttachments[0].url").isNotEmpty());

@@ -232,6 +232,7 @@ public class VideoService {
 
     private void applyLessonReq(EduVideoLesson lesson, VideoDTO.LessonSaveReq req) {
         lesson.setTitle(req.getTitle().trim());
+        lesson.setCoverImageKey(req.getCoverImageKey() == null ? "" : req.getCoverImageKey().trim());
         lesson.setVideoKey(req.getVideoKey().trim());
         lesson.setDurationSec(req.getDurationSec() == null ? 0 : Math.max(0, req.getDurationSec()));
         lesson.setClassNotes(req.getClassNotes() == null ? "" : req.getClassNotes());
@@ -269,6 +270,8 @@ public class VideoService {
                 .id(l.getId())
                 .seriesId(l.getSeriesId())
                 .title(l.getTitle())
+                .coverImageKey(l.getCoverImageKey() == null ? "" : l.getCoverImageKey())
+                .coverImageUrl(ossService.resolveViewUrl(l.getCoverImageKey(), baseOrigin))
                 .videoKey(l.getVideoKey() == null ? "" : l.getVideoKey())
                 .videoUrl(ossService.resolveViewUrl(l.getVideoKey(), baseOrigin))
                 .durationSec(l.getDurationSec() == null ? 0 : l.getDurationSec())

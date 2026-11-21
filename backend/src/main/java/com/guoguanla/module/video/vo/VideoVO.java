@@ -41,6 +41,8 @@ public class VideoVO {
         private Long id;
         private Long seriesId;
         private String title;
+        private String coverImageKey;
+        private String coverImageUrl;
         private String videoKey;
         private String videoUrl;
         private Integer durationSec;

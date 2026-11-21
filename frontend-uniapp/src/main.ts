@@ -8,6 +8,7 @@ import "katex/dist/katex.min.css";
 import "@/styles/index.scss";
 
 import { setupPinia, useUserStore } from "@/store";
+import { setupOrientationGuard } from "@/utils/orientation";
 import { setUnauthorizedHandler } from "@/utils/request";
 
 /**
@@ -17,6 +18,7 @@ export function createApp() {
   const app = createSSRApp(App);
 
   setupPinia(app);
+  setupOrientationGuard();
   setUnauthorizedHandler(() => useUserStore().resetSession());
 
   return {

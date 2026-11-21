@@ -57,11 +57,10 @@
                   {{ item.realmName || "全境界" }}
                 </wd-tag>
               </view>
-              <text class="series-card__intro">
-                {{ item.intro || "精选同步精讲视频与配套课堂笔记，助你快速突破瓶颈" }}
-              </text>
-              <view class="series-card__foot">
-                <text class="series-card__foot-meta">含课程视频与课堂笔记</text>
+              <view class="series-card__summary-row">
+                <text class="series-card__intro">
+                  {{ item.intro || "同步精讲视频与配套课堂笔记" }}
+                </text>
                 <view class="series-card__go">
                   <text>开始学习</text>
                   <app-icon name="right" size="13" color="primary" />
@@ -276,38 +275,34 @@ onShow(() => {
   color: var(--color-text);
 }
 
-.series-card__intro {
-  display: -webkit-box;
-  margin-top: 10rpx;
-  overflow: hidden;
-  font-size: 25rpx;
-  line-height: 1.5;
-  color: var(--color-text-secondary);
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-.series-card__foot {
+.series-card__summary-row {
   display: flex;
+  gap: 16rpx;
   align-items: center;
   justify-content: space-between;
-  padding-top: 16rpx;
-  margin-top: 16rpx;
-  border-top: 1px solid var(--color-border-light);
+  margin-top: 12rpx;
 }
 
-.series-card__foot-meta {
-  font-size: 22rpx;
-  color: var(--color-text-muted);
+.series-card__intro {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 25rpx;
+  line-height: 1.4;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
 }
 
 .series-card__go {
-  display: flex;
+  display: inline-flex;
+  flex-shrink: 0;
   gap: 4rpx;
   align-items: center;
   font-size: 25rpx;
   font-weight: 600;
   color: var(--color-primary);
+  white-space: nowrap;
 }
 
 .load-more {

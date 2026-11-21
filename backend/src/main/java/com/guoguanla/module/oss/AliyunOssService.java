@@ -58,10 +58,10 @@ public class AliyunOssService {
     @Value("${guoguanla.oss.enabled:false}")
     private boolean ossEnabled;
 
-    @Value("${guoguanla.oss.endpoint:oss-cn-beijing.aliyuncs.com}")
+    @Value("${guoguanla.oss.endpoint:oss-cn-shenzhen.aliyuncs.com}")
     private String endpoint;
 
-    @Value("${guoguanla.oss.bucket:chuangguan2026}")
+    @Value("${guoguanla.oss.bucket:chuangguang}")
     private String bucket;
 
     @Value("${guoguanla.oss.access-key-id:}")

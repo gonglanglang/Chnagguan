@@ -41,8 +41,9 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, ref } from "vue";
+import { nextTick, onMounted, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
+import { syncOrientationForCurrentPage } from "@/utils/orientation";
 
 withDefaults(
   defineProps<{
@@ -81,7 +82,12 @@ function scrollToTop(): void {
   });
 }
 
+onMounted(() => {
+  syncOrientationForCurrentPage();
+});
+
 onShow(() => {
+  syncOrientationForCurrentPage();
   // #ifdef H5
   uni.pageScrollTo({ scrollTop: 0, duration: 0 });
   // #endif

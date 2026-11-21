@@ -14,6 +14,7 @@ import {
   uploadVideoPart,
   completeVideoMultipart,
   abortVideoMultipart,
+  uploadVideoCover,
   uploadNoteAttachment,
   type NoteAttachmentItem,
   type VideoSeriesItem,
@@ -38,7 +39,9 @@ const saving = ref(false);
 const videoUploading = ref(false);
 const uploadProgress = ref(0);
 const uploadStatusText = ref("");
+const coverUploading = ref(false);
 const attachmentUploading = ref(false);
+const coverInputRef = ref<HTMLInputElement | null>(null);
 const videoInputRef = ref<HTMLInputElement | null>(null);
 const attachmentInputRef = ref<HTMLInputElement | null>(null);
 const notesInputRef = ref<any>(null);
@@ -48,6 +51,8 @@ let activeUploadMeta: { uploadId: string; objectKey: string } | null = null;
 
 const form = reactive({
   title: "",
+  coverImageKey: "",
+  coverPreviewUrl: "",
   videoKey: "",
   videoPreviewUrl: "",
   durationSec: 0,
@@ -96,6 +101,8 @@ async function fetchDetail() {
 function openCreateLesson() {
   editLessonId.value = null;
   form.title = `第 ${lessons.value.length + 1} 节：`;
+  form.coverImageKey = "";
+  form.coverPreviewUrl = "";
   form.videoKey = "";
   form.videoPreviewUrl = "";
   form.durationSec = 0;
@@ -111,6 +118,8 @@ function openCreateLesson() {
 function openEditLesson(row: VideoLessonItem) {
   editLessonId.value = row.id;
   form.title = row.title;
+  form.coverImageKey = row.coverImageKey || "";
+  form.coverPreviewUrl = row.coverImageUrl || "";
   form.videoKey = row.videoKey || "";
   form.videoPreviewUrl = row.videoUrl || "";
   form.durationSec = row.durationSec || 0;
@@ -121,6 +130,34 @@ function openEditLesson(row: VideoLessonItem) {
   uploadProgress.value = 0;
   uploadStatusText.value = "";
   dialogVisible.value = true;
+}
+
+function triggerCoverPick() {
+  coverInputRef.value?.click();
+}
+
+function clearLessonCover() {
+  form.coverImageKey = "";
+  form.coverPreviewUrl = "";
+}
+
+async function onCoverFileChange(evt: Event) {
+  const input = evt.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+
+  coverUploading.value = true;
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await uploadVideoCover(fd);
+    form.coverImageKey = res.data.objectKey;
+    form.coverPreviewUrl = res.data.previewUrl;
+    ElMessage.success("小节封面上传成功");
+  } finally {
+    coverUploading.value = false;
+  }
 }
 
 function triggerVideoPick() {
@@ -340,6 +377,7 @@ async function handleSaveLesson() {
   try {
     const payload = {
       title: form.title.trim(),
+      coverImageKey: form.coverImageKey.trim(),
       videoKey: form.videoKey.trim(),
       durationSec: form.durationSec,
       classNotes: form.classNotes,
@@ -426,10 +464,14 @@ onBeforeUnmount(() => {
             <video
               v-if="item.videoUrl"
               :src="item.videoUrl"
+              :poster="item.coverImageUrl || series?.coverImageUrl || undefined"
               controls
               preload="metadata"
               class="h-44 w-full rounded-lg bg-black object-contain"
             />
+            <div v-if="item.coverImageUrl" class="mt-1.5 flex items-center gap-1.5 text-[11px] text-slate-500">
+              <span class="rounded bg-green-50 px-1.5 py-0.5 text-green-700">已设小节封面</span>
+            </div>
           </div>
 
           <div class="flex flex-col justify-between lg:col-span-8">
@@ -489,6 +531,41 @@ onBeforeUnmount(() => {
       <el-form label-width="92px">
         <el-form-item label="课时标题" required>
           <el-input v-model="form.title" placeholder="例如：第 1 节：有理数混合运算重难点突破" maxlength="100" />
+        </el-form-item>
+
+        <el-form-item label="小节封面">
+          <div class="flex flex-wrap items-center gap-4">
+            <el-image
+              v-if="form.coverPreviewUrl"
+              :src="form.coverPreviewUrl"
+              fit="cover"
+              class="h-20 w-36 rounded-lg border border-slate-200"
+            />
+            <div
+              v-else
+              class="flex h-20 w-36 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-xs text-slate-400"
+            >
+              16:9 小节封面
+            </div>
+            <div class="space-y-1.5">
+              <input
+                ref="coverInputRef"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                class="hidden"
+                @change="onCoverFileChange"
+              />
+              <div class="flex items-center gap-2">
+                <el-button :loading="coverUploading" plain @click="triggerCoverPick">
+                  {{ form.coverImageKey ? "更换小节封面" : "上传小节封面" }}
+                </el-button>
+                <el-button v-if="form.coverImageKey" link type="danger" @click="clearLessonCover">
+                  清除
+                </el-button>
+              </div>
+              <div class="text-xs text-slate-400">支持 PNG/JPG/WEBP；未设置时自动复用所属系列封面</div>
+            </div>
+          </div>
         </el-form-item>
 
         <el-form-item label="上传视频" required>
@@ -606,7 +683,7 @@ onBeforeUnmount(() => {
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" :disabled="videoUploading || attachmentUploading" @click="handleSaveLesson">
+        <el-button type="primary" :loading="saving" :disabled="coverUploading || videoUploading || attachmentUploading" @click="handleSaveLesson">
           保存课时
         </el-button>
       </template>

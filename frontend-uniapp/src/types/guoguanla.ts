@@ -198,6 +198,8 @@ export interface VideoLessonItem {
   id: number;
   seriesId: number;
   title: string;
+  coverImageKey?: string;
+  coverImageUrl?: string;
   videoKey: string;
   videoUrl: string;
   durationSec: number;

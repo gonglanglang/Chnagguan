@@ -13,6 +13,7 @@ public class EduVideoLesson {
     private Long id;
     private Long seriesId;
     private String title;
+    private String coverImageKey;
     private String videoKey;
     private Integer durationSec;
     private String classNotes;

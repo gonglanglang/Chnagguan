@@ -12,10 +12,11 @@
         <video
           :key="activeLesson.id"
           :src="activeLesson.videoUrl"
-          :poster="detail?.series.coverImageUrl || undefined"
+          :poster="activeLesson.coverImageUrl || detail?.series.coverImageUrl || undefined"
           controls
           show-center-play-btn
           class="player-video"
+          @fullscreenchange="onVideoFullscreenChange"
         />
       </view>
     </template>
@@ -59,13 +60,20 @@
             @click="selectLesson(lesson)"
           >
             <view class="lesson-row__left">
+              <image
+                v-if="lesson.coverImageUrl || detail.series.coverImageUrl"
+                :src="lesson.coverImageUrl || detail.series.coverImageUrl"
+                mode="aspectFill"
+                class="lesson-row__thumb"
+              />
               <view
+                v-else
                 class="lesson-row__no"
                 :class="{ 'lesson-row__no--active': activeLesson?.id === lesson.id }"
               >
                 {{ idx + 1 }}
               </view>
-              <text class="lesson-row__title">{{ lesson.title }}</text>
+              <text class="lesson-row__title">{{ idx + 1 }}. {{ lesson.title }}</text>
             </view>
             <view class="lesson-row__right">
               <text v-if="lesson.durationSec > 0" class="lesson-row__dur">
@@ -142,6 +150,7 @@ import { ref } from "vue";
 import { AppVideoAPI } from "@/api/guoguanla";
 import type { NoteAttachmentItem, VideoLessonItem, VideoSeriesDetail } from "@/types/guoguanla";
 import { getErrorMessage } from "@/utils/error";
+import { enforceOrientationRepeatedly } from "@/utils/orientation";
 
 definePage({
   name: "video-detail",
@@ -237,6 +246,12 @@ function openAttachment(att: NoteAttachmentItem): void {
   // #ifdef H5
   copyAttachmentUrl(att);
   // #endif
+}
+
+function onVideoFullscreenChange(e: { detail?: { fullScreen?: boolean } }): void {
+  if (!e?.detail?.fullScreen) {
+    enforceOrientationRepeatedly();
+  }
 }
 
 function selectLesson(lesson: VideoLessonItem): void {
@@ -385,6 +400,14 @@ onLoad((query) => {
     color: #ffffff;
     background: var(--color-primary);
   }
+}
+
+.lesson-row__thumb {
+  flex-shrink: 0;
+  width: 96rpx;
+  height: 58rpx;
+  background: #e2e8f0;
+  border-radius: 10rpx;
 }
 
 .lesson-row__title {

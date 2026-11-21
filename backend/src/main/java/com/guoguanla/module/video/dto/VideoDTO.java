@@ -37,6 +37,7 @@ public class VideoDTO {
     public static class LessonSaveReq {
         @NotBlank(message = "课时标题不能为空")
         private String title;
+        private String coverImageKey = "";
         @NotBlank(message = "请先上传课程视频")
         private String videoKey;
         private Integer durationSec = 0;

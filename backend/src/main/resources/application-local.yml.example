@@ -7,7 +7,7 @@ spring:
 guoguanla:
   oss:
     enabled: true
-    endpoint: oss-cn-beijing.aliyuncs.com
-    bucket: chuangguan2026
+    endpoint: oss-cn-shenzhen.aliyuncs.com
+    bucket: chuangguang
     access-key-id: your_oss_access_key_id
     access-key-secret: your_oss_access_key_secret

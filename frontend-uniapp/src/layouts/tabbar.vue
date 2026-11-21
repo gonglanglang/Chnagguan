@@ -33,6 +33,7 @@
 <script setup lang="ts">
 import { ref, nextTick, onMounted } from "vue";
 import { onShow } from "@dcloudio/uni-app";
+import { syncOrientationForCurrentPage } from "@/utils/orientation";
 
 const tabbarList = [
   { name: "/pages/index/index", title: "首页", icon: "gate-home" },
@@ -62,6 +63,7 @@ function handleTabbarChange({ value }: { value: string }) {
 
 onMounted(() => {
   syncActiveTab();
+  syncOrientationForCurrentPage();
 
   // #ifdef APP-PLUS
   uni.hideTabBar();
@@ -70,6 +72,7 @@ onMounted(() => {
 
 onShow(() => {
   syncActiveTab();
+  syncOrientationForCurrentPage();
 });
 </script>
 
