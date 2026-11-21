@@ -186,6 +186,14 @@ export interface VideoSeriesItem {
   updatedAt: string;
 }
 
+export interface NoteAttachmentItem {
+  name: string;
+  objectKey: string;
+  url: string;
+  size: number;
+  contentType: string;
+}
+
 export interface VideoLessonItem {
   id: number;
   seriesId: number;
@@ -194,6 +202,7 @@ export interface VideoLessonItem {
   videoUrl: string;
   durationSec: number;
   classNotes: string;
+  notesAttachments?: NoteAttachmentItem[];
   sortOrder: number;
   enabled: number;
   createdAt: string;

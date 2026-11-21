@@ -81,7 +81,7 @@
         </view>
       </view>
 
-      <!-- 当前课时课堂笔记 -->
+      <!-- 当前课时课堂笔记（备注 + 附件） -->
       <view v-if="activeLesson" class="section-card">
         <view class="section-card__head">
           <view class="section-card__title-wrap">
@@ -93,7 +93,44 @@
         <view v-if="activeLesson.classNotes" class="notes-body">
           <math-text :key="activeLesson.id" :text="activeLesson.classNotes" />
         </view>
-        <view v-else class="empty-tip">本节老师暂未添加文字课堂笔记</view>
+
+        <view
+          v-if="activeLesson.notesAttachments && activeLesson.notesAttachments.length > 0"
+          class="att-section"
+          :class="{ 'att-section--divided': Boolean(activeLesson.classNotes) }"
+        >
+          <text class="att-section__title">笔记附件（{{ activeLesson.notesAttachments.length }} 个）</text>
+          <view class="att-list">
+            <view
+              v-for="(att, idx) in activeLesson.notesAttachments"
+              :key="`${activeLesson.id}-att-${idx}`"
+              class="att-row"
+              @click="openAttachment(att)"
+            >
+              <view class="att-row__left">
+                <view class="att-row__icon">
+                  <app-icon
+                    :name="isImageAttachment(att) ? 'camera' : 'notes'"
+                    size="16"
+                    color="primary"
+                  />
+                </view>
+                <view class="att-row__meta">
+                  <text class="att-row__name">{{ att.name }}</text>
+                  <text class="att-row__size">{{ formatFileSize(att.size) }}</text>
+                </view>
+              </view>
+              <text class="att-row__action">{{ isImageAttachment(att) ? "预览" : "打开" }}</text>
+            </view>
+          </view>
+        </view>
+
+        <view
+          v-if="!activeLesson.classNotes && (!activeLesson.notesAttachments || activeLesson.notesAttachments.length === 0)"
+          class="empty-tip"
+        >
+          本节老师暂未添加课堂笔记与附件
+        </view>
       </view>
     </view>
   </app-page-shell>
@@ -103,7 +140,7 @@
 import { onLoad } from "@dcloudio/uni-app";
 import { ref } from "vue";
 import { AppVideoAPI } from "@/api/guoguanla";
-import type { VideoLessonItem, VideoSeriesDetail } from "@/types/guoguanla";
+import type { NoteAttachmentItem, VideoLessonItem, VideoSeriesDetail } from "@/types/guoguanla";
 import { getErrorMessage } from "@/utils/error";
 
 definePage({
@@ -125,6 +162,81 @@ function formatDuration(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function formatFileSize(bytes?: number): string {
+  const n = Math.max(0, Number(bytes || 0));
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isImageAttachment(att: NoteAttachmentItem): boolean {
+  const ct = (att.contentType || "").toLowerCase();
+  const name = (att.name || "").toLowerCase();
+  return ct.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/.test(name);
+}
+
+function copyAttachmentUrl(att: NoteAttachmentItem): void {
+  if (!att.url) {
+    toast.error("附件链接不可用");
+    return;
+  }
+  uni.setClipboardData({
+    data: att.url,
+    success: () => {
+      uni.showModal({
+        title: "已复制下载链接",
+        content: `已复制附件「${att.name}」的下载地址，可在系统浏览器粘贴打开或下载。`,
+        showCancel: false,
+      });
+    },
+  });
+}
+
+function openAttachment(att: NoteAttachmentItem): void {
+  if (!att.url) {
+    toast.error("附件链接已失效，请刷新页面重试");
+    return;
+  }
+  if (isImageAttachment(att)) {
+    const imgUrls = (activeLesson.value?.notesAttachments || [])
+      .filter((item) => isImageAttachment(item) && Boolean(item.url))
+      .map((item) => item.url);
+    uni.previewImage({
+      urls: imgUrls.length > 0 ? imgUrls : [att.url],
+      current: att.url,
+    });
+    return;
+  }
+
+  // #ifdef APP-PLUS || MP
+  uni.showLoading({ title: "正在打开附件..." });
+  uni.downloadFile({
+    url: att.url,
+    success: (dlRes) => {
+      if (dlRes.statusCode >= 200 && dlRes.statusCode < 300 && dlRes.tempFilePath) {
+        uni.openDocument({
+          filePath: dlRes.tempFilePath,
+          showMenu: true,
+          complete: () => uni.hideLoading(),
+          fail: () => copyAttachmentUrl(att),
+        });
+      } else {
+        uni.hideLoading();
+        copyAttachmentUrl(att);
+      }
+    },
+    fail: () => {
+      uni.hideLoading();
+      copyAttachmentUrl(att);
+    },
+  });
+  // #endif
+
+  // #ifdef H5
+  copyAttachmentUrl(att);
+  // #endif
 }
 
 function selectLesson(lesson: VideoLessonItem): void {
@@ -302,6 +414,96 @@ onLoad((query) => {
   line-height: 1.7;
   color: var(--color-text);
   white-space: pre-wrap;
+}
+
+.att-section {
+  margin-top: 8rpx;
+
+  &--divided {
+    padding-top: 20rpx;
+    margin-top: 20rpx;
+    border-top: 1px solid var(--color-border);
+  }
+}
+
+.att-section__title {
+  display: block;
+  margin-bottom: 12rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.att-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.att-row {
+  display: flex;
+  gap: 12rpx;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16rpx 18rpx;
+  background: var(--color-bg-page);
+  border: 1px solid var(--color-border);
+  border-radius: 14rpx;
+
+  &:active {
+    opacity: 0.78;
+  }
+}
+
+.att-row__left {
+  display: flex;
+  flex: 1;
+  gap: 14rpx;
+  align-items: center;
+  min-width: 0;
+}
+
+.att-row__icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 56rpx;
+  height: 56rpx;
+  background: var(--color-primary-soft);
+  border-radius: 12rpx;
+}
+
+.att-row__meta {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4rpx;
+  min-width: 0;
+}
+
+.att-row__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 26rpx;
+  font-weight: 500;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.att-row__size {
+  font-size: 22rpx;
+  color: var(--color-text-muted);
+}
+
+.att-row__action {
+  flex-shrink: 0;
+  padding: 6rpx 16rpx;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+  border-radius: 999rpx;
 }
 
 .empty-tip {

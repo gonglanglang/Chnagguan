@@ -2,6 +2,8 @@ package com.guoguanla.module.video;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.guoguanla.common.exception.BizException;
 import com.guoguanla.common.result.ErrorCode;
 import com.guoguanla.common.result.PageResult;
@@ -20,8 +22,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -32,6 +36,7 @@ public class VideoService {
     private final EduVideoLessonMapper lessonMapper;
     private final RealmHelperService realmHelper;
     private final AliyunOssService ossService;
+    private final ObjectMapper objectMapper;
 
     public PageResult<VideoVO.SeriesVO> pageSeries(
             String realmCode,
@@ -185,6 +190,37 @@ public class VideoService {
         return ossService.uploadCourseVideo(file, baseOrigin);
     }
 
+    public AliyunOssService.MultipartInitResult initVideoMultipart(VideoDTO.VideoMultipartInitReq req) {
+        return ossService.initCourseVideoMultipart(req.getFileName(), req.getContentType(), req.getFileSize());
+    }
+
+    public AliyunOssService.MultipartPartResult uploadVideoPart(
+            String uploadId,
+            String objectKey,
+            int partNumber,
+            MultipartFile file
+    ) {
+        return ossService.uploadCourseVideoPart(uploadId, objectKey, partNumber, file);
+    }
+
+    public AliyunOssService.UploadResult completeVideoMultipart(
+            VideoDTO.VideoMultipartCompleteReq req,
+            String baseOrigin
+    ) {
+        List<AliyunOssService.CompletedPart> parts = req.getParts().stream()
+                .map(p -> new AliyunOssService.CompletedPart(p.getPartNumber(), p.getETag()))
+                .toList();
+        return ossService.completeCourseVideoMultipart(req.getUploadId(), req.getObjectKey(), parts, baseOrigin);
+    }
+
+    public void abortVideoMultipart(VideoDTO.VideoMultipartAbortReq req) {
+        ossService.abortCourseVideoMultipart(req.getUploadId(), req.getObjectKey());
+    }
+
+    public AliyunOssService.AttachmentUploadResult uploadAttachment(MultipartFile file, String baseOrigin) {
+        return ossService.uploadNoteAttachment(file, baseOrigin);
+    }
+
     private void applySeriesReq(EduVideoSeries entity, VideoDTO.SeriesSaveReq req) {
         entity.setTitle(req.getTitle().trim());
         entity.setCoverImageKey(req.getCoverImageKey() == null ? "" : req.getCoverImageKey().trim());
@@ -199,6 +235,7 @@ public class VideoService {
         lesson.setVideoKey(req.getVideoKey().trim());
         lesson.setDurationSec(req.getDurationSec() == null ? 0 : Math.max(0, req.getDurationSec()));
         lesson.setClassNotes(req.getClassNotes() == null ? "" : req.getClassNotes());
+        lesson.setNotesAttachments(serializeAttachments(req.getNotesAttachments()));
         lesson.setSortOrder(req.getSortOrder() == null ? 0 : req.getSortOrder());
         lesson.setEnabled(req.getEnabled() == null ? 1 : (req.getEnabled() == 0 ? 0 : 1));
     }
@@ -236,10 +273,62 @@ public class VideoService {
                 .videoUrl(ossService.resolveViewUrl(l.getVideoKey(), baseOrigin))
                 .durationSec(l.getDurationSec() == null ? 0 : l.getDurationSec())
                 .classNotes(l.getClassNotes() == null ? "" : l.getClassNotes())
+                .notesAttachments(deserializeAttachments(l.getNotesAttachments(), baseOrigin))
                 .sortOrder(l.getSortOrder())
                 .enabled(l.getEnabled())
                 .createdAt(l.getCreatedAt())
                 .updatedAt(l.getUpdatedAt())
                 .build();
+    }
+
+    private String serializeAttachments(List<VideoDTO.NoteAttachmentItem> list) {
+        if (list == null || list.isEmpty()) {
+            return "[]";
+        }
+        List<VideoDTO.NoteAttachmentItem> cleaned = list.stream()
+                .filter(Objects::nonNull)
+                .filter(item -> item.getObjectKey() != null && !item.getObjectKey().isBlank())
+                .map(item -> {
+                    VideoDTO.NoteAttachmentItem copy = new VideoDTO.NoteAttachmentItem();
+                    copy.setName(item.getName() == null || item.getName().isBlank() ? "课程附件" : item.getName().trim());
+                    copy.setObjectKey(item.getObjectKey().trim());
+                    copy.setSize(item.getSize() == null ? 0L : Math.max(0L, item.getSize()));
+                    copy.setContentType(item.getContentType() == null ? "" : item.getContentType().trim());
+                    return copy;
+                })
+                .toList();
+        try {
+            return objectMapper.writeValueAsString(cleaned);
+        } catch (Exception e) {
+            return "[]";
+        }
+    }
+
+    private List<VideoVO.NoteAttachmentVO> deserializeAttachments(String rawJson, String baseOrigin) {
+        if (rawJson == null || rawJson.isBlank()) {
+            return Collections.emptyList();
+        }
+        try {
+            List<VideoDTO.NoteAttachmentItem> rawList = objectMapper.readValue(
+                    rawJson,
+                    new TypeReference<List<VideoDTO.NoteAttachmentItem>>() {}
+            );
+            if (rawList == null || rawList.isEmpty()) {
+                return Collections.emptyList();
+            }
+            return rawList.stream()
+                    .filter(Objects::nonNull)
+                    .filter(item -> item.getObjectKey() != null && !item.getObjectKey().isBlank())
+                    .map(item -> VideoVO.NoteAttachmentVO.builder()
+                            .name(item.getName() == null || item.getName().isBlank() ? "课程附件" : item.getName())
+                            .objectKey(item.getObjectKey())
+                            .url(ossService.resolveViewUrl(item.getObjectKey(), baseOrigin))
+                            .size(item.getSize() == null ? 0L : item.getSize())
+                            .contentType(item.getContentType() == null ? "" : item.getContentType())
+                            .build())
+                    .toList();
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
     }
 }

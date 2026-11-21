@@ -6,10 +6,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import org.w3c.dom.Document;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilderFactory;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -23,9 +28,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
-import java.util.Base64;
-import java.util.Locale;
-import java.util.UUID;
+import java.util.*;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /**
  * 阿里云 OSS 上传与私有 Bucket 签名读取服务（配置未启用时自动降级为本地 /downloads/ 托管）。
@@ -35,8 +40,17 @@ import java.util.UUID;
 public class AliyunOssService {
 
     private static final long MAX_IMAGE_BYTES = 10L * 1024 * 1024;
-    private static final long MAX_VIDEO_BYTES = 500L * 1024 * 1024;
+    private static final long MAX_VIDEO_BYTES = 2L * 1024 * 1024 * 1024;
+    private static final long MAX_CHUNK_BYTES = 20L * 1024 * 1024;
+    private static final long MULTIPART_CHUNK_SIZE = 5L * 1024 * 1024;
+    private static final long MAX_ATTACHMENT_BYTES = 50L * 1024 * 1024;
     private static final long DEFAULT_SIGN_TTL_SECONDS = 7200L;
+    private static final Set<String> ALLOWED_ATTACHMENT_EXTS = Set.of(
+            "png", "jpg", "jpeg", "webp", "gif",
+            "pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "txt", "md", "zip"
+    );
+    private static final Pattern SAFE_UPLOAD_ID_PATTERN = Pattern.compile("^[A-Za-z0-9_-]{8,128}$");
+    private static final Pattern SAFE_VIDEO_KEY_PATTERN = Pattern.compile("^course-videos/[A-Za-z0-9/_.-]{4,240}$");
     private static final DateTimeFormatter GMT_FORMATTER =
             DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.ENGLISH).withZone(ZoneOffset.UTC);
     private static final DateTimeFormatter DATE_DIR_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
@@ -67,6 +81,21 @@ public class AliyunOssService {
             .build();
 
     public record UploadResult(String objectKey, String previewUrl, String storageType) {}
+
+    public record MultipartInitResult(String uploadId, String objectKey, long chunkSize, String storageType) {}
+
+    public record MultipartPartResult(int partNumber, String eTag) {}
+
+    public record CompletedPart(int partNumber, String eTag) {}
+
+    public record AttachmentUploadResult(
+            String name,
+            String objectKey,
+            String previewUrl,
+            long size,
+            String contentType,
+            String storageType
+    ) {}
 
     public boolean isOssConfigured() {
         return ossEnabled
@@ -142,6 +171,205 @@ public class AliyunOssService {
             throw new BizException(ErrorCode.INTERNAL_ERROR, "保存视频文件失败");
         }
         return new UploadResult(relPath, resolveViewUrl(relPath, baseOrigin), "LOCAL");
+    }
+
+    public MultipartInitResult initCourseVideoMultipart(String fileName, String contentType, long fileSize) {
+        if (fileSize <= 0 || fileSize > MAX_VIDEO_BYTES) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "单个视频文件大小需在 2GB 以内");
+        }
+        MediaMeta meta = detectVideoMeta(contentType, fileName);
+        String datePart = LocalDate.now().format(DATE_DIR_FORMATTER);
+        String rand = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        String objectKey = "course-videos/" + datePart + "/lesson_" + rand + "." + meta.ext();
+
+        if (isOssConfigured()) {
+            String uploadId = initiateOssMultipartUpload(objectKey, meta.contentType());
+            return new MultipartInitResult(uploadId, objectKey, MULTIPART_CHUNK_SIZE, "ALIYUN_OSS");
+        }
+
+        String uploadId = UUID.randomUUID().toString().replace("-", "");
+        try {
+            Path chunkDir = resolveChunkDir(uploadId);
+            Files.createDirectories(chunkDir);
+        } catch (IOException e) {
+            log.error("Failed to create local chunk directory", e);
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "初始化本地分片目录失败");
+        }
+        return new MultipartInitResult(uploadId, objectKey, MULTIPART_CHUNK_SIZE, "LOCAL");
+    }
+
+    public MultipartPartResult uploadCourseVideoPart(
+            String uploadId,
+            String objectKey,
+            int partNumber,
+            MultipartFile chunkFile
+    ) {
+        String safeUploadId = sanitizeUploadId(uploadId);
+        String safeKey = sanitizeCourseVideoKey(objectKey);
+        if (partNumber < 1 || partNumber > 10000) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "分片序号需在 1 ~ 10000 之间");
+        }
+        if (chunkFile == null || chunkFile.isEmpty()) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "分片内容不能为空");
+        }
+        if (chunkFile.getSize() > MAX_CHUNK_BYTES) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "单个分片大小不能超过 20MB");
+        }
+
+        byte[] bytes;
+        try {
+            bytes = chunkFile.getBytes();
+        } catch (IOException e) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "读取视频分片失败");
+        }
+
+        if (isOssConfigured()) {
+            String eTag = uploadOssPart(safeKey, safeUploadId, partNumber, bytes);
+            return new MultipartPartResult(partNumber, eTag);
+        }
+
+        try {
+            Path chunkDir = resolveChunkDir(safeUploadId);
+            Files.createDirectories(chunkDir);
+            Path partPath = chunkDir.resolve("part_" + String.format("%05d", partNumber) + ".bin");
+            Files.write(partPath, bytes);
+            return new MultipartPartResult(partNumber, "\"LOCAL-PART-" + partNumber + "\"");
+        } catch (IOException e) {
+            log.error("Failed to write local chunk part", e);
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "保存视频分片失败");
+        }
+    }
+
+    public UploadResult completeCourseVideoMultipart(
+            String uploadId,
+            String objectKey,
+            List<CompletedPart> parts,
+            String baseOrigin
+    ) {
+        String safeUploadId = sanitizeUploadId(uploadId);
+        String safeKey = sanitizeCourseVideoKey(objectKey);
+        if (parts == null || parts.isEmpty()) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "缺少已完成分片信息");
+        }
+        List<CompletedPart> sorted = parts.stream()
+                .filter(Objects::nonNull)
+                .peek(part -> {
+                    if (part.eTag() == null || part.eTag().isBlank()) {
+                        throw new BizException(ErrorCode.BAD_REQUEST, "第 " + part.partNumber() + " 个分片缺少有效 ETag");
+                    }
+                })
+                .sorted(Comparator.comparingInt(CompletedPart::partNumber))
+                .toList();
+
+        if (isOssConfigured()) {
+            completeOssMultipartUpload(safeKey, safeUploadId, sorted);
+            return new UploadResult(safeKey, generatePresignedGetUrl(safeKey, DEFAULT_SIGN_TTL_SECONDS), "ALIYUN_OSS");
+        }
+
+        Path chunkDir = resolveChunkDir(safeUploadId);
+        Path target = Path.of(uploadDir).toAbsolutePath().normalize().resolve(safeKey).normalize();
+        Path baseDir = Path.of(uploadDir).toAbsolutePath().normalize();
+        if (!target.startsWith(baseDir)) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "非法目标文件路径");
+        }
+        try {
+            Files.createDirectories(target.getParent());
+            try (OutputStream out = Files.newOutputStream(target)) {
+                for (CompletedPart part : sorted) {
+                    Path partPath = chunkDir.resolve("part_" + String.format("%05d", part.partNumber()) + ".bin");
+                    if (!Files.exists(partPath)) {
+                        throw new BizException(ErrorCode.BAD_REQUEST, "缺少第 " + part.partNumber() + " 个分片");
+                    }
+                    Files.copy(partPath, out);
+                }
+            }
+        } catch (BizException e) {
+            throw e;
+        } catch (IOException e) {
+            log.error("Failed to merge local video chunks", e);
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "合并视频分片失败");
+        } finally {
+            cleanupChunkDir(chunkDir);
+        }
+        String relPath = "/downloads/" + safeKey;
+        return new UploadResult(relPath, resolveViewUrl(relPath, baseOrigin), "LOCAL");
+    }
+
+    public void abortCourseVideoMultipart(String uploadId, String objectKey) {
+        if (uploadId == null || uploadId.isBlank()) return;
+        String safeUploadId;
+        String safeKey;
+        try {
+            safeUploadId = sanitizeUploadId(uploadId);
+            safeKey = sanitizeCourseVideoKey(objectKey);
+        } catch (BizException ignored) {
+            return;
+        }
+        if (isOssConfigured()) {
+            abortOssMultipartUpload(safeKey, safeUploadId);
+        } else {
+            cleanupChunkDir(resolveChunkDir(safeUploadId));
+        }
+    }
+
+    public AttachmentUploadResult uploadNoteAttachment(MultipartFile file, String baseOrigin) {
+        if (file == null || file.isEmpty()) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "请先选择要上传的附件");
+        }
+        if (file.getSize() <= 0 || file.getSize() > MAX_ATTACHMENT_BYTES) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "单个附件大小需在 50MB 以内");
+        }
+        String originalName = sanitizeAttachmentName(file.getOriginalFilename());
+        MediaMeta meta = detectAttachmentMeta(file.getContentType(), originalName);
+        String datePart = LocalDate.now().format(DATE_DIR_FORMATTER);
+        String rand = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        String objectKey = "class-notes-attachments/" + datePart + "/att_" + rand + "." + meta.ext();
+
+        if (isOssConfigured()) {
+            Path tempFile = null;
+            try {
+                tempFile = Files.createTempFile("ggl-att-", "." + meta.ext());
+                file.transferTo(tempFile);
+                putFileToOss(objectKey, tempFile, meta.contentType(), Duration.ofMinutes(3));
+            } catch (BizException e) {
+                throw e;
+            } catch (IOException e) {
+                throw new BizException(ErrorCode.INTERNAL_ERROR, "读取附件失败");
+            } finally {
+                if (tempFile != null) {
+                    try {
+                        Files.deleteIfExists(tempFile);
+                    } catch (IOException ignored) {
+                    }
+                }
+            }
+            return new AttachmentUploadResult(
+                    originalName,
+                    objectKey,
+                    generatePresignedGetUrl(objectKey, DEFAULT_SIGN_TTL_SECONDS),
+                    file.getSize(),
+                    meta.contentType(),
+                    "ALIYUN_OSS"
+            );
+        }
+
+        String relPath = "/downloads/" + objectKey;
+        try {
+            Path target = Path.of(uploadDir).toAbsolutePath().normalize().resolve(objectKey).normalize();
+            Files.createDirectories(target.getParent());
+            file.transferTo(target);
+        } catch (IOException e) {
+            log.error("Failed to save note attachment locally", e);
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "保存附件失败");
+        }
+        return new AttachmentUploadResult(
+                originalName,
+                relPath,
+                resolveViewUrl(relPath, baseOrigin),
+                file.getSize(),
+                meta.contentType(),
+                "LOCAL"
+        );
     }
 
     public record BinaryResource(byte[] bytes, String contentType) {}
@@ -397,5 +625,227 @@ public class AliyunOssService {
         if (raw == null || raw.isBlank()) return fallback;
         String cleaned = raw.trim().replaceAll("[^A-Za-z0-9_-]", "");
         return cleaned.isEmpty() ? fallback : cleaned;
+    }
+
+    private String sanitizeUploadId(String uploadId) {
+        String trimmed = uploadId == null ? "" : uploadId.trim();
+        if (!SAFE_UPLOAD_ID_PATTERN.matcher(trimmed).matches()) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "无效的分片上传会话标识");
+        }
+        return trimmed;
+    }
+
+    private String sanitizeCourseVideoKey(String objectKey) {
+        String trimmed = objectKey == null ? "" : objectKey.trim();
+        while (trimmed.startsWith("/")) {
+            trimmed = trimmed.substring(1);
+        }
+        if (trimmed.contains("..") || !SAFE_VIDEO_KEY_PATTERN.matcher(trimmed).matches()) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "无效的视频对象路径");
+        }
+        return trimmed;
+    }
+
+    private String sanitizeAttachmentName(String raw) {
+        String name = raw == null ? "课程附件" : raw.trim().replace("\\", "/");
+        int slashIdx = name.lastIndexOf('/');
+        if (slashIdx >= 0) {
+            name = name.substring(slashIdx + 1);
+        }
+        name = name.replaceAll("[\\r\\n<>]", "");
+        return name.isBlank() ? "课程附件" : (name.length() > 120 ? name.substring(0, 120) : name);
+    }
+
+    private MediaMeta detectAttachmentMeta(String contentType, String filename) {
+        String lower = filename == null ? "" : filename.toLowerCase(Locale.ROOT);
+        int dot = lower.lastIndexOf('.');
+        String ext = dot >= 0 && dot < lower.length() - 1 ? lower.substring(dot + 1) : "";
+        if (!ALLOWED_ATTACHMENT_EXTS.contains(ext)) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "附件仅支持 PDF、Word、PPT、Excel、TXT/MD、ZIP 或常见图片格式");
+        }
+        String resolvedCt = switch (ext) {
+            case "pdf" -> "application/pdf";
+            case "doc" -> "application/msword";
+            case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            case "ppt" -> "application/vnd.ms-powerpoint";
+            case "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+            case "xls" -> "application/vnd.ms-excel";
+            case "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            case "txt", "md" -> "text/plain; charset=utf-8";
+            case "zip" -> "application/zip";
+            case "png" -> "image/png";
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "webp" -> "image/webp";
+            case "gif" -> "image/gif";
+            default -> (contentType != null && !contentType.isBlank()) ? contentType : "application/octet-stream";
+        };
+        return new MediaMeta(ext, resolvedCt);
+    }
+
+    private Path resolveChunkDir(String safeUploadId) {
+        Path base = Path.of(uploadDir).toAbsolutePath().normalize().resolve(".chunks").normalize();
+        Path dir = base.resolve(safeUploadId).normalize();
+        if (!dir.startsWith(base)) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "非法分片目录");
+        }
+        return dir;
+    }
+
+    private void cleanupChunkDir(Path dir) {
+        if (dir == null || !Files.exists(dir)) return;
+        try (Stream<Path> walk = Files.walk(dir)) {
+            walk.sorted(Comparator.reverseOrder()).forEach(p -> {
+                try {
+                    Files.deleteIfExists(p);
+                } catch (IOException ignored) {
+                }
+            });
+        } catch (IOException ignored) {
+        }
+    }
+
+    private String initiateOssMultipartUpload(String objectKey, String contentType) {
+        String cleanEndpoint = stripScheme(endpoint);
+        String url = "https://" + bucket.trim() + "." + cleanEndpoint + "/" + objectKey + "?uploads";
+        String dateHeader = GMT_FORMATTER.format(Instant.now());
+        String stringToSign = "POST\n\n" + contentType + "\n" + dateHeader + "\n/" + bucket.trim() + "/" + objectKey + "?uploads";
+        String authHeader = "OSS " + accessKeyId.trim() + ":" + signHmacSha1(accessKeySecret.trim(), stringToSign);
+
+        try {
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(15))
+                    .header("Date", dateHeader)
+                    .header("Content-Type", contentType)
+                    .header("Authorization", authHeader)
+                    .POST(HttpRequest.BodyPublishers.noBody())
+                    .build();
+            HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+                log.error("OSS init multipart failed: status={}, body={}", resp.statusCode(), resp.body());
+                throw new BizException(ErrorCode.INTERNAL_ERROR, "初始化阿里云 OSS 分片上传失败 (" + resp.statusCode() + ")");
+            }
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            Document doc = factory.newDocumentBuilder()
+                    .parse(new ByteArrayInputStream(resp.body().getBytes(StandardCharsets.UTF_8)));
+            String uploadId = doc.getElementsByTagName("UploadId").item(0).getTextContent();
+            if (uploadId == null || uploadId.isBlank()) {
+                throw new BizException(ErrorCode.INTERNAL_ERROR, "OSS 未返回有效 UploadId");
+            }
+            return uploadId.trim();
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("OSS init multipart exception for key={}", objectKey, e);
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "初始化 OSS 分片上传异常: " + e.getMessage());
+        }
+    }
+
+    private String uploadOssPart(String objectKey, String uploadId, int partNumber, byte[] bytes) {
+        String cleanEndpoint = stripScheme(endpoint);
+        String query = "partNumber=" + partNumber + "&uploadId=" + uploadId;
+        String url = "https://" + bucket.trim() + "." + cleanEndpoint + "/" + objectKey + "?" + query;
+        String contentType = "application/octet-stream";
+        String dateHeader = GMT_FORMATTER.format(Instant.now());
+        String stringToSign = "PUT\n\n" + contentType + "\n" + dateHeader + "\n/" + bucket.trim() + "/" + objectKey + "?" + query;
+        String authHeader = "OSS " + accessKeyId.trim() + ":" + signHmacSha1(accessKeySecret.trim(), stringToSign);
+
+        try {
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofMinutes(3))
+                    .header("Date", dateHeader)
+                    .header("Content-Type", contentType)
+                    .header("Authorization", authHeader)
+                    .PUT(HttpRequest.BodyPublishers.ofByteArray(bytes))
+                    .build();
+            HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+                log.error("OSS part upload failed: part={}, status={}, body={}", partNumber, resp.statusCode(), resp.body());
+                throw new BizException(ErrorCode.INTERNAL_ERROR, "上传第 " + partNumber + " 分片到 OSS 失败 (" + resp.statusCode() + ")");
+            }
+            String eTag = resp.headers().firstValue("ETag").orElse("").trim();
+            if (eTag.isEmpty()) {
+                throw new BizException(ErrorCode.INTERNAL_ERROR, "OSS 未返回第 " + partNumber + " 分片的 ETag");
+            }
+            return eTag;
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("OSS part upload exception: part={}, key={}", partNumber, objectKey, e);
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "上传第 " + partNumber + " 分片异常: " + e.getMessage());
+        }
+    }
+
+    private void completeOssMultipartUpload(String objectKey, String uploadId, List<CompletedPart> parts) {
+        String cleanEndpoint = stripScheme(endpoint);
+        String query = "uploadId=" + uploadId;
+        String url = "https://" + bucket.trim() + "." + cleanEndpoint + "/" + objectKey + "?" + query;
+        String contentType = "application/xml";
+        String dateHeader = GMT_FORMATTER.format(Instant.now());
+        String stringToSign = "POST\n\n" + contentType + "\n" + dateHeader + "\n/" + bucket.trim() + "/" + objectKey + "?" + query;
+        String authHeader = "OSS " + accessKeyId.trim() + ":" + signHmacSha1(accessKeySecret.trim(), stringToSign);
+
+        StringBuilder xml = new StringBuilder("<CompleteMultipartUpload>");
+        for (CompletedPart part : parts) {
+            String tag = part.eTag() == null ? "" : part.eTag().trim();
+            if (!tag.startsWith("\"")) {
+                tag = "\"" + tag + "\"";
+            }
+            xml.append("<Part><PartNumber>")
+                    .append(part.partNumber())
+                    .append("</PartNumber><ETag>")
+                    .append(escapeXml(tag))
+                    .append("</ETag></Part>");
+        }
+        xml.append("</CompleteMultipartUpload>");
+
+        try {
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofMinutes(2))
+                    .header("Date", dateHeader)
+                    .header("Content-Type", contentType)
+                    .header("Authorization", authHeader)
+                    .POST(HttpRequest.BodyPublishers.ofString(xml.toString(), StandardCharsets.UTF_8))
+                    .build();
+            HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+                log.error("OSS complete multipart failed: status={}, body={}", resp.statusCode(), resp.body());
+                throw new BizException(ErrorCode.INTERNAL_ERROR, "合并阿里云 OSS 视频分片失败 (" + resp.statusCode() + ")");
+            }
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("OSS complete multipart exception for key={}", objectKey, e);
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "合并 OSS 视频分片异常: " + e.getMessage());
+        }
+    }
+
+    private void abortOssMultipartUpload(String objectKey, String uploadId) {
+        String cleanEndpoint = stripScheme(endpoint);
+        String query = "uploadId=" + uploadId;
+        String url = "https://" + bucket.trim() + "." + cleanEndpoint + "/" + objectKey + "?" + query;
+        String dateHeader = GMT_FORMATTER.format(Instant.now());
+        String stringToSign = "DELETE\n\n\n" + dateHeader + "\n/" + bucket.trim() + "/" + objectKey + "?" + query;
+        String authHeader = "OSS " + accessKeyId.trim() + ":" + signHmacSha1(accessKeySecret.trim(), stringToSign);
+        try {
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(15))
+                    .header("Date", dateHeader)
+                    .header("Authorization", authHeader)
+                    .DELETE()
+                    .build();
+            httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+        } catch (Exception e) {
+            log.warn("Failed to abort OSS multipart upload: key={}, err={}", objectKey, e.getMessage());
+        }
+    }
+
+    private String escapeXml(String raw) {
+        return raw.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 }

@@ -96,6 +96,58 @@ public class AdminVideoController {
         ));
     }
 
+    @Operation(summary = "初始化视频分片上传")
+    @PostMapping("/upload-media/init")
+    public Result<AliyunOssService.MultipartInitResult> initVideoMultipart(
+            @Valid @RequestBody VideoDTO.VideoMultipartInitReq req
+    ) {
+        return Result.ok(videoService.initVideoMultipart(req));
+    }
+
+    @Operation(summary = "上传单个视频分片")
+    @PostMapping("/upload-media/part")
+    public Result<AliyunOssService.MultipartPartResult> uploadVideoPart(
+            @RequestParam("uploadId") String uploadId,
+            @RequestParam("objectKey") String objectKey,
+            @RequestParam("partNumber") int partNumber,
+            @RequestParam("file") MultipartFile file
+    ) {
+        return Result.ok(videoService.uploadVideoPart(uploadId, objectKey, partNumber, file));
+    }
+
+    @Operation(summary = "完成并合并视频分片")
+    @PostMapping("/upload-media/complete")
+    public Result<Map<String, String>> completeVideoMultipart(
+            @Valid @RequestBody VideoDTO.VideoMultipartCompleteReq req,
+            HttpServletRequest request
+    ) {
+        AliyunOssService.UploadResult res = videoService.completeVideoMultipart(
+                req,
+                ServletUrlHelper.resolveBaseOrigin(request)
+        );
+        return Result.ok(Map.of(
+                "objectKey", res.objectKey(),
+                "previewUrl", res.previewUrl(),
+                "storageType", res.storageType()
+        ));
+    }
+
+    @Operation(summary = "取消并清理视频分片")
+    @PostMapping("/upload-media/abort")
+    public Result<Void> abortVideoMultipart(@Valid @RequestBody VideoDTO.VideoMultipartAbortReq req) {
+        videoService.abortVideoMultipart(req);
+        return Result.ok();
+    }
+
+    @Operation(summary = "上传课堂笔记附件")
+    @PostMapping("/upload-attachment")
+    public Result<AliyunOssService.AttachmentUploadResult> uploadAttachment(
+            @RequestParam("file") MultipartFile file,
+            HttpServletRequest request
+    ) {
+        return Result.ok(videoService.uploadAttachment(file, ServletUrlHelper.resolveBaseOrigin(request)));
+    }
+
     @Operation(summary = "为系列新增视频课时")
     @OperLog(module = "VIDEO", action = "新增视频课时")
     @PostMapping("/series/{seriesId}/lessons")

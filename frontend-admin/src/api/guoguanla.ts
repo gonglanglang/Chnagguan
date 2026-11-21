@@ -129,6 +129,14 @@ export interface VideoSeriesItem {
   updatedAt: string;
 }
 
+export interface NoteAttachmentItem {
+  name: string;
+  objectKey: string;
+  url: string;
+  size: number;
+  contentType: string;
+}
+
 export interface VideoLessonItem {
   id: number;
   seriesId: number;
@@ -137,6 +145,7 @@ export interface VideoLessonItem {
   videoUrl: string;
   durationSec: number;
   classNotes: string;
+  notesAttachments?: NoteAttachmentItem[];
   sortOrder: number;
   enabled: number;
   createdAt: string;
@@ -463,6 +472,51 @@ export const uploadVideoMedia = (formData: FormData, onProgress?: (percent: numb
           onProgress(Math.min(100, Math.round((evt.loaded * 100) / evt.total)));
         }
       }
+    }
+  );
+
+export const initVideoMultipart = (data: { fileName: string; contentType: string; fileSize: number }) =>
+  http.post<ApiResult<{ uploadId: string; objectKey: string; chunkSize: number; storageType: string }>, any>(
+    "/videos/upload-media/init",
+    { data }
+  );
+
+export const uploadVideoPart = (
+  formData: FormData,
+  options?: { signal?: AbortSignal; onProgress?: (loadedBytes: number) => void }
+) =>
+  http.post<ApiResult<{ partNumber: number; eTag: string }>, any>("/videos/upload-media/part", {
+    data: formData,
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 180000,
+    signal: options?.signal,
+    onUploadProgress: (evt: any) => {
+      if (options?.onProgress && typeof evt?.loaded === "number") {
+        options.onProgress(evt.loaded);
+      }
+    }
+  });
+
+export const completeVideoMultipart = (data: {
+  uploadId: string;
+  objectKey: string;
+  parts: Array<{ partNumber: number; eTag: string }>;
+}) =>
+  http.post<ApiResult<{ objectKey: string; previewUrl: string; storageType: string }>, any>(
+    "/videos/upload-media/complete",
+    { data, timeout: 120000 }
+  );
+
+export const abortVideoMultipart = (data: { uploadId: string; objectKey: string }) =>
+  http.post<ApiResult<void>, any>("/videos/upload-media/abort", { data });
+
+export const uploadNoteAttachment = (formData: FormData) =>
+  http.post<ApiResult<{ name: string; objectKey: string; previewUrl: string; size: number; contentType: string; storageType: string }>, any>(
+    "/videos/upload-attachment",
+    {
+      data: formData,
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 120000
     }
   );
 

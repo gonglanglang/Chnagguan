@@ -16,6 +16,7 @@ public class EduVideoLesson {
     private String videoKey;
     private Integer durationSec;
     private String classNotes;
+    private String notesAttachments;
     private Integer sortOrder;
     private Integer enabled;
 

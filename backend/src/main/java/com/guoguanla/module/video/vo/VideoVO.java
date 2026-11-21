@@ -27,6 +27,16 @@ public class VideoVO {
 
     @Data
     @Builder
+    public static class NoteAttachmentVO {
+        private String name;
+        private String objectKey;
+        private String url;
+        private Long size;
+        private String contentType;
+    }
+
+    @Data
+    @Builder
     public static class LessonVO {
         private Long id;
         private Long seriesId;
@@ -35,6 +45,7 @@ public class VideoVO {
         private String videoUrl;
         private Integer durationSec;
         private String classNotes;
+        private List<NoteAttachmentVO> notesAttachments;
         private Integer sortOrder;
         private Integer enabled;
         private LocalDateTime createdAt;

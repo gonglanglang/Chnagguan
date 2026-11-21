@@ -459,5 +459,103 @@ class FeatureRegressionTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.lessons.length()").value(2))
                 .andExpect(jsonPath("$.data.lessons[0].classNotes").value("移项要变号，求解 $ax=b$。"));
+
+        // 8. Chunked multipart video upload + note attachments (备注 + 附件)
+        MvcResult initRes = mockMvc.perform(post("/api/admin/videos/upload-media/init")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "fileName", "chunked_lecture.mp4",
+                                "contentType", "video/mp4",
+                                "fileSize", 16
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.uploadId").isNotEmpty())
+                .andExpect(jsonPath("$.data.chunkSize").value(5242880))
+                .andReturn();
+        JsonNode initData = objectMapper.readTree(initRes.getResponse().getContentAsString()).path("data");
+        String uploadId = initData.path("uploadId").asText();
+        String chunkObjectKey = initData.path("objectKey").asText();
+
+        MockMultipartFile part1 = new MockMultipartFile("file", "part1", "application/octet-stream", new byte[] { 0, 0, 0, 24, 102, 116, 121, 112 });
+        MockMultipartFile part2 = new MockMultipartFile("file", "part2", "application/octet-stream", new byte[] { 105, 115, 111, 109, 0, 0, 2, 0 });
+        MvcResult p1Res = mockMvc.perform(multipart("/api/admin/videos/upload-media/part")
+                        .file(part1)
+                        .param("uploadId", uploadId)
+                        .param("objectKey", chunkObjectKey)
+                        .param("partNumber", "1")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        String eTag1 = objectMapper.readTree(p1Res.getResponse().getContentAsString()).path("data").path("eTag").asText();
+
+        MvcResult p2Res = mockMvc.perform(multipart("/api/admin/videos/upload-media/part")
+                        .file(part2)
+                        .param("uploadId", uploadId)
+                        .param("objectKey", chunkObjectKey)
+                        .param("partNumber", "2")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        String eTag2 = objectMapper.readTree(p2Res.getResponse().getContentAsString()).path("data").path("eTag").asText();
+
+        MvcResult compRes = mockMvc.perform(post("/api/admin/videos/upload-media/complete")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "uploadId", uploadId,
+                                "objectKey", chunkObjectKey,
+                                "parts", List.of(
+                                        Map.of("partNumber", 1, "eTag", eTag1),
+                                        Map.of("partNumber", 2, "eTag", eTag2)
+                                )
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.objectKey").isNotEmpty())
+                .andExpect(jsonPath("$.data.previewUrl").isNotEmpty())
+                .andReturn();
+        String mergedVideoKey = objectMapper.readTree(compRes.getResponse().getContentAsString())
+                .path("data").path("objectKey").asText();
+
+        MockMultipartFile badExe = new MockMultipartFile("file", "virus.exe", "application/octet-stream", new byte[] { 1, 2, 3 });
+        mockMvc.perform(multipart("/api/admin/videos/upload-attachment")
+                        .file(badExe)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400));
+
+        MockMultipartFile pdfAtt = new MockMultipartFile("file", "有理数讲义.pdf", "application/pdf", "%PDF-1.4\nhello".getBytes());
+        MvcResult attRes = mockMvc.perform(multipart("/api/admin/videos/upload-attachment")
+                        .file(pdfAtt)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("有理数讲义.pdf"))
+                .andReturn();
+        JsonNode attData = objectMapper.readTree(attRes.getResponse().getContentAsString()).path("data");
+
+        mockMvc.perform(post("/api/admin/videos/series/" + seriesId + "/lessons")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "title", "第3节：分片视频与附件讲义",
+                                "videoKey", mergedVideoKey,
+                                "classNotes", "请结合附件讲义预习重点。",
+                                "notesAttachments", List.of(Map.of(
+                                        "name", attData.path("name").asText(),
+                                        "objectKey", attData.path("objectKey").asText(),
+                                        "size", attData.path("size").asLong(),
+                                        "contentType", attData.path("contentType").asText()
+                                )),
+                                "sortOrder", 3,
+                                "enabled", 1
+                        ))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/app/videos/series/" + seriesId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.lessons.length()").value(3))
+                .andExpect(jsonPath("$.data.lessons[2].classNotes").value("请结合附件讲义预习重点。"))
+                .andExpect(jsonPath("$.data.lessons[2].notesAttachments[0].name").value("有理数讲义.pdf"))
+                .andExpect(jsonPath("$.data.lessons[2].notesAttachments[0].url").isNotEmpty());
     }
 }

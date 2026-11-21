@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from "vue";
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import MathFormulaText from "@/components/MathFormulaText.vue";
@@ -10,7 +10,12 @@ import {
   createVideoLesson,
   updateVideoLesson,
   deleteVideoLesson,
-  uploadVideoMedia,
+  initVideoMultipart,
+  uploadVideoPart,
+  completeVideoMultipart,
+  abortVideoMultipart,
+  uploadNoteAttachment,
+  type NoteAttachmentItem,
   type VideoSeriesItem,
   type VideoLessonItem
 } from "@/api/guoguanla";
@@ -32,8 +37,14 @@ const editLessonId = ref<number | null>(null);
 const saving = ref(false);
 const videoUploading = ref(false);
 const uploadProgress = ref(0);
+const uploadStatusText = ref("");
+const attachmentUploading = ref(false);
 const videoInputRef = ref<HTMLInputElement | null>(null);
+const attachmentInputRef = ref<HTMLInputElement | null>(null);
 const notesInputRef = ref<any>(null);
+
+let activeUploadAbort: AbortController | null = null;
+let activeUploadMeta: { uploadId: string; objectKey: string } | null = null;
 
 const form = reactive({
   title: "",
@@ -41,6 +52,7 @@ const form = reactive({
   videoPreviewUrl: "",
   durationSec: 0,
   classNotes: "",
+  notesAttachments: [] as NoteAttachmentItem[],
   sortOrder: 1,
   enabled: 1
 });
@@ -59,6 +71,14 @@ function formatDuration(sec?: number): string {
   const m = Math.floor(total / 60);
   const s = total % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function formatFileSize(bytes?: number): string {
+  const n = Math.max(0, Number(bytes || 0));
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 async function fetchDetail() {
@@ -80,9 +100,11 @@ function openCreateLesson() {
   form.videoPreviewUrl = "";
   form.durationSec = 0;
   form.classNotes = "";
+  form.notesAttachments = [];
   form.sortOrder = lessons.value.length + 1;
   form.enabled = 1;
   uploadProgress.value = 0;
+  uploadStatusText.value = "";
   dialogVisible.value = true;
 }
 
@@ -93,14 +115,58 @@ function openEditLesson(row: VideoLessonItem) {
   form.videoPreviewUrl = row.videoUrl || "";
   form.durationSec = row.durationSec || 0;
   form.classNotes = row.classNotes || "";
+  form.notesAttachments = (row.notesAttachments || []).map(item => ({ ...item }));
   form.sortOrder = row.sortOrder ?? 1;
   form.enabled = row.enabled ?? 1;
   uploadProgress.value = 0;
+  uploadStatusText.value = "";
   dialogVisible.value = true;
 }
 
 function triggerVideoPick() {
   videoInputRef.value?.click();
+}
+
+function cancelVideoUpload() {
+  activeUploadAbort?.abort();
+  if (activeUploadMeta) {
+    void abortVideoMultipart(activeUploadMeta).catch(() => {});
+  }
+}
+
+async function uploadPartWithRetry(
+  uploadId: string,
+  objectKey: string,
+  partNumber: number,
+  blob: Blob,
+  signal: AbortSignal,
+  onPartProgress: (loadedBytes: number) => void
+): Promise<{ partNumber: number; eTag: string }> {
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (signal.aborted) {
+      throw new DOMException("Upload aborted", "AbortError");
+    }
+    try {
+      const fd = new FormData();
+      fd.append("uploadId", uploadId);
+      fd.append("objectKey", objectKey);
+      fd.append("partNumber", String(partNumber));
+      fd.append("file", blob, `part_${partNumber}`);
+      const partRes = await uploadVideoPart(fd, {
+        signal,
+        onProgress: loaded => onPartProgress(Math.min(blob.size, loaded))
+      });
+      onPartProgress(blob.size);
+      return partRes.data;
+    } catch (err) {
+      if (signal.aborted || attempt === maxAttempts) {
+        throw err;
+      }
+      onPartProgress(0);
+    }
+  }
+  throw new Error(`分片 ${partNumber} 上传失败`);
 }
 
 async function onVideoFileChange(evt: Event) {
@@ -111,18 +177,129 @@ async function onVideoFileChange(evt: Event) {
 
   videoUploading.value = true;
   uploadProgress.value = 0;
+  uploadStatusText.value = `正在初始化分片上传（${formatFileSize(file.size)}）...`;
+
+  const abortController = new AbortController();
+  activeUploadAbort = abortController;
+  activeUploadMeta = null;
+
   try {
-    const fd = new FormData();
-    fd.append("file", file);
-    const res = await uploadVideoMedia(fd, p => {
-      uploadProgress.value = p;
+    const initRes = await initVideoMultipart({
+      fileName: file.name,
+      contentType: file.type || "video/mp4",
+      fileSize: file.size
     });
-    form.videoKey = res.data.objectKey;
-    form.videoPreviewUrl = res.data.previewUrl;
-    ElMessage.success("课程视频上传完成");
+    const { uploadId, objectKey, chunkSize } = initRes.data;
+    activeUploadMeta = { uploadId, objectKey };
+
+    const sliceSize = chunkSize || 5 * 1024 * 1024;
+    const totalChunks = Math.max(1, Math.ceil(file.size / sliceSize));
+    const chunkLoadedBytes = new Array<number>(totalChunks).fill(0);
+    const completedParts = new Array<{ partNumber: number; eTag: string }>(totalChunks);
+    let finishedChunks = 0;
+
+    const refreshProgress = () => {
+      const uploadedBytes = chunkLoadedBytes.reduce((sum, n) => sum + n, 0);
+      const pct = Math.min(98, Math.round((uploadedBytes * 98) / Math.max(1, file.size)));
+      uploadProgress.value = pct;
+      uploadStatusText.value = `分片并发上传中：${finishedChunks} / ${totalChunks} 片（${formatFileSize(uploadedBytes)} / ${formatFileSize(file.size)}）`;
+    };
+
+    refreshProgress();
+
+    let nextIdx = 0;
+    const concurrency = Math.min(3, totalChunks);
+    const worker = async () => {
+      while (nextIdx < totalChunks) {
+        const idx = nextIdx++;
+        if (abortController.signal.aborted) return;
+        const start = idx * sliceSize;
+        const end = Math.min(file.size, start + sliceSize);
+        const chunkBlob = file.slice(start, end);
+        const result = await uploadPartWithRetry(
+          uploadId,
+          objectKey,
+          idx + 1,
+          chunkBlob,
+          abortController.signal,
+          loaded => {
+            chunkLoadedBytes[idx] = loaded;
+            refreshProgress();
+          }
+        );
+        completedParts[idx] = result;
+        finishedChunks += 1;
+        refreshProgress();
+      }
+    };
+
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
+
+    if (abortController.signal.aborted) {
+      return;
+    }
+
+    uploadProgress.value = 99;
+    uploadStatusText.value = `分片上传完成，正在合并 ${totalChunks} 个视频分片...`;
+    const completeRes = await completeVideoMultipart({
+      uploadId,
+      objectKey,
+      parts: completedParts
+    });
+
+    form.videoKey = completeRes.data.objectKey;
+    form.videoPreviewUrl = completeRes.data.previewUrl;
+    uploadProgress.value = 100;
+    uploadStatusText.value = `上传完成（${totalChunks} 片 · ${formatFileSize(file.size)}）`;
+    ElMessage.success("课程视频分片上传完成");
+    activeUploadMeta = null;
+  } catch (err: any) {
+    if (abortController.signal.aborted || err?.name === "AbortError") {
+      uploadStatusText.value = "已取消视频分片上传";
+      ElMessage.info("已取消上传");
+    } else if (activeUploadMeta) {
+      void abortVideoMultipart(activeUploadMeta).catch(() => {});
+      uploadStatusText.value = "分片上传失败，请重试";
+    }
   } finally {
     videoUploading.value = false;
+    activeUploadAbort = null;
+    activeUploadMeta = null;
   }
+}
+
+function triggerAttachmentPick() {
+  attachmentInputRef.value?.click();
+}
+
+async function onAttachmentFileChange(evt: Event) {
+  const input = evt.target as HTMLInputElement;
+  const files = input.files ? Array.from(input.files) : [];
+  input.value = "";
+  if (files.length === 0) return;
+
+  attachmentUploading.value = true;
+  try {
+    for (const file of files) {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await uploadNoteAttachment(fd);
+      form.notesAttachments.push({
+        name: res.data.name,
+        objectKey: res.data.objectKey,
+        url: res.data.previewUrl,
+        size: res.data.size,
+        contentType: res.data.contentType
+      });
+    }
+    ElMessage.success(`成功上传 ${files.length} 个课堂附件`);
+  } finally {
+    attachmentUploading.value = false;
+  }
+}
+
+function removeAttachment(idx: number) {
+  form.notesAttachments.splice(idx, 1);
 }
 
 function onPreviewVideoLoaded(evt: Event) {
@@ -166,6 +343,12 @@ async function handleSaveLesson() {
       videoKey: form.videoKey.trim(),
       durationSec: form.durationSec,
       classNotes: form.classNotes,
+      notesAttachments: form.notesAttachments.map(att => ({
+        name: att.name,
+        objectKey: att.objectKey,
+        size: att.size,
+        contentType: att.contentType
+      })),
       sortOrder: form.sortOrder,
       enabled: form.enabled
     };
@@ -192,6 +375,10 @@ async function handleDeleteLesson(row: VideoLessonItem) {
 
 onMounted(() => {
   fetchDetail();
+});
+
+onBeforeUnmount(() => {
+  cancelVideoUpload();
 });
 </script>
 
@@ -263,13 +450,26 @@ onMounted(() => {
                 </div>
               </div>
 
-              <div class="mt-3 rounded-lg border border-slate-200 bg-white p-3">
-                <div class="mb-1 flex items-center gap-1 text-xs font-semibold text-green-700">
+              <div class="mt-3 space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+                <div class="flex items-center gap-1 text-xs font-semibold text-green-700">
                   <GglIcon name="notes" :size="14" />
-                  <span>课堂笔记</span>
+                  <span>课堂笔记（备注 + 附件）</span>
                 </div>
                 <div class="whitespace-pre-wrap text-xs leading-relaxed text-slate-700">
-                  <MathFormulaText :text="item.classNotes || '（暂未编写本节课堂笔记）'" />
+                  <MathFormulaText :text="item.classNotes || '（暂未填写本节笔记备注）'" />
+                </div>
+                <div v-if="item.notesAttachments && item.notesAttachments.length > 0" class="flex flex-wrap gap-2 border-t border-slate-100 pt-2">
+                  <a
+                    v-for="(att, aIdx) in item.notesAttachments"
+                    :key="`${item.id}-att-${aIdx}`"
+                    :href="att.url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-700 transition hover:border-green-500 hover:text-green-700"
+                  >
+                    <span class="max-w-[200px] truncate font-medium">{{ att.name }}</span>
+                    <span class="text-[11px] text-slate-400">{{ formatFileSize(att.size) }}</span>
+                  </a>
                 </div>
               </div>
             </div>
@@ -293,7 +493,7 @@ onMounted(() => {
 
         <el-form-item label="上传视频" required>
           <div class="w-full space-y-2.5">
-            <div class="flex items-center gap-3">
+            <div class="flex flex-wrap items-center gap-3">
               <input
                 ref="videoInputRef"
                 type="file"
@@ -302,12 +502,18 @@ onMounted(() => {
                 @change="onVideoFileChange"
               />
               <el-button type="primary" plain :loading="videoUploading" @click="triggerVideoPick">
-                {{ form.videoKey ? "重新上传视频" : "选择本地视频上传" }}
+                {{ form.videoKey ? "重新分片上传" : "选择本地视频（分片上传）" }}
               </el-button>
-              <span class="text-xs text-slate-400">支持 MP4 / WEBM / MOV（最大 500MB，自动传至阿里云 OSS）</span>
+              <el-button v-if="videoUploading" type="danger" plain size="small" @click="cancelVideoUpload">
+                取消上传
+              </el-button>
+              <span class="text-xs text-slate-400">支持 MP4 / WEBM / MOV（最大 2GB，自动 5MB 并发分片直传 OSS）</span>
             </div>
 
-            <el-progress v-if="videoUploading" :percentage="uploadProgress" />
+            <div v-if="videoUploading || uploadStatusText" class="space-y-1">
+              <el-progress v-if="videoUploading || uploadProgress > 0" :percentage="uploadProgress" />
+              <div v-if="uploadStatusText" class="text-xs text-slate-500">{{ uploadStatusText }}</div>
+            </div>
 
             <video
               v-if="form.videoPreviewUrl"
@@ -319,10 +525,10 @@ onMounted(() => {
           </div>
         </el-form-item>
 
-        <el-form-item label="课堂笔记">
+        <el-form-item label="笔记备注">
           <div class="w-full space-y-2">
             <div class="flex items-center justify-between">
-              <span class="text-xs text-slate-500">学生端在播放本节视频下方同步阅读课堂笔记</span>
+              <span class="text-xs text-slate-500">学生端在播放本节视频下方同步阅读课堂备注</span>
               <el-button size="small" type="success" plain @click="openNotesFormulaDialog">
                 + 插入数学公式
               </el-button>
@@ -331,13 +537,59 @@ onMounted(() => {
               ref="notesInputRef"
               v-model="form.classNotes"
               type="textarea"
-              :rows="6"
+              :rows="5"
               placeholder="编写本节课核心公式、解题步骤口诀与课堂要点（支持 $...$ 与 $$...$$ 数学公式）"
             />
             <div v-if="form.classNotes" class="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-              <div class="mb-1 font-semibold text-slate-500">笔记排版预览：</div>
+              <div class="mb-1 font-semibold text-slate-500">备注排版预览：</div>
               <div class="whitespace-pre-wrap leading-relaxed">
                 <MathFormulaText :text="form.classNotes" />
+              </div>
+            </div>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="课堂附件">
+          <div class="w-full space-y-2.5">
+            <div class="flex flex-wrap items-center gap-3">
+              <input
+                ref="attachmentInputRef"
+                type="file"
+                multiple
+                accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md,.zip"
+                class="hidden"
+                @change="onAttachmentFileChange"
+              />
+              <el-button plain :loading="attachmentUploading" @click="triggerAttachmentPick">
+                + 上传笔记附件
+              </el-button>
+              <span class="text-xs text-slate-400">
+                支持 PDF / Word / PPT / Excel / 图片 / TXT / ZIP（可多选，单个 50MB 内）
+              </span>
+            </div>
+
+            <div v-if="form.notesAttachments.length > 0" class="space-y-1.5">
+              <div
+                v-for="(att, idx) in form.notesAttachments"
+                :key="`${att.objectKey}-${idx}`"
+                class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs"
+              >
+                <div class="flex min-w-0 items-center gap-2">
+                  <span class="truncate font-medium text-slate-800">{{ att.name }}</span>
+                  <span class="shrink-0 text-slate-400">{{ formatFileSize(att.size) }}</span>
+                </div>
+                <div class="flex shrink-0 items-center gap-2">
+                  <a
+                    v-if="att.url"
+                    :href="att.url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-green-600 hover:underline"
+                  >
+                    预览/下载
+                  </a>
+                  <el-button link type="danger" size="small" @click="removeAttachment(idx)">移除</el-button>
+                </div>
               </div>
             </div>
           </div>
@@ -354,7 +606,7 @@ onMounted(() => {
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" :disabled="videoUploading" @click="handleSaveLesson">
+        <el-button type="primary" :loading="saving" :disabled="videoUploading || attachmentUploading" @click="handleSaveLesson">
           保存课时
         </el-button>
       </template>

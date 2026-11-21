@@ -60,6 +60,7 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
         ensureColumn("user_essay_answer", "realm_code", "VARCHAR(24) NOT NULL DEFAULT ''");
         ensureColumn("user_essay_answer", "gate_id", "BIGINT UNSIGNED DEFAULT NULL");
         ensureColumn("user_essay_answer", "teacher_image_key", "VARCHAR(512) DEFAULT NULL");
+        ensureColumn("edu_video_lesson", "notes_attachments", "TEXT DEFAULT NULL");
 
         seedDefaultRealms();
         repairMojibakeRealms();
@@ -151,6 +152,7 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
                   video_key VARCHAR(512) NOT NULL DEFAULT '',
                   duration_sec INT NOT NULL DEFAULT 0,
                   class_notes MEDIUMTEXT DEFAULT NULL,
+                  notes_attachments TEXT DEFAULT NULL,
                   sort_order INT NOT NULL DEFAULT 0,
                   enabled TINYINT NOT NULL DEFAULT 1,
                   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
