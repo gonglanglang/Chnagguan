@@ -58,8 +58,18 @@
       </view>
     </view>
 
-    <!-- 纯净横屏绘制区 -->
-    <view class="canvas-stage">
+    <!-- 纯净横屏绘制区（事件绑定在外层 view，避免 uni-canvas 修饰符事件对象异常） -->
+    <view
+      class="canvas-stage"
+      @touchstart.stop.prevent="onTouchStart"
+      @touchmove.stop.prevent="onTouchMove"
+      @touchend.stop="onTouchEnd"
+      @touchcancel.stop="onTouchEnd"
+      @mousedown="onMouseDown"
+      @mousemove="onMouseMove"
+      @mouseup="onMouseUp"
+      @mouseleave="onMouseUp"
+    >
       <canvas
         v-if="canvasWidth > 0 && canvasHeight > 0"
         id="drawAnswerCanvas"
@@ -67,16 +77,8 @@
         class="draw-canvas"
         :style="{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }"
         :disable-scroll="true"
-        @touchstart.stop.prevent="onTouchStart"
-        @touchmove.stop.prevent="onTouchMove"
-        @touchend.stop="onTouchEnd"
-        @touchcancel.stop="onTouchEnd"
-        @mousedown="onMouseDown"
-        @mousemove="onMouseMove"
-        @mouseup="onMouseUp"
-        @mouseleave="onMouseUp"
       />
-      <view v-if="strokes.length === 0" class="canvas-placeholder">
+      <view v-if="!hasDrawn" class="canvas-placeholder">
         <text class="canvas-placeholder__text">请在此横屏空白区书写解题过程</text>
       </view>
     </view>
@@ -147,6 +149,7 @@ const answerText = ref("");
 const activeColor = ref("#111827");
 const eraserMode = ref(false);
 const strokes = ref<Stroke[]>([]);
+const hasDrawn = ref(false);
 const saving = ref(false);
 const showStemModal = ref(false);
 
@@ -157,6 +160,9 @@ let ctx: UniApp.CanvasContext | null = null;
 let drawing = false;
 let lastPoint: Point | null = null;
 let currentStroke: Stroke | null = null;
+let pendingPoints: Point[] = [];
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+let lastTouchTs = 0;
 let mouseActive = false;
 let measureTimers: ReturnType<typeof setTimeout>[] = [];
 
@@ -165,6 +171,29 @@ const singleLineStem = computed(() => renderMathPlainText(stem.value) || stem.va
 function clearTimers(): void {
   measureTimers.forEach((t) => clearTimeout(t));
   measureTimers = [];
+  if (flushTimer !== null) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+}
+
+function refreshStageRect(): void {
+  if (!instance) return;
+  uni
+    .createSelectorQuery()
+    .in(instance)
+    .select(".canvas-stage")
+    .boundingClientRect((rect) => {
+      const target = Array.isArray(rect) ? rect[0] : rect;
+      if (!target || !target.width || !target.height) return;
+      stageRect = {
+        left: target.left || 0,
+        top: target.top || 0,
+        width: Math.floor(target.width),
+        height: Math.floor(target.height),
+      };
+    })
+    .exec();
 }
 
 function measureCanvas(): void {
@@ -217,6 +246,15 @@ function getStrokeWidth(): number {
   return eraserMode.value ? 18 : 3;
 }
 
+function clampPoint(x: number, y: number): Point {
+  const maxX = canvasWidth.value > 0 ? canvasWidth.value : 9999;
+  const maxY = canvasHeight.value > 0 ? canvasHeight.value : 9999;
+  return {
+    x: Math.max(0, Math.min(maxX, x)),
+    y: Math.max(0, Math.min(maxY, y)),
+  };
+}
+
 function extractPoint(e: unknown): Point | null {
   const evt = e as {
     touches?: Array<{ x?: number; y?: number; clientX?: number; clientY?: number; pageX?: number; pageY?: number }>;
@@ -224,21 +262,28 @@ function extractPoint(e: unknown): Point | null {
     detail?: { x?: number; y?: number };
     clientX?: number;
     clientY?: number;
+    pageX?: number;
+    pageY?: number;
   };
   const touch = evt?.touches?.[0] || evt?.changedTouches?.[0];
   if (touch) {
-    if (typeof touch.x === "number" && typeof touch.y === "number") {
-      return { x: touch.x, y: touch.y };
+    const cx = touch.clientX ?? touch.pageX;
+    const cy = touch.clientY ?? touch.pageY;
+    if (typeof cx === "number" && typeof cy === "number") {
+      return clampPoint(cx - stageRect.left, cy - stageRect.top);
     }
-    const cx = touch.clientX ?? touch.pageX ?? 0;
-    const cy = touch.clientY ?? touch.pageY ?? 0;
-    return { x: cx - stageRect.left, y: cy - stageRect.top };
+    if (typeof touch.x === "number" && typeof touch.y === "number") {
+      return clampPoint(touch.x, touch.y);
+    }
   }
   if (typeof evt?.clientX === "number" && typeof evt?.clientY === "number") {
-    return { x: evt.clientX - stageRect.left, y: evt.clientY - stageRect.top };
+    return clampPoint(evt.clientX - stageRect.left, evt.clientY - stageRect.top);
+  }
+  if (typeof evt?.pageX === "number" && typeof evt?.pageY === "number") {
+    return clampPoint(evt.pageX - stageRect.left, evt.pageY - stageRect.top);
   }
   if (evt?.detail && typeof evt.detail.x === "number" && typeof evt.detail.y === "number") {
-    return { x: evt.detail.x - stageRect.left, y: evt.detail.y - stageRect.top };
+    return clampPoint(evt.detail.x - stageRect.left, evt.detail.y - stageRect.top);
   }
   return null;
 }
@@ -272,19 +317,48 @@ function redrawAll(): void {
   ctx.draw(false);
 }
 
+function flushPendingSegments(): void {
+  if (flushTimer !== null) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  if (!ctx || !lastPoint || !currentStroke || pendingPoints.length === 0) return;
+
+  const pts = pendingPoints;
+  pendingPoints = [];
+
+  ctx.setStrokeStyle(currentStroke.color);
+  ctx.setLineWidth(currentStroke.width);
+  ctx.setLineCap("round");
+  ctx.setLineJoin("round");
+  ctx.beginPath();
+  ctx.moveTo(lastPoint.x, lastPoint.y);
+  for (const pt of pts) {
+    ctx.lineTo(pt.x, pt.y);
+  }
+  ctx.stroke();
+  ctx.draw(true);
+  lastPoint = pts[pts.length - 1];
+}
+
 function beginStroke(pt: Point): void {
   if (!ctx) {
     ctx = uni.createCanvasContext("drawAnswerCanvas", instance);
     redrawAll();
   }
+  pendingPoints = [];
+  if (flushTimer !== null) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
   drawing = true;
+  hasDrawn.value = true;
   lastPoint = pt;
   currentStroke = {
     color: getStrokeColor(),
     width: getStrokeWidth(),
     points: [pt],
   };
-  strokes.value = [...strokes.value, currentStroke];
 
   ctx.setFillStyle(currentStroke.color);
   ctx.beginPath();
@@ -295,20 +369,24 @@ function beginStroke(pt: Point): void {
 
 function moveStroke(pt: Point): void {
   if (!drawing || !lastPoint || !currentStroke || !ctx) return;
+  const refPt = pendingPoints[pendingPoints.length - 1] || lastPoint;
+  const dx = pt.x - refPt.x;
+  const dy = pt.y - refPt.y;
+  if (dx * dx + dy * dy < 2.25) return;
+
   currentStroke.points.push(pt);
-  ctx.setStrokeStyle(currentStroke.color);
-  ctx.setLineWidth(currentStroke.width);
-  ctx.setLineCap("round");
-  ctx.setLineJoin("round");
-  ctx.beginPath();
-  ctx.moveTo(lastPoint.x, lastPoint.y);
-  ctx.lineTo(pt.x, pt.y);
-  ctx.stroke();
-  ctx.draw(true);
-  lastPoint = pt;
+  pendingPoints.push(pt);
+  if (flushTimer === null) {
+    flushTimer = setTimeout(flushPendingSegments, 16);
+  }
 }
 
 function endStroke(): void {
+  if (!drawing) return;
+  flushPendingSegments();
+  if (currentStroke && currentStroke.points.length > 0) {
+    strokes.value = [...strokes.value, currentStroke];
+  }
   drawing = false;
   lastPoint = null;
   currentStroke = null;
@@ -316,34 +394,40 @@ function endStroke(): void {
 
 function onTouchStart(e: unknown): void {
   if (saving.value) return;
+  lastTouchTs = Date.now();
+  refreshStageRect();
   const pt = extractPoint(e);
   if (pt) beginStroke(pt);
 }
 
 function onTouchMove(e: unknown): void {
   if (!drawing || saving.value) return;
+  lastTouchTs = Date.now();
   const pt = extractPoint(e);
   if (pt) moveStroke(pt);
 }
 
 function onTouchEnd(): void {
+  lastTouchTs = Date.now();
   endStroke();
 }
 
 function onMouseDown(e: unknown): void {
-  if (saving.value) return;
+  if (saving.value || Date.now() - lastTouchTs < 800) return;
   mouseActive = true;
+  refreshStageRect();
   const pt = extractPoint(e);
   if (pt) beginStroke(pt);
 }
 
 function onMouseMove(e: unknown): void {
-  if (!mouseActive || !drawing || saving.value) return;
+  if (!mouseActive || !drawing || saving.value || Date.now() - lastTouchTs < 800) return;
   const pt = extractPoint(e);
   if (pt) moveStroke(pt);
 }
 
 function onMouseUp(): void {
+  if (!mouseActive) return;
   mouseActive = false;
   endStroke();
 }
@@ -351,12 +435,14 @@ function onMouseUp(): void {
 function undoStroke(): void {
   if (saving.value || strokes.value.length === 0) return;
   strokes.value = strokes.value.slice(0, -1);
+  hasDrawn.value = strokes.value.length > 0;
   redrawAll();
 }
 
 function clearBoard(): void {
-  if (saving.value || strokes.value.length === 0) return;
+  if (saving.value || (strokes.value.length === 0 && !hasDrawn.value)) return;
   strokes.value = [];
+  hasDrawn.value = false;
   redrawAll();
 }
 
@@ -412,6 +498,7 @@ function handleBack(): void {
 
 async function handleSave(): Promise<void> {
   if (saving.value) return;
+  endStroke();
   if (strokes.value.length === 0) {
     toast.info("请先书写解题过程后再保存");
     return;
