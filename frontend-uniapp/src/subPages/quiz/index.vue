@@ -78,34 +78,25 @@
           </view>
         </view>
 
-        <!-- 解答题作答区（题目绘制面板 + OSS 上传 + 自评） -->
+        <!-- 解答题作答区（极简引导 + 横屏绘制路由） -->
         <template v-if="isCurrentEssay">
           <template v-if="!currentFeedback">
-            <drawing-board
-              ref="boardRef"
-              :key="`${startData.sessionNo}-${currentItem.itemIndex}`"
-              @change="onBoardChange"
-            />
-
-            <view class="essay-text-card">
-              <text class="essay-text-card__label">文字答案 / 补充说明（选填）</text>
-              <textarea
+            <view class="essay-launch-card">
+              <view class="essay-launch-card__head">
+                <text class="essay-launch-card__title">手写答题板</text>
+                <text class="essay-launch-card__badge">横屏全屏书写</text>
+              </view>
+              <text class="essay-launch-card__desc">
+                点击开始作答后将自动切换为横屏纯白画板，完成后自动保存并上传至云端。
+              </text>
+              <input
                 v-model="essayTextDraft"
-                class="essay-text-card__input"
-                placeholder="可输入最终结论（如 x = 3），手写过程请在上方绘制面板完成"
-                maxlength="500"
+                class="essay-launch-card__input"
+                placeholder="补充最终结果或说明（选填）"
+                maxlength="120"
               />
-            </view>
-
-            <view class="bottom-bar">
-              <wd-button
-                type="primary"
-                block
-                :loading="checking"
-                :disabled="!canSubmitEssayDraft"
-                @click="handleSaveEssayAndCheck"
-              >
-                保存绘制至云端并核对参考答案
+              <wd-button type="primary" block @click="openLandscapeDraw">
+                开始作答
               </wd-button>
             </view>
           </template>
@@ -366,13 +357,13 @@
 </template>
 
 <script setup lang="ts">
-import { onLoad } from "@dcloudio/uni-app";
+import { onLoad, onShow, onUnload } from "@dcloudio/uni-app";
 import { AppQuizAPI, AppRealmExamAPI, AppWrongAPI, type AnswerSubmitPayload } from "@/api/guoguanla";
-import DrawingBoard from "@/components/DrawingBoard.vue";
 import { useUserStore } from "@/store";
 import type { CheckItemResult, QuizStartResult, SubmitResult } from "@/types/guoguanla";
 import { getGuestPassedIds } from "@/utils/auth";
 import { getErrorMessage } from "@/utils/error";
+import { lockPortraitOrientation } from "@/utils/orientation";
 
 definePage({
   name: "quiz",
@@ -405,8 +396,15 @@ const essayImageKeyMap = ref<Record<number, string>>({});
 const feedbackMap = ref<Record<number, CheckItemResult>>({});
 const submitResult = ref<SubmitResult | null>(null);
 
-const boardRef = ref<InstanceType<typeof DrawingBoard> | null>(null);
-const boardHasDrawing = ref(false);
+const ACTIVE_ESSAY_PROMPT_KEY = "ggl_active_essay_prompt";
+
+interface EssayDrawSavedPayload {
+  sessionNo: string;
+  itemIndex: number;
+  answerImageKey: string;
+  answerText: string;
+  feedback: CheckItemResult;
+}
 
 const currentItem = computed(() => startData.value?.items?.[currentIdx.value] ?? null);
 const isCurrentEssay = computed(() => currentItem.value?.questionFormat === "ESSAY");
@@ -430,10 +428,6 @@ const currentSelected = computed(() => {
 const currentFeedback = computed(() => {
   if (!currentItem.value) return undefined;
   return feedbackMap.value[currentItem.value.itemIndex];
-});
-
-const canSubmitEssayDraft = computed(() => {
-  return boardHasDrawing.value || essayTextDraft.value.trim().length > 0;
 });
 
 const canGoNext = computed(() => {
@@ -467,13 +461,47 @@ function getOptionClass(idx: number): string {
   return "option-row--dim";
 }
 
-function onBoardChange(hasContent: boolean): void {
-  boardHasDrawing.value = hasContent;
-}
-
 function previewImage(url?: string): void {
   if (!url) return;
   uni.previewImage({ urls: [url] });
+}
+
+function openLandscapeDraw(): void {
+  if (!startData.value || !currentItem.value) return;
+  const sessionNo = startData.value.sessionNo;
+  const itemIndex = currentItem.value.itemIndex;
+  const stem = currentItem.value.stem || "";
+  const answerText = essayTextDraft.value.trim();
+
+  uni.setStorageSync(ACTIVE_ESSAY_PROMPT_KEY, {
+    sessionNo,
+    itemIndex,
+    stem,
+    answerText,
+  });
+
+  const query = [
+    `sessionNo=${encodeURIComponent(sessionNo)}`,
+    `itemIndex=${itemIndex}`,
+    `stem=${encodeURIComponent(stem)}`,
+    `answerText=${encodeURIComponent(answerText)}`,
+  ].join("&");
+  uni.navigateTo({
+    url: `/subPages/draw-answer/index?${query}`,
+  });
+}
+
+function handleEssayDrawSaved(payload?: EssayDrawSavedPayload): void {
+  if (!payload || !startData.value) return;
+  if (payload.sessionNo !== startData.value.sessionNo) return;
+  if (payload.answerText) {
+    essayTextMap.value[payload.itemIndex] = payload.answerText;
+  }
+  if (payload.answerImageKey) {
+    essayImageKeyMap.value[payload.itemIndex] = payload.answerImageKey;
+  }
+  feedbackMap.value[payload.itemIndex] = payload.feedback;
+  toast.success("作答已上传云端，请对照参考答案自评");
 }
 
 async function initQuiz(): Promise<void> {
@@ -485,7 +513,6 @@ async function initQuiz(): Promise<void> {
   essayTextMap.value = {};
   essayImageKeyMap.value = {};
   feedbackMap.value = {};
-  boardHasDrawing.value = false;
 
   try {
     if (mode.value === "ADVANCE_EXAM") {
@@ -534,46 +561,6 @@ async function handleSelectOption(idx: number): Promise<void> {
   }
 }
 
-async function handleSaveEssayAndCheck(): Promise<void> {
-  if (!startData.value || !currentItem.value || checking.value) return;
-  const itemIndex = currentItem.value.itemIndex;
-  const answerText = essayTextDraft.value.trim();
-  const hasDraw = boardRef.value?.hasContent() ?? false;
-
-  if (!hasDraw && !answerText) {
-    toast.info("请先在画板书写或填写文字补充");
-    return;
-  }
-
-  checking.value = true;
-  try {
-    let imageKey = essayImageKeyMap.value[itemIndex] || "";
-    if (hasDraw && boardRef.value) {
-      const tempPath = await boardRef.value.exportImage();
-      const uploaded = await AppQuizAPI.uploadAnswerImage(
-        tempPath,
-        startData.value.sessionNo,
-        itemIndex,
-      );
-      imageKey = uploaded.objectKey;
-      essayImageKeyMap.value[itemIndex] = imageKey;
-    }
-
-    const res = await AppQuizAPI.checkItem({
-      sessionNo: startData.value.sessionNo,
-      itemIndex,
-      answerText,
-      answerImageKey: imageKey,
-    });
-    feedbackMap.value[itemIndex] = res;
-    toast.success("作答已保存，请对照参考答案自评");
-  } catch (err) {
-    toast.error(getErrorMessage(err, "保存作答失败，请重试"));
-  } finally {
-    checking.value = false;
-  }
-}
-
 async function handleEssaySelfGrade(correct: boolean): Promise<void> {
   if (!startData.value || !currentItem.value || checking.value) return;
   const itemIndex = currentItem.value.itemIndex;
@@ -597,7 +584,6 @@ async function handleEssaySelfGrade(correct: boolean): Promise<void> {
 function nextQuestion(): void {
   if (!startData.value) return;
   if (currentIdx.value < startData.value.items.length - 1) {
-    boardHasDrawing.value = false;
     currentIdx.value += 1;
   }
 }
@@ -665,7 +651,7 @@ function handleExit(): void {
   const hasProgress =
     Object.keys(selectedMap.value).length > 0 ||
     Object.keys(feedbackMap.value).length > 0 ||
-    boardHasDrawing.value;
+    Object.values(essayTextMap.value).some((v) => v.trim().length > 0);
   if (submitResult.value || !hasProgress) {
     goBack();
     return;
@@ -680,6 +666,7 @@ function handleExit(): void {
 }
 
 onLoad((query) => {
+  uni.$on("essay-draw-saved", handleEssayDrawSaved);
   if (query?.mode === "ADVANCE_EXAM") {
     mode.value = "ADVANCE_EXAM";
   } else if (query?.mode === "WRONG_REDO") {
@@ -691,6 +678,14 @@ onLoad((query) => {
   realmCode.value = query?.realmCode ? decodeURIComponent(query.realmCode) : undefined;
   chapterId.value = query?.chapterId ? Number(query.chapterId) : undefined;
   void initQuiz();
+});
+
+onShow(() => {
+  lockPortraitOrientation();
+});
+
+onUnload(() => {
+  uni.$off("essay-draw-saved", handleEssayDrawSaved);
 });
 </script>
 
@@ -789,28 +784,54 @@ onLoad((query) => {
   color: var(--color-text);
 }
 
-.essay-text-card {
-  padding: 20rpx 22rpx;
-  margin-top: 16rpx;
+.essay-launch-card {
+  padding: 28rpx 26rpx;
+  margin-top: 20rpx;
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
-  border-radius: 16rpx;
+  border-radius: 18rpx;
+  box-shadow: var(--shadow-sm);
 }
 
-.essay-text-card__label {
+.essay-launch-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.essay-launch-card__title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.essay-launch-card__badge {
+  padding: 4rpx 14rpx;
+  font-size: 22rpx;
+  font-weight: 500;
+  color: #16a34a;
+  background: #f0fdf4;
+  border-radius: 999rpx;
+}
+
+.essay-launch-card__desc {
   display: block;
-  margin-bottom: 10rpx;
+  margin-top: 10rpx;
+  margin-bottom: 18rpx;
   font-size: 24rpx;
+  line-height: 1.5;
   color: var(--color-text-secondary);
 }
 
-.essay-text-card__input {
+.essay-launch-card__input {
   width: 100%;
-  min-height: 110rpx;
-  padding: 12rpx 16rpx;
+  height: 76rpx;
+  padding: 0 18rpx;
+  margin-bottom: 20rpx;
   font-size: 26rpx;
   color: var(--color-text);
   background: var(--color-bg-page);
+  border: 1px solid var(--color-border);
   border-radius: 12rpx;
   box-sizing: border-box;
 }

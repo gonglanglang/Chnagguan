@@ -2,8 +2,10 @@
 import { onLaunch } from "@dcloudio/uni-app";
 import { useThemeStore } from "@/store";
 import { checkAppUpdate } from "@/utils/app-update";
+import { lockPortraitOrientation } from "@/utils/orientation";
 
 onLaunch(() => {
+  lockPortraitOrientation();
   const themeStore = useThemeStore();
   themeStore.initTheme();
   setTimeout(() => {
