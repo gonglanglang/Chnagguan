@@ -9,6 +9,7 @@ import com.guoguanla.common.result.ErrorCode;
 import com.guoguanla.common.result.PageResult;
 import com.guoguanla.common.security.StpAdminUtil;
 import com.guoguanla.common.util.JsonHelper;
+import com.guoguanla.module.app.AppQuizService;
 import com.guoguanla.module.bank.entity.EduChapter;
 import com.guoguanla.module.bank.entity.EduGate;
 import com.guoguanla.module.bank.entity.EduGrade;
@@ -59,6 +60,7 @@ public class AdminUserService {
     private final UserEssayAnswerMapper essayAnswerMapper;
     private final AliyunOssService ossService;
     private final RealmHelperService realmHelper;
+    private final AppQuizService quizService;
     private final ObjectMapper objectMapper;
 
     public PageResult<UserPageVO> page(UserQueryReq req) {
@@ -100,9 +102,19 @@ public class AdminUserService {
                         .in(UserWrongQuestion::getUserId, userIds)
                         .eq(UserWrongQuestion::getIsMastered, 0)
         ).stream().collect(Collectors.groupingBy(UserWrongQuestion::getUserId, Collectors.counting()));
+        Map<Long, Long> pendingEssayMap = essayAnswerMapper.selectList(
+                new LambdaQueryWrapper<UserEssayAnswer>()
+                        .in(UserEssayAnswer::getUserId, userIds)
+                        .eq(UserEssayAnswer::getTeacherStatus, 0)
+        ).stream().collect(Collectors.groupingBy(UserEssayAnswer::getUserId, Collectors.counting()));
 
         List<UserPageVO> records = page.getRecords().stream()
-                .map(u -> toPageVO(u, gradeNameMap, realmMap, levels, wrongCountMap.getOrDefault(u.getId(), 0L)))
+                .map(u -> toPageVO(
+                        u, gradeNameMap, realmMap, levels,
+                        wrongCountMap.getOrDefault(u.getId(), 0L),
+                        pendingEssayMap.getOrDefault(u.getId(), 0L),
+                        ""
+                ))
                 .toList();
 
         return PageResult.of(records, page.getTotal(), pageNum, pageSize);
@@ -129,7 +141,12 @@ public class AdminUserService {
                         .eq(UserWrongQuestion::getUserId, userId)
                         .eq(UserWrongQuestion::getIsMastered, 0)
         );
-        UserPageVO profile = toPageVO(user, gradeNameMap, realmMap, levels, wrongCount);
+        long pendingEssayCount = essayAnswerMapper.selectCount(
+                new LambdaQueryWrapper<UserEssayAnswer>()
+                        .eq(UserEssayAnswer::getUserId, userId)
+                        .eq(UserEssayAnswer::getTeacherStatus, 0)
+        );
+        UserPageVO profile = toPageVO(user, gradeNameMap, realmMap, levels, wrongCount, pendingEssayCount, baseOrigin);
 
         Map<Long, EduChapter> chapterMap = chapterMapper.selectList(null).stream()
                 .collect(Collectors.toMap(EduChapter::getId, c -> c, (a, b) -> a));
@@ -404,6 +421,7 @@ public class AdminUserService {
         }
         ans.setReviewedAt(LocalDateTime.now());
         essayAnswerMapper.updateById(ans);
+        quizService.syncEssayTeacherReview(ans, status == 1);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -444,7 +462,8 @@ public class AdminUserService {
 
     private UserPageVO toPageVO(AppUser u, Map<String, String> gradeMap,
                                 Map<String, EduRealm> realmMap,
-                                List<EduLevelRule> levels, long wrongCount) {
+                                List<EduLevelRule> levels, long wrongCount,
+                                long pendingEssayCount, String baseOrigin) {
         EduLevelRule lv = resolveLevel(levels, u.getPassedGateCount());
         EduRealm realm = realmMap.getOrDefault(u.getRealmCode(), realmHelper.resolveUserRealm(u));
         return UserPageVO.builder()
@@ -453,7 +472,7 @@ public class AdminUserService {
                 .nickname(u.getNickname())
                 .phoneMasked(maskPhone(u.getPhone()))
                 .wxOpenidMasked(maskOpenId(u.getWxOpenid()))
-                .avatarUrl(u.getAvatarUrl())
+                .avatarUrl(ossService.resolveViewUrl(u.getAvatarUrl(), baseOrigin))
                 .gradeCode(u.getGradeCode())
                 .gradeName(gradeMap.getOrDefault(u.getGradeCode(), u.getGradeCode()))
                 .realmCode(realm.getRealmCode())
@@ -463,6 +482,7 @@ public class AdminUserService {
                 .levelIcon(lv != null ? lv.getIcon() : "")
                 .levelName(realm.getRealmName())
                 .wrongCount(wrongCount)
+                .pendingEssayCount(pendingEssayCount)
                 .status(u.getStatus())
                 .remark(u.getRemark())
                 .lastActiveAt(u.getLastActiveAt())

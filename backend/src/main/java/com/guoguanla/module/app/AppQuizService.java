@@ -340,17 +340,19 @@ public class AppQuizService {
             quizRecordMapper.updateById(record);
 
             upsertEssayAnswerRecord(record, item);
+            boolean pendingReview = item.getUserSelfCorrect() == null;
 
             return AppQuizVO.CheckItemVO.builder()
                     .itemIndex(item.getItemIndex())
                     .questionFormat("ESSAY")
                     .correct(Boolean.TRUE.equals(item.getUserSelfCorrect()))
                     .correctIndex(0)
-                    .referenceAnswer(safeStr(item.getReferenceAnswer()))
+                    .referenceAnswer(pendingReview ? "" : safeStr(item.getReferenceAnswer()))
                     .answerText(safeStr(item.getUserAnswerText()))
                     .answerImageUrl(ossService.resolveViewUrl(item.getUserAnswerImageKey(), baseOrigin))
                     .selfCorrect(item.getUserSelfCorrect())
-                    .analysis(safeStr(item.getAnalysis()))
+                    .pendingReview(pendingReview)
+                    .analysis(pendingReview ? "" : safeStr(item.getAnalysis()))
                     .build();
         }
 
@@ -447,6 +449,37 @@ public class AppQuizService {
         return PageResult.of(records, page.getTotal(), p, s);
     }
 
+    private record EvalOutcome(
+            int correctCount,
+            int pendingReviewCount,
+            List<SnapshotItem> wrongSnaps,
+            List<AppQuizVO.WrongReviewItem> wrongReview
+    ) {}
+
+    private record GateOutcome(
+            boolean newlyPassed,
+            int totalPassed,
+            AppUserProfileVO.LevelProgress promotedLevel
+    ) {}
+
+    private EvalOutcome evaluateSnapshots(List<SnapshotItem> snapshots) {
+        int correctCount = 0;
+        int pendingReviewCount = 0;
+        List<SnapshotItem> wrongSnaps = new ArrayList<>();
+        List<AppQuizVO.WrongReviewItem> wrongReview = new ArrayList<>();
+        for (SnapshotItem item : snapshots) {
+            if (isSnapshotItemCorrect(item)) {
+                correctCount++;
+            } else if (isEssaySubmittedPendingReview(item)) {
+                pendingReviewCount++;
+            } else {
+                wrongSnaps.add(item);
+                wrongReview.add(toWrongReviewItem(item));
+            }
+        }
+        return new EvalOutcome(correctCount, pendingReviewCount, wrongSnaps, wrongReview);
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public AppQuizVO.SubmitResultVO submitGateQuiz(AppQuizDTO.SubmitReq req) {
         UserQuizRecord record = loadAuthorizedSession(req.getSessionNo());
@@ -456,106 +489,41 @@ public class AppQuizService {
         List<SnapshotItem> snapshots = readSnapshots(record.getQuestionSnapshotJson());
         applyBatchAnswers(record, snapshots, req.getAnswers());
 
-        int correctCount = 0;
-        List<SnapshotItem> wrongSnaps = new ArrayList<>();
-        List<AppQuizVO.WrongReviewItem> wrongReview = new ArrayList<>();
-        for (SnapshotItem item : snapshots) {
-            if (isSnapshotItemCorrect(item)) {
-                correctCount++;
-            } else {
-                wrongSnaps.add(item);
-                wrongReview.add(toWrongReviewItem(item));
-            }
-        }
-
+        EvalOutcome eval = evaluateSnapshots(snapshots);
         EduGate gate = gateMapper.selectById(record.getGateId());
         EduChapter chapter = chapterMapper.selectById(record.getChapterId());
         int passCount = gate != null ? Math.min(gate.getPassCount(), snapshots.size()) : (int) Math.ceil(snapshots.size() * 2.0 / 3.0);
-        boolean passed = correctCount >= passCount;
-        int score = snapshots.isEmpty() ? 0 : (int) Math.round(correctCount * 100.0 / snapshots.size());
+        boolean passed = eval.correctCount() >= passCount;
+        int score = snapshots.isEmpty() ? 0 : (int) Math.round(eval.correctCount() * 100.0 / snapshots.size());
 
         record.setQuestionSnapshotJson(writeJson(snapshots));
-        record.setCorrectCount(correctCount);
+        record.setCorrectCount(eval.correctCount());
         record.setScore(score);
         record.setIsPassed(passed ? 1 : 0);
         record.setStatus(1);
         record.setSubmittedAt(LocalDateTime.now());
         quizRecordMapper.updateById(record);
 
-        boolean newlyPassed = false;
-        int totalPassed = 0;
-        AppUserProfileVO.LevelProgress promotedLevel = null;
-
+        GateOutcome gateOut = new GateOutcome(false, 0, null);
         Long userId = StpAppUtil.getLoginIdOrNull();
-        if (userId != null && record.getUserId() != 0L) {
-            AppUser user = userMapper.selectById(userId);
-            int beforeTotal = user.getPassedGateCount() == null ? 0 : user.getPassedGateCount();
-            AppUserProfileVO.LevelProgress beforeLevel = bankService.computeLevelProgress(beforeTotal);
-
-            UserGateProgress prog = gateProgressMapper.selectOne(
-                    new LambdaQueryWrapper<UserGateProgress>()
-                            .eq(UserGateProgress::getUserId, userId)
-                            .eq(UserGateProgress::getGateId, gate.getId())
-                            .last("LIMIT 1")
-            );
-            LocalDateTime now = LocalDateTime.now();
-            if (prog == null) {
-                prog = new UserGateProgress();
-                prog.setUserId(userId);
-                prog.setChapterId(chapter.getId());
-                prog.setGateId(gate.getId());
-                prog.setGateIndex(gate.getGateIndex());
-                prog.setIsPassed(passed ? 1 : 0);
-                prog.setBestCorrect(correctCount);
-                prog.setAttemptCount(1);
-                prog.setFirstPassedAt(passed ? now : null);
-                prog.setLastPlayedAt(now);
-                gateProgressMapper.insert(prog);
-                newlyPassed = passed;
-            } else {
-                boolean wasPassed = prog.getIsPassed() != null && prog.getIsPassed() == 1;
-                if (!wasPassed && passed) {
-                    prog.setIsPassed(1);
-                    prog.setFirstPassedAt(now);
-                    newlyPassed = true;
-                }
-                prog.setBestCorrect(Math.max(prog.getBestCorrect() == null ? 0 : prog.getBestCorrect(), correctCount));
-                prog.setAttemptCount((prog.getAttemptCount() == null ? 0 : prog.getAttemptCount()) + 1);
-                prog.setLastPlayedAt(now);
-                gateProgressMapper.updateById(prog);
-            }
-
-            long distinctPassed = gateProgressMapper.selectCount(
-                    new LambdaQueryWrapper<UserGateProgress>()
-                            .eq(UserGateProgress::getUserId, userId)
-                            .eq(UserGateProgress::getIsPassed, 1)
-            );
-            totalPassed = (int) distinctPassed;
-            AppUserProfileVO.LevelProgress afterLevel = bankService.computeLevelProgress(totalPassed);
-            if (!Objects.equals(beforeLevel.getLevelName(), afterLevel.getLevelName())) {
-                promotedLevel = afterLevel;
-            }
-
-            user.setPassedGateCount(totalPassed);
-            user.setCurrentLevelId(afterLevel.getLevelId());
-            user.setLastActiveAt(now);
-            userMapper.updateById(user);
-
-            recordWrongQuestions(userId, chapter, gate.getGateName(), wrongSnaps);
+        if (userId != null && record.getUserId() != 0L && gate != null && chapter != null) {
+            gateOut = applyGatePassOutcome(userId, gate, chapter, eval.correctCount(), passed);
+            recordWrongQuestions(userId, chapter, gate.getGateName(), eval.wrongSnaps());
         }
 
         return AppQuizVO.SubmitResultVO.builder()
                 .sessionNo(record.getSessionNo())
                 .mode("GATE")
                 .totalCount(snapshots.size())
-                .correctCount(correctCount)
+                .correctCount(eval.correctCount())
+                .pendingReviewCount(eval.pendingReviewCount())
                 .score(score)
                 .passCount(passCount)
                 .passed(passed)
-                .newlyPassed(newlyPassed)
-                .totalPassedGates(totalPassed)
-                .promotedLevel(promotedLevel)
-                .wrongItems(wrongReview)
+                .newlyPassed(gateOut.newlyPassed())
+                .totalPassedGates(gateOut.totalPassed())
+                .promotedLevel(gateOut.promotedLevel())
+                .wrongItems(eval.wrongReview())
                 .masteredCount(0)
                 .build();
     }
@@ -578,67 +546,33 @@ public class AppQuizService {
         List<SnapshotItem> snapshots = readSnapshots(record.getQuestionSnapshotJson());
         applyBatchAnswers(record, snapshots, req.getAnswers());
 
-        int correctCount = 0;
-        List<SnapshotItem> wrongSnaps = new ArrayList<>();
-        List<AppQuizVO.WrongReviewItem> wrongReview = new ArrayList<>();
-        for (SnapshotItem item : snapshots) {
-            if (isSnapshotItemCorrect(item)) {
-                correctCount++;
-            } else {
-                wrongSnaps.add(item);
-                wrongReview.add(toWrongReviewItem(item));
-            }
-        }
-
+        EvalOutcome eval = evaluateSnapshots(snapshots);
         EduRealm examRealm = realmHelper.findByRealmCode(record.getRealmCode());
         if (examRealm == null) {
             examRealm = realmHelper.resolveUserRealm(user);
         }
         int passScore = examRealm.getExamPassScore() == null ? 60 : examRealm.getExamPassScore();
-        int score = snapshots.isEmpty() ? 0 : (int) Math.round(correctCount * 100.0 / snapshots.size());
+        int score = snapshots.isEmpty() ? 0 : (int) Math.round(eval.correctCount() * 100.0 / snapshots.size());
         boolean passed = score >= passScore;
 
         LocalDateTime now = LocalDateTime.now();
         record.setQuestionSnapshotJson(writeJson(snapshots));
-        record.setCorrectCount(correctCount);
+        record.setCorrectCount(eval.correctCount());
         record.setScore(score);
         record.setIsPassed(passed ? 1 : 0);
         record.setStatus(1);
         record.setSubmittedAt(now);
         quizRecordMapper.updateById(record);
 
-        recordExamWrongQuestions(userId, examRealm, wrongSnaps);
-
-        AppUserProfileVO.RealmItemVO promotedRealm = null;
-        if (passed) {
-            EduRealm userCurrent = realmHelper.resolveUserRealm(user);
-            EduRealm nextRealm = realmHelper.findNextRealm(examRealm.getRealmOrder());
-            if (nextRealm != null && userCurrent.getRealmOrder() <= examRealm.getRealmOrder()) {
-                user.setRealmCode(nextRealm.getRealmCode());
-                user.setGradeCode(nextRealm.getGradeCode());
-                user.setLastActiveAt(now);
-                userMapper.updateById(user);
-                promotedRealm = AppUserProfileVO.RealmItemVO.builder()
-                        .realmCode(nextRealm.getRealmCode())
-                        .realmName(nextRealm.getRealmName())
-                        .realmOrder(nextRealm.getRealmOrder())
-                        .gradeCode(nextRealm.getGradeCode())
-                        .difficultyLabel(nextRealm.getDifficultyLabel())
-                        .description(nextRealm.getDescription())
-                        .unlockGates(nextRealm.getUnlockGates())
-                        .examQuestionCount(nextRealm.getExamQuestionCount())
-                        .examPassScore(nextRealm.getExamPassScore())
-                        .unlocked(true)
-                        .isCurrent(true)
-                        .build();
-            }
-        }
+        recordExamWrongQuestions(userId, examRealm, eval.wrongSnaps());
+        AppUserProfileVO.RealmItemVO promotedRealm = applyAdvanceExamPromotion(user, examRealm, passed, now);
 
         return AppQuizVO.SubmitResultVO.builder()
                 .sessionNo(record.getSessionNo())
                 .mode("ADVANCE_EXAM")
                 .totalCount(snapshots.size())
-                .correctCount(correctCount)
+                .correctCount(eval.correctCount())
+                .pendingReviewCount(eval.pendingReviewCount())
                 .score(score)
                 .passScore(passScore)
                 .passCount((int) Math.ceil(snapshots.size() * passScore / 100.0))
@@ -646,9 +580,193 @@ public class AppQuizService {
                 .newlyPassed(promotedRealm != null)
                 .totalPassedGates(user.getPassedGateCount() == null ? 0 : user.getPassedGateCount())
                 .promotedRealm(promotedRealm)
-                .wrongItems(wrongReview)
+                .wrongItems(eval.wrongReview())
                 .masteredCount(0)
                 .build();
+    }
+
+    private GateOutcome applyGatePassOutcome(Long userId, EduGate gate, EduChapter chapter, int correctCount, boolean passed) {
+        AppUser user = userMapper.selectById(userId);
+        if (user == null) {
+            return new GateOutcome(false, 0, null);
+        }
+        int beforeTotal = user.getPassedGateCount() == null ? 0 : user.getPassedGateCount();
+        AppUserProfileVO.LevelProgress beforeLevel = bankService.computeLevelProgress(beforeTotal);
+
+        UserGateProgress prog = gateProgressMapper.selectOne(
+                new LambdaQueryWrapper<UserGateProgress>()
+                        .eq(UserGateProgress::getUserId, userId)
+                        .eq(UserGateProgress::getGateId, gate.getId())
+                        .last("LIMIT 1")
+        );
+        boolean newlyPassed = false;
+        LocalDateTime now = LocalDateTime.now();
+        if (prog == null) {
+            prog = new UserGateProgress();
+            prog.setUserId(userId);
+            prog.setChapterId(chapter.getId());
+            prog.setGateId(gate.getId());
+            prog.setGateIndex(gate.getGateIndex());
+            prog.setIsPassed(passed ? 1 : 0);
+            prog.setBestCorrect(correctCount);
+            prog.setAttemptCount(1);
+            prog.setFirstPassedAt(passed ? now : null);
+            prog.setLastPlayedAt(now);
+            gateProgressMapper.insert(prog);
+            newlyPassed = passed;
+        } else {
+            boolean wasPassed = prog.getIsPassed() != null && prog.getIsPassed() == 1;
+            if (!wasPassed && passed) {
+                prog.setIsPassed(1);
+                prog.setFirstPassedAt(now);
+                newlyPassed = true;
+            }
+            prog.setBestCorrect(Math.max(prog.getBestCorrect() == null ? 0 : prog.getBestCorrect(), correctCount));
+            prog.setAttemptCount((prog.getAttemptCount() == null ? 0 : prog.getAttemptCount()) + 1);
+            prog.setLastPlayedAt(now);
+            gateProgressMapper.updateById(prog);
+        }
+
+        long distinctPassed = gateProgressMapper.selectCount(
+                new LambdaQueryWrapper<UserGateProgress>()
+                        .eq(UserGateProgress::getUserId, userId)
+                        .eq(UserGateProgress::getIsPassed, 1)
+        );
+        int totalPassed = (int) distinctPassed;
+        AppUserProfileVO.LevelProgress afterLevel = bankService.computeLevelProgress(totalPassed);
+        AppUserProfileVO.LevelProgress promotedLevel = !Objects.equals(beforeLevel.getLevelName(), afterLevel.getLevelName())
+                ? afterLevel : null;
+
+        user.setPassedGateCount(totalPassed);
+        user.setCurrentLevelId(afterLevel.getLevelId());
+        user.setLastActiveAt(now);
+        userMapper.updateById(user);
+        return new GateOutcome(newlyPassed, totalPassed, promotedLevel);
+    }
+
+    private AppUserProfileVO.RealmItemVO applyAdvanceExamPromotion(AppUser user, EduRealm examRealm, boolean passed, LocalDateTime now) {
+        if (!passed || user == null) {
+            return null;
+        }
+        EduRealm userCurrent = realmHelper.resolveUserRealm(user);
+        EduRealm nextRealm = realmHelper.findNextRealm(examRealm.getRealmOrder());
+        if (nextRealm == null || userCurrent.getRealmOrder() > examRealm.getRealmOrder()) {
+            return null;
+        }
+        user.setRealmCode(nextRealm.getRealmCode());
+        user.setGradeCode(nextRealm.getGradeCode());
+        user.setLastActiveAt(now);
+        userMapper.updateById(user);
+        return AppUserProfileVO.RealmItemVO.builder()
+                .realmCode(nextRealm.getRealmCode())
+                .realmName(nextRealm.getRealmName())
+                .realmOrder(nextRealm.getRealmOrder())
+                .gradeCode(nextRealm.getGradeCode())
+                .difficultyLabel(nextRealm.getDifficultyLabel())
+                .description(nextRealm.getDescription())
+                .unlockGates(nextRealm.getUnlockGates())
+                .examQuestionCount(nextRealm.getExamQuestionCount())
+                .examPassScore(nextRealm.getExamPassScore())
+                .unlocked(true)
+                .isCurrent(true)
+                .build();
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void syncEssayTeacherReview(UserEssayAnswer ans, boolean approved) {
+        if (ans == null) return;
+        UserQuizRecord record = quizRecordMapper.selectOne(
+                new LambdaQueryWrapper<UserQuizRecord>()
+                        .eq(UserQuizRecord::getSessionNo, ans.getSessionNo())
+                        .last("LIMIT 1")
+        );
+        LocalDateTime now = LocalDateTime.now();
+        SnapshotItem targetSnap = null;
+        if (record != null) {
+            List<SnapshotItem> snapshots = readSnapshots(record.getQuestionSnapshotJson());
+            for (SnapshotItem item : snapshots) {
+                if (Objects.equals(item.getItemIndex(), ans.getItemIndex())) {
+                    item.setUserSelfCorrect(approved);
+                    targetSnap = item;
+                    break;
+                }
+            }
+            int correctCount = (int) snapshots.stream().filter(this::isSnapshotItemCorrect).count();
+            int score = snapshots.isEmpty() ? 0 : (int) Math.round(correctCount * 100.0 / snapshots.size());
+            record.setQuestionSnapshotJson(writeJson(snapshots));
+            record.setCorrectCount(correctCount);
+            record.setScore(score);
+
+            boolean passed = false;
+            if ("ADVANCE_EXAM".equals(record.getMode())) {
+                AppUser user = ans.getUserId() != null && ans.getUserId() > 0 ? userMapper.selectById(ans.getUserId()) : null;
+                EduRealm examRealm = realmHelper.findByRealmCode(record.getRealmCode());
+                if (examRealm == null && user != null) {
+                    examRealm = realmHelper.resolveUserRealm(user);
+                }
+                int passScore = examRealm != null && examRealm.getExamPassScore() != null ? examRealm.getExamPassScore() : 60;
+                passed = score >= passScore;
+                if (user != null && examRealm != null) {
+                    applyAdvanceExamPromotion(user, examRealm, passed, now);
+                }
+            } else if ("REDO_WRONG".equals(record.getMode())) {
+                int passNeed = (int) Math.ceil(snapshots.size() * 2.0 / 3.0);
+                passed = correctCount >= passNeed;
+            } else {
+                EduGate gate = record.getGateId() != null ? gateMapper.selectById(record.getGateId()) : null;
+                EduChapter chapter = record.getChapterId() != null ? chapterMapper.selectById(record.getChapterId()) : null;
+                int passCount = gate != null ? Math.min(gate.getPassCount(), snapshots.size())
+                        : (int) Math.ceil(snapshots.size() * 2.0 / 3.0);
+                passed = correctCount >= passCount;
+                if (ans.getUserId() != null && ans.getUserId() > 0 && gate != null && chapter != null) {
+                    applyGatePassOutcome(ans.getUserId(), gate, chapter, correctCount, passed);
+                }
+            }
+            record.setIsPassed(passed ? 1 : 0);
+            quizRecordMapper.updateById(record);
+        }
+
+        if (ans.getUserId() == null || ans.getUserId() <= 0) {
+            return;
+        }
+        if (targetSnap == null) {
+            targetSnap = new SnapshotItem();
+            targetSnap.setItemIndex(ans.getItemIndex());
+            targetSnap.setQuestionId(ans.getQuestionId());
+            targetSnap.setChapterId(ans.getChapterId());
+            targetSnap.setGradeCode(ans.getGradeCode());
+            targetSnap.setQuestionFormat("ESSAY");
+            targetSnap.setStem(ans.getStem());
+            targetSnap.setOptions(List.of());
+            targetSnap.setReferenceAnswer(ans.getReferenceAnswer());
+            targetSnap.setUserAnswerText(ans.getAnswerText());
+            targetSnap.setUserAnswerImageKey(ans.getAnswerImageKey());
+        }
+        String stemHash = sha256(safeStr(targetSnap.getStem()) + "|ESSAY|" + safeStr(targetSnap.getReferenceAnswer()));
+        if (!approved) {
+            upsertWrongItem(
+                    ans.getUserId(),
+                    safeStr(ans.getGradeCode()),
+                    ans.getChapterId() == null ? 0L : ans.getChapterId(),
+                    safeStr(ans.getChapterName()),
+                    safeStr(ans.getGateName()),
+                    targetSnap,
+                    now
+            );
+        } else {
+            UserWrongQuestion exist = wrongMapper.selectOne(
+                    new LambdaQueryWrapper<UserWrongQuestion>()
+                            .eq(UserWrongQuestion::getUserId, ans.getUserId())
+                            .eq(UserWrongQuestion::getStemHash, stemHash)
+                            .eq(UserWrongQuestion::getIsMastered, 0)
+                            .last("LIMIT 1")
+            );
+            if (exist != null) {
+                exist.setIsMastered(1);
+                exist.setMasteredAt(now);
+                wrongMapper.updateById(exist);
+            }
+        }
     }
 
     public UserQuizRecord loadAuthorizedSession(String sessionNo) {
@@ -701,6 +819,18 @@ public class AppQuizService {
             return Boolean.TRUE.equals(item.getUserSelfCorrect());
         }
         return Objects.equals(item.getAnswerIndex(), item.getUserIndex());
+    }
+
+    public boolean isEssaySubmittedPendingReview(SnapshotItem item) {
+        if (!"ESSAY".equalsIgnoreCase(item.getQuestionFormat())) {
+            return false;
+        }
+        if (item.getUserSelfCorrect() != null) {
+            return false;
+        }
+        boolean hasText = item.getUserAnswerText() != null && !item.getUserAnswerText().isBlank();
+        boolean hasImg = item.getUserAnswerImageKey() != null && !item.getUserAnswerImageKey().isBlank();
+        return hasText || hasImg;
     }
 
     private void upsertEssayAnswerRecord(UserQuizRecord record, SnapshotItem item) {

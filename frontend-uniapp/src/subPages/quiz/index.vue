@@ -1,182 +1,111 @@
 <template>
-  <view class="quiz-page">
-    <app-navbar
-      :title="navbarTitle"
-      :show-back="false"
-      :show-home="false"
-      fixed
-      placeholder
-    >
-      <template #left>
-        <view class="nav-exit-btn" @click="handleExit">
-          <wd-icon name="arrow-left" size="18" color="var(--color-text)" />
-          <text class="nav-exit-text">{{ submitResult ? "返回" : "退出" }}</text>
+  <app-page-shell :has-footer="hasFooterBar">
+    <template #header>
+      <app-navbar
+        :title="navbarTitle"
+        :show-back="false"
+        :show-home="false"
+        :fixed="false"
+        :placeholder="false"
+      >
+        <template #left>
+          <view class="nav-exit-btn" @click="handleExit">
+            <wd-icon name="arrow-left" size="18" color="var(--color-text)" />
+            <text class="nav-exit-text">{{ submitResult ? "返回" : "退出" }}</text>
+          </view>
+        </template>
+      </app-navbar>
+    </template>
+
+    <view v-if="loading" class="state-box">
+      <wd-loading />
+      <text class="state-box__text">正在抽取题目...</text>
+    </view>
+
+    <view v-else-if="loadError" class="state-box">
+      <wd-empty icon="no-content" :tip="loadError" />
+      <view class="state-box__actions">
+        <wd-button size="small" variant="plain" @click="goBack">返回</wd-button>
+        <wd-button size="small" type="primary" @click="initQuiz">重试</wd-button>
+      </view>
+    </view>
+
+    <!-- 答题视图 -->
+    <template v-else-if="startData && !submitResult && currentItem">
+      <view class="progress-card">
+        <view class="progress-card__top">
+          <text class="progress-card__step">
+            第 {{ currentIdx + 1 }} / {{ startData.items.length }} 题
+          </text>
+          <view class="progress-card__tags">
+            <wd-tag
+              v-if="currentItem.questionFormat === 'ESSAY'"
+              type="success"
+              variant="light"
+              size="small"
+            >
+              解答题
+            </wd-tag>
+            <wd-tag v-if="startData.suppressedMode" type="warning" variant="light" size="small">
+              压制境界
+            </wd-tag>
+            <wd-tag type="primary" variant="light" size="small">
+              <template v-if="startData.mode === 'ADVANCE_EXAM'">
+                {{ startData.passScore ?? 60 }} 分进阶
+              </template>
+              <template v-else-if="startData.mode === 'WRONG_REDO'">
+                答对即掌握
+              </template>
+              <template v-else>
+                答对 {{ startData.passCount }} 题过关
+              </template>
+            </wd-tag>
+          </view>
+        </view>
+        <wd-progress :percentage="progressPercent" hide-text />
+      </view>
+
+      <view class="question-card">
+        <view class="question-card__meta">
+          <wd-tag variant="light" size="small">
+            {{ startData.realmName || "修炼答题" }}
+          </wd-tag>
+          <text v-if="startData.chapterName" class="question-card__chapter">
+            {{ startData.chapterName }}
+          </text>
+        </view>
+        <view class="question-card__stem">
+          <math-text :key="`${startData.sessionNo}-${currentItem.itemIndex}-stem`" :text="currentItem.stem" />
+        </view>
+      </view>
+
+      <!-- 解答题作答展示区（交由管理员在后台批改，取消学生自评） -->
+      <template v-if="isCurrentEssay">
+        <view v-if="currentFeedback" class="essay-saved-card">
+          <view class="essay-saved-card__head">
+            <text class="essay-saved-card__title">我的已保存作答</text>
+            <wd-tag type="warning" variant="light" size="small">待老师批改</wd-tag>
+          </view>
+          <view v-if="currentFeedback.answerText" class="essay-saved-card__text">
+            文字作答：{{ currentFeedback.answerText }}
+          </view>
+          <view v-if="currentFeedback.answerImageUrl" class="essay-saved-card__img-wrap">
+            <image
+              :src="currentFeedback.answerImageUrl"
+              mode="aspectFit"
+              class="essay-saved-card__img"
+              @click="previewImage(currentFeedback.answerImageUrl)"
+            />
+          </view>
+          <view class="essay-pending-banner">
+            <wd-icon name="time" size="16" color="#d97706" />
+            <text class="essay-pending-banner__text">作答已提交至云端，等待老师批改点评</text>
+          </view>
         </view>
       </template>
-    </app-navbar>
 
-    <view class="page-body">
-      <view v-if="loading" class="state-box">
-        <wd-loading />
-        <text class="state-box__text">正在抽取题目...</text>
-      </view>
-
-      <view v-else-if="loadError" class="state-box">
-        <wd-empty icon="no-content" :tip="loadError" />
-        <view class="state-box__actions">
-          <wd-button size="small" variant="plain" @click="goBack">返回</wd-button>
-          <wd-button size="small" type="primary" @click="initQuiz">重试</wd-button>
-        </view>
-      </view>
-
-      <!-- 答题视图 -->
-      <template v-else-if="startData && !submitResult && currentItem">
-        <view class="progress-card">
-          <view class="progress-card__top">
-            <text class="progress-card__step">
-              第 {{ currentIdx + 1 }} / {{ startData.items.length }} 题
-            </text>
-            <view class="progress-card__tags">
-              <wd-tag
-                v-if="currentItem.questionFormat === 'ESSAY'"
-                type="success"
-                variant="light"
-                size="small"
-              >
-                解答题
-              </wd-tag>
-              <wd-tag v-if="startData.suppressedMode" type="warning" variant="light" size="small">
-                压制境界
-              </wd-tag>
-              <wd-tag type="primary" variant="light" size="small">
-                <template v-if="startData.mode === 'ADVANCE_EXAM'">
-                  {{ startData.passScore ?? 60 }} 分进阶
-                </template>
-                <template v-else-if="startData.mode === 'WRONG_REDO'">
-                  答对即掌握
-                </template>
-                <template v-else>
-                  答对 {{ startData.passCount }} 题过关
-                </template>
-              </wd-tag>
-            </view>
-          </view>
-          <wd-progress :percentage="progressPercent" hide-text />
-        </view>
-
-        <view class="question-card">
-          <view class="question-card__meta">
-            <wd-tag variant="light" size="small">
-              {{ startData.realmName || "修炼答题" }}
-            </wd-tag>
-            <text v-if="startData.chapterName" class="question-card__chapter">
-              {{ startData.chapterName }}
-            </text>
-          </view>
-          <view class="question-card__stem">
-            <math-text :key="`${startData.sessionNo}-${currentItem.itemIndex}-stem`" :text="currentItem.stem" />
-          </view>
-        </view>
-
-        <!-- 解答题作答区（极简引导 + 横屏绘制路由） -->
-        <template v-if="isCurrentEssay">
-          <template v-if="!currentFeedback">
-            <view class="essay-launch-card">
-              <view class="essay-launch-card__head">
-                <text class="essay-launch-card__title">手写答题板</text>
-                <text class="essay-launch-card__badge">横屏全屏书写</text>
-              </view>
-              <text class="essay-launch-card__desc">
-                点击开始作答后将自动切换为横屏纯白画板，完成后自动保存并上传至云端。
-              </text>
-              <input
-                v-model="essayTextDraft"
-                class="essay-launch-card__input"
-                placeholder="补充最终结果或说明（选填）"
-                maxlength="120"
-              />
-              <wd-button type="primary" block @click="openLandscapeDraw">
-                开始作答
-              </wd-button>
-            </view>
-          </template>
-
-          <template v-else>
-            <view class="essay-saved-card">
-              <view class="essay-saved-card__head">
-                <text class="essay-saved-card__title">我的已保存作答</text>
-                <wd-tag type="success" variant="light" size="small">已同步云端</wd-tag>
-              </view>
-              <view v-if="currentFeedback.answerText" class="essay-saved-card__text">
-                文字作答：{{ currentFeedback.answerText }}
-              </view>
-              <view v-if="currentFeedback.answerImageUrl" class="essay-saved-card__img-wrap">
-                <image
-                  :src="currentFeedback.answerImageUrl"
-                  mode="aspectFit"
-                  class="essay-saved-card__img"
-                  @click="previewImage(currentFeedback.answerImageUrl)"
-                />
-                <text class="essay-saved-card__tip">点击手写图片可放大查看（托管于阿里云 OSS）</text>
-              </view>
-            </view>
-
-            <view
-              class="feedback-card"
-              :class="
-                currentFeedback.selfCorrect === false ? 'feedback-card--fail' : 'feedback-card--pass'
-              "
-            >
-              <view class="feedback-card__head">
-                <wd-icon
-                  :name="currentFeedback.selfCorrect === false ? 'close-circle-fill' : 'check-circle-fill'"
-                  size="18"
-                  :color="currentFeedback.selfCorrect === false ? '#ef4444' : '#16a34a'"
-                />
-                <text class="feedback-card__title">参考答案与解析</text>
-              </view>
-              <view class="feedback-card__ans">
-                参考答案：
-                <math-text
-                  :text="currentFeedback.referenceAnswer || '本题侧重过程表达，可对照下方思路核对'"
-                  inline
-                />
-              </view>
-              <view v-if="currentFeedback.analysis" class="feedback-card__analysis">
-                <math-text :text="currentFeedback.analysis" />
-              </view>
-            </view>
-
-            <view class="self-grade-card">
-              <text class="self-grade-card__title">请核对过程与结果，完成本题自评：</text>
-              <view class="self-grade-card__btns">
-                <wd-button
-                  size="small"
-                  :type="currentFeedback.selfCorrect === true ? 'success' : 'primary'"
-                  :plain="currentFeedback.selfCorrect !== true"
-                  :loading="checking"
-                  block
-                  @click="handleEssaySelfGrade(true)"
-                >
-                  步骤结果正确（计对）
-                </wd-button>
-                <wd-button
-                  size="small"
-                  :type="currentFeedback.selfCorrect === false ? 'error' : 'warning'"
-                  :plain="currentFeedback.selfCorrect !== false"
-                  :loading="checking"
-                  block
-                  @click="handleEssaySelfGrade(false)"
-                >
-                  有误/未做出（入错题本）
-                </wd-button>
-              </view>
-            </view>
-          </template>
-        </template>
-
-        <!-- 选择题作答区 -->
-        <template v-else>
+      <!-- 选择题作答区 -->
+      <template v-else>
           <view class="options-list">
             <view
               v-for="(opt, idx) in currentItem.options"
@@ -237,123 +166,141 @@
               <math-text :text="currentFeedback.analysis" />
             </view>
           </view>
-        </template>
+      </template>
+    </template>
 
-        <view v-if="!isCurrentEssay || currentFeedback" class="bottom-bar">
-          <wd-button
-            v-if="currentIdx < startData.items.length - 1"
-            type="primary"
-            block
-            :disabled="!canGoNext || checking"
-            @click="nextQuestion"
-          >
-            下一题
-          </wd-button>
-          <wd-button
-            v-else
-            type="primary"
-            block
-            :loading="submitting"
-            :disabled="!canGoNext || checking"
-            @click="handleSubmit"
-          >
-            提交交卷
-          </wd-button>
+    <!-- 结算结果视图 -->
+    <template v-else-if="submitResult">
+      <view class="result-card">
+        <view
+          class="result-card__icon"
+          :class="submitResult.passed ? 'result-card__icon--pass' : 'result-card__icon--retry'"
+        >
+          <wd-icon
+            :name="submitResult.passed ? 'check-circle-fill' : 'info-circle'"
+            size="40"
+            :color="submitResult.passed ? '#16a34a' : '#f59e0b'"
+          />
         </view>
+
+        <text class="result-card__title">
+          <template v-if="!submitResult.passed && (submitResult.pendingReviewCount || 0) > 0">
+            答卷已提交 · 待老师批改
+          </template>
+          <template v-else-if="submitResult.mode === 'ADVANCE_EXAM'">
+            {{ submitResult.passed ? "进阶成功" : "进阶未通过" }}
+          </template>
+          <template v-else-if="submitResult.mode === 'WRONG_REDO'">错题重做完成</template>
+          <template v-else>{{ submitResult.passed ? "本关通过" : "暂未过关" }}</template>
+        </text>
+
+        <text class="result-card__score">
+          <template v-if="submitResult.mode === 'ADVANCE_EXAM'">
+            得分 {{ submitResult.score ?? 0 }} 分（及格线 {{ submitResult.passScore ?? 60 }} 分 · 答对 {{ submitResult.correctCount }}/{{ submitResult.totalCount }} 题）
+          </template>
+          <template v-else>
+            答对 {{ submitResult.correctCount }} / {{ submitResult.totalCount }} 题
+          </template>
+        </text>
+
+        <text
+          v-if="(submitResult.pendingReviewCount || 0) > 0"
+          class="result-card__desc"
+        >
+          其中 {{ submitResult.pendingReviewCount }} 道解答题已提交云端，待老师在后台批改后自动同步成绩与过关状态
+        </text>
+        <text v-else-if="submitResult.mode === 'WRONG_REDO'" class="result-card__desc">
+          本次新掌握 {{ submitResult.masteredCount }} 道错题
+        </text>
+        <text v-else-if="submitResult.mode === 'ADVANCE_EXAM'" class="result-card__desc">
+          {{
+            submitResult.passed
+              ? "实力达标，已正式突破当前境界"
+              : "尚差少许火候，巩固错题后可再次发起考核"
+          }}
+        </text>
+        <text v-else class="result-card__desc">
+          {{
+            submitResult.newlyPassed
+              ? "首次通关成功，已解锁下一关卡"
+              : submitResult.passed
+                ? "巩固练习完成"
+                : `本关需答对 ${submitResult.passCount} 题，整理思路再试`
+          }}
+        </text>
+
+        <view v-if="submitResult.promotedRealm" class="promote-banner">
+          <wd-icon name="trophy" size="18" color="var(--color-primary)" />
+          <text class="promote-banner__text">
+            恭喜突破至「{{ submitResult.promotedRealm.realmName }}」境界
+          </text>
+        </view>
+      </view>
+
+      <view v-if="submitResult.wrongItems && submitResult.wrongItems.length > 0" class="review-box">
+        <text class="review-box__title">错题复盘（{{ submitResult.wrongItems.length }}）</text>
+        <view
+          v-for="(item, idx) in submitResult.wrongItems"
+          :key="idx"
+          class="review-card"
+        >
+          <view class="review-card__stem">
+            <math-text :text="item.stem" />
+          </view>
+          <view class="review-card__ans">
+            参考答案：<math-text :text="item.correctAnswer || '见解析'" inline />
+          </view>
+          <view v-if="item.analysis" class="review-card__analysis">
+            <math-text :text="item.analysis" />
+          </view>
+        </view>
+      </view>
+    </template>
+
+    <template #footer>
+      <template v-if="startData && !submitResult && currentItem">
+        <wd-button
+          v-if="isCurrentEssay && !currentFeedback"
+          type="primary"
+          block
+          @click="openLandscapeDraw"
+        >
+          开始作答
+        </wd-button>
+        <wd-button
+          v-else-if="currentIdx < startData.items.length - 1"
+          type="primary"
+          block
+          :disabled="!canGoNext || checking"
+          @click="nextQuestion"
+        >
+          下一题
+        </wd-button>
+        <wd-button
+          v-else
+          type="primary"
+          block
+          :loading="submitting"
+          :disabled="!canGoNext || checking"
+          @click="handleSubmit"
+        >
+          提交交卷
+        </wd-button>
       </template>
 
-      <!-- 结算结果视图 -->
-      <template v-else-if="submitResult">
-        <view class="result-card">
-          <view
-            class="result-card__icon"
-            :class="submitResult.passed ? 'result-card__icon--pass' : 'result-card__icon--retry'"
-          >
-            <wd-icon
-              :name="submitResult.passed ? 'check-circle-fill' : 'info-circle'"
-              size="40"
-              :color="submitResult.passed ? '#16a34a' : '#f59e0b'"
-            />
-          </view>
-
-          <text class="result-card__title">
-            <template v-if="submitResult.mode === 'ADVANCE_EXAM'">
-              {{ submitResult.passed ? "进阶成功" : "进阶未通过" }}
-            </template>
-            <template v-else-if="submitResult.mode === 'WRONG_REDO'">错题重做完成</template>
-            <template v-else>{{ submitResult.passed ? "本关通过" : "暂未过关" }}</template>
-          </text>
-
-          <text class="result-card__score">
-            <template v-if="submitResult.mode === 'ADVANCE_EXAM'">
-              得分 {{ submitResult.score ?? 0 }} 分（及格线 {{ submitResult.passScore ?? 60 }} 分 · 答对 {{ submitResult.correctCount }}/{{ submitResult.totalCount }} 题）
-            </template>
-            <template v-else>
-              答对 {{ submitResult.correctCount }} / {{ submitResult.totalCount }} 题
-            </template>
-          </text>
-
-          <text v-if="submitResult.mode === 'WRONG_REDO'" class="result-card__desc">
-            本次新掌握 {{ submitResult.masteredCount }} 道错题
-          </text>
-          <text v-else-if="submitResult.mode === 'ADVANCE_EXAM'" class="result-card__desc">
-            {{
-              submitResult.passed
-                ? "实力达标，已正式突破当前境界"
-                : "尚差少许火候，巩固错题后可再次发起考核"
-            }}
-          </text>
-          <text v-else class="result-card__desc">
-            {{
-              submitResult.newlyPassed
-                ? "首次通关成功，已解锁下一关卡"
-                : submitResult.passed
-                  ? "巩固练习完成"
-                  : `本关需答对 ${submitResult.passCount} 题，整理思路再试`
-            }}
-          </text>
-
-          <view v-if="submitResult.promotedRealm" class="promote-banner">
-            <wd-icon name="trophy" size="18" color="var(--color-primary)" />
-            <text class="promote-banner__text">
-              恭喜突破至「{{ submitResult.promotedRealm.realmName }}」境界
-            </text>
-          </view>
-        </view>
-
-        <view v-if="submitResult.wrongItems && submitResult.wrongItems.length > 0" class="review-box">
-          <text class="review-box__title">错题复盘（{{ submitResult.wrongItems.length }}）</text>
-          <view
-            v-for="(item, idx) in submitResult.wrongItems"
-            :key="idx"
-            class="review-card"
-          >
-            <view class="review-card__stem">
-              <math-text :text="item.stem" />
-            </view>
-            <view class="review-card__ans">
-              参考答案：<math-text :text="item.correctAnswer || '见解析'" inline />
-            </view>
-            <view v-if="item.analysis" class="review-card__analysis">
-              <math-text :text="item.analysis" />
-            </view>
-          </view>
-        </view>
-
-        <view class="result-actions">
-          <wd-button variant="plain" block @click="goBack">返回</wd-button>
-          <wd-button
-            v-if="submitResult.mode === 'GATE' || (submitResult.mode === 'ADVANCE_EXAM' && !submitResult.passed)"
-            type="primary"
-            block
-            @click="initQuiz"
-          >
-            {{ submitResult.passed ? "再练一次" : "重新挑战" }}
-          </wd-button>
-        </view>
-      </template>
-    </view>
-  </view>
+      <view v-else-if="submitResult" class="result-actions">
+        <wd-button variant="plain" block @click="goBack">返回</wd-button>
+        <wd-button
+          v-if="submitResult.mode === 'GATE' || (submitResult.mode === 'ADVANCE_EXAM' && !submitResult.passed)"
+          type="primary"
+          block
+          @click="initQuiz"
+        >
+          {{ submitResult.passed ? "再练一次" : "重新挑战" }}
+        </wd-button>
+      </view>
+    </template>
+  </app-page-shell>
 </template>
 
 <script setup lang="ts">
@@ -409,17 +356,6 @@ interface EssayDrawSavedPayload {
 const currentItem = computed(() => startData.value?.items?.[currentIdx.value] ?? null);
 const isCurrentEssay = computed(() => currentItem.value?.questionFormat === "ESSAY");
 
-const essayTextDraft = computed({
-  get() {
-    if (!currentItem.value) return "";
-    return essayTextMap.value[currentItem.value.itemIndex] || "";
-  },
-  set(val: string) {
-    if (!currentItem.value) return;
-    essayTextMap.value[currentItem.value.itemIndex] = val;
-  },
-});
-
 const currentSelected = computed(() => {
   if (!currentItem.value) return undefined;
   return selectedMap.value[currentItem.value.itemIndex];
@@ -430,14 +366,15 @@ const currentFeedback = computed(() => {
   return feedbackMap.value[currentItem.value.itemIndex];
 });
 
-const canGoNext = computed(() => {
-  const fb = currentFeedback.value;
-  if (!fb) return false;
-  if (isCurrentEssay.value) {
-    return fb.selfCorrect === true || fb.selfCorrect === false;
-  }
-  return true;
-});
+const canGoNext = computed(() => Boolean(currentFeedback.value));
+
+const hasFooterBar = computed(() =>
+  Boolean(
+    !loading.value &&
+      !loadError.value &&
+      ((startData.value && !submitResult.value && currentItem.value) || submitResult.value),
+  ),
+);
 
 const progressPercent = computed(() => {
   const total = startData.value?.items?.length || 0;
@@ -471,7 +408,7 @@ function openLandscapeDraw(): void {
   const sessionNo = startData.value.sessionNo;
   const itemIndex = currentItem.value.itemIndex;
   const stem = currentItem.value.stem || "";
-  const answerText = essayTextDraft.value.trim();
+  const answerText = (essayTextMap.value[itemIndex] || "").trim();
 
   uni.setStorageSync(ACTIVE_ESSAY_PROMPT_KEY, {
     sessionNo,
@@ -501,7 +438,7 @@ function handleEssayDrawSaved(payload?: EssayDrawSavedPayload): void {
     essayImageKeyMap.value[payload.itemIndex] = payload.answerImageKey;
   }
   feedbackMap.value[payload.itemIndex] = payload.feedback;
-  toast.success("作答已上传云端，请对照参考答案自评");
+  toast.success("作答已上传云端，等待老师批改");
 }
 
 async function initQuiz(): Promise<void> {
@@ -561,26 +498,6 @@ async function handleSelectOption(idx: number): Promise<void> {
   }
 }
 
-async function handleEssaySelfGrade(correct: boolean): Promise<void> {
-  if (!startData.value || !currentItem.value || checking.value) return;
-  const itemIndex = currentItem.value.itemIndex;
-  checking.value = true;
-  try {
-    const res = await AppQuizAPI.gradeEssay({
-      sessionNo: startData.value.sessionNo,
-      itemIndex,
-      correct,
-      answerText: essayTextMap.value[itemIndex] || "",
-      answerImageKey: essayImageKeyMap.value[itemIndex] || "",
-    });
-    feedbackMap.value[itemIndex] = res;
-  } catch (err) {
-    toast.error(getErrorMessage(err, "保存自评失败"));
-  } finally {
-    checking.value = false;
-  }
-}
-
 function nextQuestion(): void {
   if (!startData.value) return;
   if (currentIdx.value < startData.value.items.length - 1) {
@@ -597,7 +514,7 @@ async function handleSubmit(): Promise<void> {
         itemIndex: item.itemIndex,
         answerText: essayTextMap.value[item.itemIndex] || fb?.answerText || "",
         answerImageKey: essayImageKeyMap.value[item.itemIndex] || "",
-        selfCorrect: fb?.selfCorrect ?? false,
+        ...(typeof fb?.selfCorrect === "boolean" ? { selfCorrect: fb.selfCorrect } : {}),
       };
     }
     return {
@@ -690,15 +607,6 @@ onUnload(() => {
 </script>
 
 <style lang="scss" scoped>
-.quiz-page {
-  min-height: 100vh;
-  background: var(--color-bg-page);
-}
-
-.page-body {
-  padding: 24rpx 24rpx 60rpx;
-}
-
 .nav-exit-btn {
   display: flex;
   gap: 6rpx;
@@ -784,58 +692,6 @@ onUnload(() => {
   color: var(--color-text);
 }
 
-.essay-launch-card {
-  padding: 28rpx 26rpx;
-  margin-top: 20rpx;
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  border-radius: 18rpx;
-  box-shadow: var(--shadow-sm);
-}
-
-.essay-launch-card__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.essay-launch-card__title {
-  font-size: 30rpx;
-  font-weight: 600;
-  color: var(--color-text);
-}
-
-.essay-launch-card__badge {
-  padding: 4rpx 14rpx;
-  font-size: 22rpx;
-  font-weight: 500;
-  color: #16a34a;
-  background: #f0fdf4;
-  border-radius: 999rpx;
-}
-
-.essay-launch-card__desc {
-  display: block;
-  margin-top: 10rpx;
-  margin-bottom: 18rpx;
-  font-size: 24rpx;
-  line-height: 1.5;
-  color: var(--color-text-secondary);
-}
-
-.essay-launch-card__input {
-  width: 100%;
-  height: 76rpx;
-  padding: 0 18rpx;
-  margin-bottom: 20rpx;
-  font-size: 26rpx;
-  color: var(--color-text);
-  background: var(--color-bg-page);
-  border: 1px solid var(--color-border);
-  border-radius: 12rpx;
-  box-sizing: border-box;
-}
-
 .essay-saved-card {
   padding: 22rpx 24rpx;
   margin-top: 20rpx;
@@ -877,32 +733,21 @@ onUnload(() => {
   border-radius: 12rpx;
 }
 
-.essay-saved-card__tip {
-  display: block;
-  margin-top: 6rpx;
-  font-size: 22rpx;
-  color: var(--color-text-muted);
-}
-
-.self-grade-card {
-  padding: 22rpx 24rpx;
-  margin-top: 20rpx;
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  border-radius: 18rpx;
-}
-
-.self-grade-card__title {
-  display: block;
-  margin-bottom: 14rpx;
-  font-size: 26rpx;
-  font-weight: 600;
-  color: var(--color-text);
-}
-
-.self-grade-card__btns {
+.essay-pending-banner {
   display: flex;
-  gap: 16rpx;
+  gap: 10rpx;
+  align-items: center;
+  padding: 16rpx 18rpx;
+  margin-top: 14rpx;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 12rpx;
+}
+
+.essay-pending-banner__text {
+  font-size: 24rpx;
+  font-weight: 500;
+  color: #b45309;
 }
 
 .options-list {
@@ -1021,10 +866,6 @@ onUnload(() => {
   color: var(--color-text-secondary);
 }
 
-.bottom-bar {
-  margin-top: 28rpx;
-}
-
 .result-card {
   display: flex;
   flex-direction: column;
@@ -1135,6 +976,6 @@ onUnload(() => {
 .result-actions {
   display: flex;
   gap: 20rpx;
-  margin-top: 32rpx;
+  width: 100%;
 }
 </style>

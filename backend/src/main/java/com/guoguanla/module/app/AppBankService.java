@@ -14,6 +14,7 @@ import com.guoguanla.module.bank.mapper.EduChapterMapper;
 import com.guoguanla.module.bank.mapper.EduGateMapper;
 import com.guoguanla.module.bank.mapper.EduGradeMapper;
 import com.guoguanla.module.bank.mapper.EduQuestionMapper;
+import com.guoguanla.module.oss.AliyunOssService;
 import com.guoguanla.module.progress.entity.UserGateProgress;
 import com.guoguanla.module.progress.mapper.UserGateProgressMapper;
 import com.guoguanla.module.system.RealmHelperService;
@@ -26,6 +27,7 @@ import com.guoguanla.module.user.entity.AppUser;
 import com.guoguanla.module.user.mapper.AppUserMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -43,6 +45,7 @@ public class AppBankService {
     private final UserGateProgressMapper gateProgressMapper;
     private final SysConfigMapper sysConfigMapper;
     private final RealmHelperService realmHelper;
+    private final AliyunOssService ossService;
 
     public AppUserProfileVO.HomeSummaryVO homeSummary(Set<Long> guestPassedGateIds) {
         boolean guestEnabled = isGuestModeEnabled();
@@ -279,23 +282,46 @@ public class AppBankService {
     }
 
     public AppUserProfileVO currentProfile() {
+        return currentProfile("");
+    }
+
+    public AppUserProfileVO currentProfile(String baseOrigin) {
         Long userId = StpAppUtil.getLoginIdAsLong();
         AppUser user = userMapper.selectById(userId);
         if (user == null) {
             throw new BizException(ErrorCode.UNAUTHORIZED);
         }
-        return buildProfileVO(user);
+        return buildProfileVO(user, baseOrigin);
     }
 
     public AppUserProfileVO updateProfile(AppLoginReq.ProfileUpdateReq req) {
+        return updateProfile(req, "");
+    }
+
+    public AppUserProfileVO updateProfile(AppLoginReq.ProfileUpdateReq req, String baseOrigin) {
         Long userId = StpAppUtil.getLoginIdAsLong();
         AppUser user = userMapper.selectById(userId);
         if (user == null) {
             throw new BizException(ErrorCode.UNAUTHORIZED);
         }
         user.setNickname(req.getNickname().trim());
+        if (req.getAvatarUrl() != null && !req.getAvatarUrl().isBlank()) {
+            user.setAvatarUrl(req.getAvatarUrl().trim());
+        }
         userMapper.updateById(user);
-        return buildProfileVO(user);
+        return buildProfileVO(user, baseOrigin);
+    }
+
+    public AppUserProfileVO uploadAvatar(MultipartFile file, String baseOrigin) {
+        Long userId = StpAppUtil.getLoginIdAsLong();
+        AppUser user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BizException(ErrorCode.UNAUTHORIZED);
+        }
+        AliyunOssService.UploadResult res = ossService.uploadUserAvatar(file, userId, baseOrigin);
+        user.setAvatarUrl(res.objectKey());
+        userMapper.updateById(user);
+        return buildProfileVO(user, baseOrigin);
     }
 
     public List<AppUserProfileVO.ChapterCardVO> listUserChapterRecords() {
@@ -335,6 +361,10 @@ public class AppBankService {
     }
 
     public AppUserProfileVO buildProfileVO(AppUser user) {
+        return buildProfileVO(user, "");
+    }
+
+    public AppUserProfileVO buildProfileVO(AppUser user, String baseOrigin) {
         int n = user.getPassedGateCount() == null ? 0 : user.getPassedGateCount();
         EduRealm realm = realmHelper.resolveUserRealm(user);
         EduRealm nextRealm = realmHelper.findNextRealm(realm.getRealmOrder());
@@ -348,7 +378,7 @@ public class AppBankService {
                 .id(user.getId())
                 .username(user.getUsername())
                 .nickname(user.getNickname())
-                .avatarUrl(user.getAvatarUrl())
+                .avatarUrl(ossService.resolveViewUrl(user.getAvatarUrl(), baseOrigin))
                 .gradeCode(user.getGradeCode())
                 .gradeName(grade != null ? grade.getGradeName() : user.getGradeCode())
                 .realmCode(realm.getRealmCode())

@@ -1,5 +1,5 @@
 <template>
-  <view>
+  <app-page-shell title="主题设置">
     <!-- 暗黑模式设置 -->
     <wd-cell-group title="外观模式" border>
       <wd-cell title="暗黑模式" :value="isDark ? '已开启' : '已关闭'">
@@ -114,7 +114,7 @@
         </view>
       </view>
     </wd-popup>
-  </view>
+  </app-page-shell>
 </template>
 
 <script lang="ts" setup>
@@ -123,7 +123,11 @@ import { useToast, useDialog } from "@wot-ui/ui";
 
 definePage({
   name: "theme",
-  style: { navigationBarTitleText: "主题设置" },
+  layout: "blank",
+  style: {
+    navigationStyle: "custom",
+    navigationBarTitleText: "主题设置",
+  },
 });
 
 const { isDark, themeColorOptions, toggleThemeMode, setThemeColor, selectedThemeColor } =

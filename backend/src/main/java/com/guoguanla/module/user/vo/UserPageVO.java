@@ -24,6 +24,7 @@ public class UserPageVO {
     private String levelIcon;
     private String levelName;
     private Long wrongCount;
+    private Long pendingEssayCount;
     private Integer status;
     private String remark;
     private LocalDateTime lastActiveAt;

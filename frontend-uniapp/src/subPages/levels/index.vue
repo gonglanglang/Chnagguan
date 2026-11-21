@@ -1,5 +1,5 @@
 <template>
-  <view class="realms-page">
+  <app-page-shell title="修仙境界体系">
     <view class="summary-card">
       <view class="summary-card__badge">
         <wd-icon name="trophy" size="24" color="var(--color-primary)" />
@@ -50,7 +50,7 @@
         </view>
       </view>
     </view>
-  </view>
+  </app-page-shell>
 </template>
 
 <script setup lang="ts">
@@ -59,7 +59,9 @@ import { useUserStore } from "@/store";
 
 definePage({
   name: "levels",
+  layout: "blank",
   style: {
+    navigationStyle: "custom",
     navigationBarTitleText: "修仙境界体系",
   },
 });
@@ -72,12 +74,6 @@ onShow(() => {
 </script>
 
 <style lang="scss" scoped>
-.realms-page {
-  min-height: 100vh;
-  padding: 24rpx 24rpx 48rpx;
-  background: var(--color-bg-page);
-}
-
 .summary-card {
   display: flex;
   gap: 20rpx;

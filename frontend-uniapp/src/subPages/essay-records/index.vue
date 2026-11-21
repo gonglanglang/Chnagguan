@@ -1,5 +1,5 @@
 <template>
-  <view class="essay-page">
+  <app-page-shell title="我的解答作答记录">
     <view v-if="loading && list.length === 0" class="state-box">
       <wd-loading />
     </view>
@@ -19,14 +19,6 @@
             <template v-if="item.gateName"> · {{ item.gateName }}</template>
           </text>
           <view class="essay-card__badges">
-            <wd-tag
-              v-if="item.selfCorrect !== null"
-              size="small"
-              variant="light"
-              :type="item.selfCorrect === 1 ? 'success' : 'warning'"
-            >
-              {{ item.selfCorrect === 1 ? "自评正确" : "自评待练" }}
-            </wd-tag>
             <wd-tag
               size="small"
               :type="item.teacherStatus === 1 ? 'success' : item.teacherStatus === 2 ? 'danger' : 'primary'"
@@ -52,7 +44,7 @@
         </view>
 
         <view v-if="item.answerImageUrl" class="essay-card__img-wrap">
-          <text class="essay-card__label">我的手写作答（点击大图预览）：</text>
+          <text class="essay-card__label">我的手写作答：</text>
           <image
             :src="item.answerImageUrl"
             mode="aspectFit"
@@ -79,7 +71,7 @@
         </wd-button>
       </view>
     </view>
-  </view>
+  </app-page-shell>
 </template>
 
 <script setup lang="ts">
@@ -91,7 +83,9 @@ import { getErrorMessage } from "@/utils/error";
 
 definePage({
   name: "essay-records",
+  layout: "blank",
   style: {
+    navigationStyle: "custom",
     navigationBarTitleText: "我的解答作答记录",
   },
 });
@@ -138,12 +132,6 @@ onShow(() => {
 </script>
 
 <style lang="scss" scoped>
-.essay-page {
-  min-height: 100vh;
-  padding: 20rpx 24rpx 48rpx;
-  background: var(--color-bg-page);
-}
-
 .state-box {
   display: flex;
   justify-content: center;

@@ -1,5 +1,5 @@
 <template>
-  <view class="about">
+  <app-page-shell title="关于过关啦" :has-footer="true">
     <view class="about-card">
       <view class="about__header">
         <view class="about__badge">
@@ -23,12 +23,12 @@
       <wd-cell title="错题巩固" value="答错自动收录，重做答对即掌握" />
     </wd-cell-group>
 
-    <view class="mt-32rpx">
+    <template #footer>
       <wd-button type="primary" block :loading="checking" @click="handleCheckUpdate">
         检查新版本
       </wd-button>
-    </view>
-  </view>
+    </template>
+  </app-page-shell>
 </template>
 
 <script setup lang="ts">
@@ -37,7 +37,11 @@ import { checkAppUpdate, getLocalAppVersion } from "@/utils/app-update";
 
 definePage({
   name: "about",
-  style: { navigationBarTitleText: "关于过关啦" },
+  layout: "blank",
+  style: {
+    navigationStyle: "custom",
+    navigationBarTitleText: "关于过关啦",
+  },
 });
 
 const version = ref(import.meta.env.VITE_APP_VERSION || "1.0.0");
@@ -59,10 +63,6 @@ async function handleCheckUpdate(): Promise<void> {
 </script>
 
 <style lang="scss" scoped>
-.about {
-  padding: 24rpx;
-}
-
 .about-card {
   padding: 32rpx 28rpx;
   background: var(--color-bg-card);

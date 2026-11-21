@@ -140,6 +140,7 @@ export interface CheckItemResult {
   answerText?: string;
   answerImageUrl?: string;
   selfCorrect?: boolean | null;
+  pendingReview?: boolean;
   analysis: string;
 }
 
@@ -179,6 +180,7 @@ export interface SubmitResult {
   mode: "GATE" | "WRONG_REDO" | "ADVANCE_EXAM" | string;
   totalCount: number;
   correctCount: number;
+  pendingReviewCount?: number;
   score: number | null;
   passScore: number | null;
   passCount: number;

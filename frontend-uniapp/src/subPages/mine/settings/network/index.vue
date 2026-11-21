@@ -1,5 +1,5 @@
 <template>
-  <view class="network">
+  <app-page-shell title="网络检测">
     <view class="pt-8rpx">
       <text class="network__tip-text">
         温馨提示：点击下方「开始测试」按钮，即可检测当前网络到接口服务的连接质量。
@@ -39,13 +39,17 @@
         </view>
       </view>
     </view>
-  </view>
+  </app-page-shell>
 </template>
 
 <script lang="ts" setup>
 definePage({
   name: "network",
-  style: { navigationBarTitleText: "网络检测" },
+  layout: "blank",
+  style: {
+    navigationStyle: "custom",
+    navigationBarTitleText: "网络检测",
+  },
 });
 
 // 一次探测的结果：可达性用布尔值，耗时单独记录，不可达时不参与质量分档

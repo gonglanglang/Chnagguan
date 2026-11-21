@@ -10,6 +10,7 @@
     <wd-notify />
     <wd-toast />
     <wd-dialog />
+    <app-update-modal />
   </wd-config-provider>
 </template>
 

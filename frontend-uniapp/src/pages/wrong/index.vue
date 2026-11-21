@@ -1,16 +1,18 @@
 <template>
   <view class="wrong-page">
-    <app-navbar title="错题本" :show-back="false" :show-home="false" fixed placeholder />
+    <app-navbar title="错题本" :show-back="false" :show-home="false" :fixed="false" :placeholder="false" />
 
-    <view v-if="!userStore.isAuthenticated" class="empty-auth">
-      <wd-empty icon="lock" tip="登录后自动收录答错题目，支持按境界集中重做" />
-      <view class="empty-auth__action">
-        <wd-button type="primary" block @click="goLogin">登录 / 注册</wd-button>
+    <scroll-view v-if="!userStore.isAuthenticated" scroll-y :show-scrollbar="false" class="wrong-scroll">
+      <view class="empty-auth">
+        <wd-empty icon="lock" tip="登录后自动收录答错题目，支持按境界集中重做" />
+        <view class="empty-auth__action">
+          <wd-button type="primary" block @click="goLogin">登录 / 注册</wd-button>
+        </view>
       </view>
-    </view>
+    </scroll-view>
 
     <template v-else>
-      <!-- 按修仙境界筛选 -->
+      <!-- 按修仙境界筛选（固定不跟随滚动） -->
       <view class="tabs-wrap">
         <wd-tabs v-model="selectedRealm" @change="onRealmChange">
           <wd-tab name="" title="全部" />
@@ -23,7 +25,8 @@
         </wd-tabs>
       </view>
 
-      <view class="page-body">
+      <scroll-view scroll-y :show-scrollbar="false" class="wrong-scroll">
+        <view class="page-body">
         <view class="summary-bar">
           <view class="summary-bar__left">
             <text class="summary-bar__count">待巩固 {{ total }} 题</text>
@@ -108,7 +111,8 @@
             </wd-button>
           </view>
         </view>
-      </view>
+        </view>
+      </scroll-view>
     </template>
   </view>
 </template>
@@ -252,8 +256,16 @@ onShow(() => {
 
 <style lang="scss" scoped>
 .wrong-page {
-  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
   background: var(--color-bg-page);
+}
+
+.wrong-scroll {
+  flex: 1;
+  min-height: 0;
 }
 
 .empty-auth {
@@ -270,6 +282,7 @@ onShow(() => {
 }
 
 .tabs-wrap {
+  flex-shrink: 0;
   background: var(--color-bg-card);
   border-bottom: 1px solid var(--color-border);
 }

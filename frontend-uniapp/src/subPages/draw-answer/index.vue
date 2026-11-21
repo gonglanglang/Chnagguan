@@ -10,7 +10,9 @@
 
         <view v-if="stem" class="stem-pill" @click="showStemModal = true">
           <text class="stem-pill__tag">题干</text>
-          <text class="stem-pill__text">{{ singleLineStem }}</text>
+          <view class="stem-pill__math">
+            <math-text :text="stem" inline />
+          </view>
         </view>
       </view>
 
@@ -103,7 +105,6 @@ import { onBackPress, onLoad, onShow, onUnload } from "@dcloudio/uni-app";
 import { getCurrentInstance, nextTick } from "vue";
 import { AppQuizAPI } from "@/api/guoguanla";
 import { getErrorMessage } from "@/utils/error";
-import { renderMathPlainText } from "@/utils/math";
 import { lockLandscapeOrientation, lockPortraitOrientation } from "@/utils/orientation";
 
 definePage({
@@ -166,7 +167,7 @@ let lastTouchTs = 0;
 let mouseActive = false;
 let measureTimers: ReturnType<typeof setTimeout>[] = [];
 
-const singleLineStem = computed(() => renderMathPlainText(stem.value) || stem.value);
+
 
 function clearTimers(): void {
   measureTimers.forEach((t) => clearTimeout(t));
@@ -539,6 +540,15 @@ async function handleSave(): Promise<void> {
   }
 }
 
+function safeDecodeParam(raw?: string): string {
+  if (!raw) return "";
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
 onLoad((query) => {
   lockLandscapeOrientation();
 
@@ -546,17 +556,20 @@ onLoad((query) => {
     | { sessionNo?: string; itemIndex?: number; stem?: string; answerText?: string }
     | undefined;
 
-  sessionNo.value = query?.sessionNo
-    ? decodeURIComponent(query.sessionNo)
-    : cached?.sessionNo || "";
+  sessionNo.value = safeDecodeParam(query?.sessionNo) || cached?.sessionNo || "";
   itemIndex.value =
     query?.itemIndex !== undefined
       ? Number(query.itemIndex)
       : Number(cached?.itemIndex || 0);
-  stem.value = query?.stem ? decodeURIComponent(query.stem) : cached?.stem || "";
-  answerText.value = query?.answerText
-    ? decodeURIComponent(query.answerText)
-    : cached?.answerText || "";
+  const sameCachedItem =
+    Boolean(cached) &&
+    (!sessionNo.value || cached?.sessionNo === sessionNo.value) &&
+    Number(cached?.itemIndex || 0) === itemIndex.value;
+
+  stem.value =
+    (sameCachedItem ? cached?.stem : "") || safeDecodeParam(query?.stem) || cached?.stem || "";
+  answerText.value =
+    (sameCachedItem ? cached?.answerText : "") || safeDecodeParam(query?.answerText) || cached?.answerText || "";
 
   uni.onWindowResize(onWindowResize);
   clearTimers();
@@ -639,11 +652,12 @@ onUnload(() => {
   gap: 6px;
   align-items: center;
   min-width: 0;
-  max-width: 360px;
-  padding: 5px 10px;
+  max-width: 420px;
+  max-height: 40px;
+  padding: 4px 10px;
   background: #ffffff;
   border: 1px solid #e5e7eb;
-  border-radius: 999px;
+  border-radius: 12px;
 }
 
 .stem-pill__tag {
@@ -653,11 +667,14 @@ onUnload(() => {
   color: #16a34a;
 }
 
-.stem-pill__text {
-  overflow: hidden;
-  font-size: 13px;
+.stem-pill__math {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  font-size: 12px;
+  line-height: 1.35;
   color: #1f2937;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

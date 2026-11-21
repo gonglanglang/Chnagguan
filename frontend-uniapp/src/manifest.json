@@ -2,10 +2,13 @@
     "name" : "过关啦",
     "appid" : "__UNI__A060F1B",
     "description" : "过关啦 - 修仙数学闯关与错题巩固应用",
-    "versionName" : "1.0.3",
-    "versionCode" : "103",
+    "versionName" : "1.0.4",
+    "versionCode" : "104",
     "transformPx" : false,
     "app-plus" : {
+        "compatible" : {
+            "ignoreVersion" : true
+        },
         "screenOrientation" : [ "portrait-primary", "landscape-primary", "landscape-secondary" ],
         "usingComponents" : true,
         "nvueStyleCompiler" : "uni-app",

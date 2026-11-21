@@ -65,6 +65,7 @@ export interface StudentUser {
   realmOrder: number;
   passedGateCount: number;
   wrongCount: number;
+  pendingEssayCount?: number;
   status: number;
   remark: string;
   lastActiveAt: string;

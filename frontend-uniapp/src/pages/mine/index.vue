@@ -1,49 +1,53 @@
 <template>
   <view class="mine-page">
     <view class="mine-hero" :style="{ paddingTop: statusBarHeight + 'px' }">
-      <view class="mine-hero__bar" />
+      <view class="mine-hero__bar">
+        <text class="mine-hero__title">我的</text>
+      </view>
     </view>
 
-    <view class="mine-content">
-      <profile-card
-        :is-logged-in="userStore.isAuthenticated"
-        :user-info="userStore.userInfo"
-        :passed-count="userStore.passedGateCount"
-        @login="goLogin"
-        @profile="goProfile"
-        @realms="goRealmsOverview"
-      />
+    <scroll-view scroll-y :show-scrollbar="false" class="mine-scroll">
+      <view class="mine-content">
+        <profile-card
+          :is-logged-in="userStore.isAuthenticated"
+          :user-info="userStore.userInfo"
+          :passed-count="userStore.passedGateCount"
+          @login="goLogin"
+          @profile="goProfile"
+          @realms="goRealmsOverview"
+        />
 
-      <view v-if="userStore.isAuthenticated && passedChapters.length > 0" class="records-card">
-        <view class="records-card__header">
-          <text class="records-card__title">章节过关战绩</text>
-          <text class="records-card__sub">共 {{ passedChapters.length }} 章有进展</text>
-        </view>
-        <view class="records-list">
-          <view v-for="chap in passedChapters.slice(0, 5)" :key="chap.id" class="record-row">
-            <text class="record-row__name">
-              <template v-if="chap.realmName">[{{ chap.realmName }}] </template>
-              {{ chap.name }}
-            </text>
-            <text class="record-row__count">{{ chap.passedCount }}/{{ chap.totalGates }} 关</text>
+        <view v-if="userStore.isAuthenticated && passedChapters.length > 0" class="records-card">
+          <view class="records-card__header">
+            <text class="records-card__title">章节过关战绩</text>
+            <text class="records-card__sub">共 {{ passedChapters.length }} 章有进展</text>
+          </view>
+          <view class="records-list">
+            <view v-for="chap in passedChapters.slice(0, 5)" :key="chap.id" class="record-row">
+              <text class="record-row__name">
+                <template v-if="chap.realmName">[{{ chap.realmName }}] </template>
+                {{ chap.name }}
+              </text>
+              <text class="record-row__count">{{ chap.passedCount }}/{{ chap.totalGates }} 关</text>
+            </view>
           </view>
         </view>
-      </view>
 
-      <menu-section :groups="menuGroups" @select="handleMenuSelect" />
+        <menu-section :groups="menuGroups" @select="handleMenuSelect" />
 
-      <view v-if="userStore.isAuthenticated" class="logout-wrap">
-        <wd-button
-          variant="plain"
-          type="danger"
-          block
-          :loading="isLoggingOut"
-          @click="requestLogout"
-        >
-          退出登录
-        </wd-button>
+        <view v-if="userStore.isAuthenticated" class="logout-wrap">
+          <wd-button
+            variant="plain"
+            type="danger"
+            block
+            :loading="isLoggingOut"
+            @click="requestLogout"
+          >
+            退出登录
+          </wd-button>
+        </view>
       </view>
-    </view>
+    </scroll-view>
   </view>
 </template>
 
@@ -92,12 +96,6 @@ const menuGroups = computed<MenuGroup[]>(() => [
         key: "essay",
         title: "我的解答作答记录",
         icon: "edit",
-      },
-      {
-        key: "profile",
-        title: "个人昵称修改",
-        icon: "user",
-        value: userStore.userInfo?.nickname || "",
       },
     ],
   },
@@ -214,21 +212,38 @@ onShow(() => {
 
 <style lang="scss" scoped>
 .mine-page {
-  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
   background: var(--color-bg-page);
 }
 
 .mine-hero {
+  flex-shrink: 0;
   background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
 }
 
 .mine-hero__bar {
-  height: 120rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+}
+
+.mine-hero__title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.mine-scroll {
+  flex: 1;
+  min-height: 0;
 }
 
 .mine-content {
-  padding: 0 24rpx 48rpx;
-  margin-top: -64rpx;
+  padding: 20rpx 24rpx 48rpx;
 }
 
 .records-card {

@@ -76,27 +76,36 @@ public class AliyunOssService {
     }
 
     public UploadResult uploadEssayAnswerImage(MultipartFile file, Long userId, String sessionNo, Integer itemIndex, String baseOrigin) {
+        String cleanPrefix = sanitizeSegment(dirPrefix, "essay-answers");
+        String cleanSession = sanitizeSegment(sessionNo, "QZ");
+        String uid = userId == null ? "0" : String.valueOf(userId);
+        int idx = itemIndex == null ? 0 : Math.max(0, itemIndex);
+        return uploadImageFile(file, cleanPrefix, "u" + uid + "_" + cleanSession + "_i" + idx, baseOrigin);
+    }
+
+    public UploadResult uploadUserAvatar(MultipartFile file, Long userId, String baseOrigin) {
+        String uid = userId == null ? "0" : String.valueOf(userId);
+        return uploadImageFile(file, "avatars", "avatar_u" + uid, baseOrigin);
+    }
+
+    private UploadResult uploadImageFile(MultipartFile file, String folder, String filenamePrefix, String baseOrigin) {
         if (file == null || file.isEmpty()) {
-            throw new BizException(ErrorCode.BAD_REQUEST, "请先绘制或选择作答图片");
+            throw new BizException(ErrorCode.BAD_REQUEST, "请先选择图片");
         }
         byte[] bytes;
         try {
             bytes = file.getBytes();
         } catch (IOException e) {
-            throw new BizException(ErrorCode.BAD_REQUEST, "读取作答图片失败");
+            throw new BizException(ErrorCode.BAD_REQUEST, "读取图片失败");
         }
         if (bytes.length == 0 || bytes.length > MAX_IMAGE_BYTES) {
             throw new BizException(ErrorCode.BAD_REQUEST, "图片大小需在 10MB 以内");
         }
 
         ImageMeta meta = detectImageMeta(bytes, file.getContentType(), file.getOriginalFilename());
-        String cleanPrefix = sanitizeSegment(dirPrefix, "essay-answers");
         String datePart = LocalDate.now().format(DATE_DIR_FORMATTER);
-        String cleanSession = sanitizeSegment(sessionNo, "QZ");
-        String uid = userId == null ? "0" : String.valueOf(userId);
-        int idx = itemIndex == null ? 0 : Math.max(0, itemIndex);
         String rand = UUID.randomUUID().toString().replace("-", "").substring(0, 10);
-        String objectKey = cleanPrefix + "/" + datePart + "/u" + uid + "_" + cleanSession + "_i" + idx + "_" + rand + "." + meta.ext();
+        String objectKey = folder + "/" + datePart + "/" + filenamePrefix + "_" + rand + "." + meta.ext();
 
         if (isOssConfigured()) {
             putToOss(objectKey, bytes, meta.contentType());
@@ -110,8 +119,8 @@ public class AliyunOssService {
             Files.createDirectories(target.getParent());
             Files.write(target, bytes);
         } catch (IOException e) {
-            log.error("Failed to save essay image locally", e);
-            throw new BizException(ErrorCode.INTERNAL_ERROR, "保存作答图片失败");
+            log.error("Failed to save image locally", e);
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "保存图片失败");
         }
         return new UploadResult(relPath, resolveViewUrl(relPath, baseOrigin), "LOCAL");
     }

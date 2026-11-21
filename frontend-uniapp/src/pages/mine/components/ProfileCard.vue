@@ -3,7 +3,13 @@
     <view class="profile-card__main">
       <view class="profile-card__left" @click="isLoggedIn ? emit('profile') : emit('login')">
         <view class="profile-card__avatar">
-          <text v-if="isLoggedIn" class="profile-card__avatar-text">{{ avatarText }}</text>
+          <image
+            v-if="isLoggedIn && userInfo?.avatarUrl"
+            :src="userInfo.avatarUrl"
+            mode="aspectFill"
+            class="profile-card__avatar-img"
+          />
+          <text v-else-if="isLoggedIn" class="profile-card__avatar-text">{{ avatarText }}</text>
           <wd-icon v-else name="user" size="26" color="var(--color-primary)" />
         </view>
         <view class="profile-card__info">
@@ -21,7 +27,7 @@
       </view>
 
       <view v-if="isLoggedIn" class="profile-card__action" @click="emit('profile')">
-        <text class="profile-card__action-text">改昵称</text>
+        <text class="profile-card__action-text">编辑资料</text>
         <wd-icon name="right" size="14" color="var(--color-text-muted)" />
       </view>
       <view v-else class="profile-card__action">
@@ -108,8 +114,14 @@ const nextStatusText = computed(() => {
   justify-content: center;
   width: 100rpx;
   height: 100rpx;
+  overflow: hidden;
   background: var(--color-primary-soft);
   border-radius: 50%;
+}
+
+.profile-card__avatar-img {
+  width: 100%;
+  height: 100%;
 }
 
 .profile-card__avatar-text {

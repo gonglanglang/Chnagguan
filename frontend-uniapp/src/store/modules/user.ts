@@ -246,8 +246,15 @@ export const useUserStore = defineStore("user", () => {
     return data;
   }
 
-  async function updateProfile(data: { nickname: string }): Promise<AppUserProfile> {
+  async function updateProfile(data: { nickname: string; avatarUrl?: string }): Promise<AppUserProfile> {
     const updated = await AppUserAPI.updateProfile(data);
+    userInfo.value = updated;
+    Storage.set(USER_INFO_KEY, updated);
+    return updated;
+  }
+
+  async function uploadAvatar(filePath: string): Promise<AppUserProfile> {
+    const updated = await AppUserAPI.uploadAvatar(filePath);
     userInfo.value = updated;
     Storage.set(USER_INFO_KEY, updated);
     return updated;
@@ -283,6 +290,7 @@ export const useUserStore = defineStore("user", () => {
     register,
     loadUserInfo,
     updateProfile,
+    uploadAvatar,
     recordGuestPassedGate,
     logout,
     resetSession,

@@ -88,11 +88,17 @@ export const AppUserAPI = {
       silent,
     });
   },
-  updateProfile(data: { nickname: string }) {
+  updateProfile(data: { nickname: string; avatarUrl?: string }) {
     return request<AppUserProfile>({
       url: "/app/user/profile",
       method: "PUT",
       data,
+    });
+  },
+  uploadAvatar(filePath: string) {
+    return uploadFileRequest<AppUserProfile>({
+      url: "/app/user/avatar",
+      filePath,
     });
   },
   getChapterRecords() {

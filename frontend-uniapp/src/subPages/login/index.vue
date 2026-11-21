@@ -1,5 +1,5 @@
 <template>
-  <view class="login-page">
+  <app-page-shell title="账号登录" :show-home="false">
     <view class="login-header">
       <view class="login-logo">
         <wd-icon name="book" size="28" color="#ffffff" />
@@ -88,7 +88,7 @@
     <view class="guest-link">
       <wd-button variant="text" @click="goHome">暂不登录，先试玩练气关卡</wd-button>
     </view>
-  </view>
+  </app-page-shell>
 </template>
 
 <script setup lang="ts">
@@ -98,7 +98,9 @@ import { getErrorMessage } from "@/utils/error";
 
 definePage({
   name: "login",
+  layout: "blank",
   style: {
+    navigationStyle: "custom",
     navigationBarTitleText: "账号登录",
   },
 });
@@ -210,16 +212,11 @@ onLoad((query) => {
 </script>
 
 <style lang="scss" scoped>
-.login-page {
-  min-height: 100vh;
-  padding: 40rpx 28rpx 60rpx;
-  background: var(--color-bg-page);
-}
-
 .login-header {
   display: flex;
   flex-direction: column;
   align-items: center;
+  padding-top: 20rpx;
   margin-bottom: 36rpx;
 }
 

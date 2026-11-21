@@ -1,12 +1,14 @@
 <template>
   <app-provider>
-    <view class="page page--tabbar">
-      <slot />
+    <view class="tabbar-shell">
+      <view class="tabbar-shell__content">
+        <slot />
+      </view>
       <wd-tabbar
         v-model="activePath"
         bordered
         safe-area-inset-bottom
-        fixed
+        :fixed="false"
         @change="handleTabbarChange"
       >
         <wd-tabbar-item

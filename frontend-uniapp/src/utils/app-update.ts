@@ -1,3 +1,4 @@
+import { reactive } from "vue";
 import { AppVersionAPI } from "@/api/guoguanla";
 import type { AppVersionInfo } from "@/types/guoguanla";
 
@@ -8,7 +9,46 @@ export interface LocalAppVersion {
   versionCode: number;
 }
 
+export interface AppUpdateModalState {
+  visible: boolean;
+  currentVersion: string;
+  latestVersion: string;
+  latestVersionCode: number;
+  forceUpdate: boolean;
+  releaseNotes: string;
+  noteList: string[];
+  downloadUrl: string;
+  fallbackUrl: string;
+  downloading: boolean;
+  progress: number;
+  errorMsg: string;
+}
+
+const updateState = reactive<AppUpdateModalState>({
+  visible: false,
+  currentVersion: "1.0.0",
+  latestVersion: "",
+  latestVersionCode: 0,
+  forceUpdate: false,
+  releaseNotes: "",
+  noteList: [],
+  downloadUrl: "",
+  fallbackUrl: "",
+  downloading: false,
+  progress: 0,
+  errorMsg: "",
+});
+
 let checkingUpdate = false;
+
+export function useAppUpdateState(): AppUpdateModalState {
+  return updateState;
+}
+
+export function dismissAppUpdateModal(): void {
+  if (updateState.forceUpdate || updateState.downloading) return;
+  updateState.visible = false;
+}
 
 function normalizeVersion(raw?: string | null): string {
   if (!raw) return "1.0.0";
@@ -32,6 +72,29 @@ function compareVersions(v1: string, v2: string): number {
     if (na !== nb) return na > nb ? 1 : -1;
   }
   return 0;
+}
+
+/**
+ * 将后端下发的更新日志拆分为多条清晰的列表项
+ */
+export function parseReleaseNotesList(raw?: string | null): string[] {
+  const text = (raw || "").trim();
+  if (!text) {
+    return ["优化页面布局与作答体验", "修复已知问题，建议立即更新"];
+  }
+  const byLines = text
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^[-*•]\s*/, "").trim())
+    .filter(Boolean);
+  if (byLines.length > 1) {
+    return byLines;
+  }
+  const normalized = text.replace(/^(过关啦\s*v?[\d.]+\s*更新[:：]\s*)/i, "");
+  const parts = normalized
+    .split(/[；;]+|(?=\d+[.、]\s*)/)
+    .map((s) => s.replace(/^\d+[.、]\s*/, "").trim())
+    .filter(Boolean);
+  return parts.length > 0 ? parts : [text];
 }
 
 export async function getLocalAppVersion(): Promise<LocalAppVersion> {
@@ -117,7 +180,12 @@ async function fetchGithubFallback(local: LocalAppVersion): Promise<AppVersionIn
   });
 }
 
-function downloadAndInstallApk(downloadUrl: string, fallbackUrl: string): void {
+export function startAppUpdateDownload(): void {
+  if (updateState.downloading) return;
+  const downloadUrl = updateState.downloadUrl || updateState.fallbackUrl;
+  const fallbackUrl = updateState.fallbackUrl || downloadUrl;
+  if (!downloadUrl) return;
+
   // #ifdef APP-PLUS
   const isDirectApk = downloadUrl.toLowerCase().includes(".apk") || downloadUrl.includes("/downloads/");
   if (!isDirectApk || typeof plus === "undefined") {
@@ -127,63 +195,49 @@ function downloadAndInstallApk(downloadUrl: string, fallbackUrl: string): void {
     return;
   }
 
-  let waitingBox: any = null;
-  try {
-    waitingBox = plus.nativeUI.showWaiting("正在下载更新包 0%...");
-  } catch {
-    uni.showLoading({ title: "正在下载安装包...", mask: true });
-  }
+  updateState.downloading = true;
+  updateState.progress = 0;
+  updateState.errorMsg = "";
 
   const downloadTask = uni.downloadFile({
     url: downloadUrl,
     success: (res) => {
-      try {
-        waitingBox?.close?.();
-      } catch {
-        // ignore
-      }
-      uni.hideLoading();
-
+      updateState.downloading = false;
       if (res.statusCode === 200 && res.tempFilePath) {
+        updateState.progress = 100;
         plus.runtime.install(
           res.tempFilePath,
           { force: false },
           () => {
-            // Installer launched cleanly
+            updateState.visible = false;
           },
           () => {
-            uni.showToast({ title: "正在跳转浏览器下载安装", icon: "none" });
+            updateState.errorMsg = "安装包拉起失败，已为您打开浏览器下载";
             plus.runtime.openURL(downloadUrl);
           },
         );
       } else {
-        uni.showToast({ title: "下载失败，已跳转浏览器下载", icon: "none" });
+        updateState.errorMsg = "下载失败，已为您跳转浏览器下载";
         plus.runtime.openURL(downloadUrl || fallbackUrl);
       }
     },
     fail: () => {
-      try {
-        waitingBox?.close?.();
-      } catch {
-        // ignore
-      }
-      uni.hideLoading();
-      uni.showToast({ title: "下载超时，已跳转浏览器下载", icon: "none" });
+      updateState.downloading = false;
+      updateState.errorMsg = "下载超时，已为您跳转浏览器下载";
       plus.runtime.openURL(downloadUrl || fallbackUrl);
     },
   });
 
   downloadTask.onProgressUpdate((progress) => {
-    if (waitingBox?.setTitle && typeof progress.progress === "number") {
-      waitingBox.setTitle(`正在下载更新包 ${progress.progress}%...`);
+    if (typeof progress.progress === "number") {
+      updateState.progress = progress.progress;
     }
   });
   // #endif
 
   // #ifndef APP-PLUS
-  const target = downloadUrl || fallbackUrl;
   uni.setClipboardData({
-    data: target,
+    data: downloadUrl || fallbackUrl,
     success: () => {
       uni.showToast({ title: "已复制新版本下载链接", icon: "none" });
     },
@@ -231,19 +285,18 @@ export async function checkAppUpdate(options: { silent?: boolean } = {}): Promis
       return;
     }
 
-    const notes = info.releaseNotes?.trim() || "优化答题体验并修复已知问题，建议立即更新。";
-    uni.showModal({
-      title: `发现新版本 v${info.latestVersion}`,
-      content: notes,
-      showCancel: !info.forceUpdate,
-      confirmText: "立即更新",
-      cancelText: "暂不更新",
-      success: (res) => {
-        if (res.confirm) {
-          downloadAndInstallApk(downloadUrl || fallbackUrl, fallbackUrl);
-        }
-      },
-    });
+    updateState.currentVersion = local.version;
+    updateState.latestVersion = info.latestVersion || local.version;
+    updateState.latestVersionCode = info.latestVersionCode || 0;
+    updateState.forceUpdate = Boolean(info.forceUpdate);
+    updateState.releaseNotes = info.releaseNotes || "";
+    updateState.noteList = parseReleaseNotesList(info.releaseNotes);
+    updateState.downloadUrl = downloadUrl;
+    updateState.fallbackUrl = fallbackUrl;
+    updateState.downloading = false;
+    updateState.progress = 0;
+    updateState.errorMsg = "";
+    updateState.visible = true;
   } finally {
     checkingUpdate = false;
   }

@@ -188,12 +188,14 @@ public class AppWrongService {
         quizService.applyBatchAnswers(record, snapshots, req.getAnswers());
 
         int correctCount = 0;
+        int pendingReviewCount = 0;
         int masteredCount = 0;
         List<AppQuizVO.WrongReviewItem> stillWrong = new ArrayList<>();
         LocalDateTime now = LocalDateTime.now();
 
         for (AppQuizService.SnapshotItem item : snapshots) {
             boolean right = quizService.isSnapshotItemCorrect(item);
+            boolean pendingReview = quizService.isEssaySubmittedPendingReview(item);
             UserWrongQuestion wq = item.getWrongId() != null ? wrongMapper.selectById(item.getWrongId()) : null;
             if (right) {
                 correctCount++;
@@ -205,6 +207,12 @@ public class AppWrongService {
                     }
                     wrongMapper.updateById(wq);
                     masteredCount++;
+                }
+            } else if (pendingReview) {
+                pendingReviewCount++;
+                if (wq != null && item.getUserAnswerImageKey() != null && !item.getUserAnswerImageKey().isBlank()) {
+                    wq.setLastAnswerImageKey(item.getUserAnswerImageKey());
+                    wrongMapper.updateById(wq);
                 }
             } else {
                 if (wq != null) {
@@ -233,6 +241,7 @@ public class AppWrongService {
                 .mode("REDO_WRONG")
                 .totalCount(snapshots.size())
                 .correctCount(correctCount)
+                .pendingReviewCount(pendingReviewCount)
                 .passCount(passNeed)
                 .passed(passed)
                 .newlyPassed(false)

@@ -213,7 +213,15 @@ class FeatureRegressionTests {
         assertTrue(sawDynamicConverted, "Dynamic converted ADMIN question must be drawn");
         assertNotNull(essayIdx, "Essay ADMIN question must be drawn");
 
-        // 5. Upload drawing PNG image and save essay answer + self-grade
+        // 5. Student uploads avatar and drawing PNG image (check-item enters pending review, no self-grade)
+        MockMultipartFile avatarFile = new MockMultipartFile("file", "avatar.png", "image/png", MINIMAL_PNG);
+        mockMvc.perform(multipart("/api/app/user/avatar")
+                        .file(avatarFile)
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.avatarUrl").isNotEmpty());
+
         MockMultipartFile pngFile = new MockMultipartFile("file", "drawing.png", "image/png", MINIMAL_PNG);
         MvcResult uploadRes = mockMvc.perform(multipart("/api/app/quiz/upload-answer-image")
                         .file(pngFile)
@@ -238,25 +246,13 @@ class FeatureRegressionTests {
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.questionFormat").value("ESSAY"))
-                .andExpect(jsonPath("$.data.referenceAnswer").value("解：原式 $= -8 + 5 = -3$"))
+                .andExpect(jsonPath("$.data.pendingReview").value(true))
                 .andExpect(jsonPath("$.data.answerImageUrl").isNotEmpty());
-
-        mockMvc.perform(post("/api/app/quiz/essay-grade")
-                        .header("Authorization", "Bearer " + studentToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "sessionNo", sessionNo,
-                                "itemIndex", essayIdx,
-                                "correct", false
-                        ))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.selfCorrect").value(false));
 
         submitAnswers.add(Map.of(
                 "itemIndex", essayIdx,
                 "answerText", "答案是 -3",
-                "answerImageKey", imgKey,
-                "selfCorrect", false
+                "answerImageKey", imgKey
         ));
 
         mockMvc.perform(post("/api/app/quiz/submit")
@@ -267,9 +263,43 @@ class FeatureRegressionTests {
                                 "answers", submitAnswers
                         ))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200));
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.pendingReviewCount").value(1));
 
-        // Student wrong-questions should include ESSAY with image preview URL
+        // While essay is pending teacher review, it must NOT be placed into wrong-questions yet
+        MvcResult pendingWrongRes = mockMvc.perform(get("/api/app/wrong-questions?pageNum=1&pageSize=10")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        for (JsonNode w : objectMapper.readTree(pendingWrongRes.getResponse().getContentAsString()).path("data").path("records")) {
+            assertNotEquals("ESSAY", w.path("questionFormat").asText(), "Pending essay should not enter wrong book before teacher review");
+        }
+
+        // Student essay-answers endpoint returns saved drawing record
+        MvcResult myEssayRes = mockMvc.perform(get("/api/app/user/essay-answers?pageNum=1&pageSize=10")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.records.length()").value(1))
+                .andExpect(jsonPath("$.data.records[0].answerText").value("答案是 -3"))
+                .andReturn();
+        long essayId = objectMapper.readTree(myEssayRes.getResponse().getContentAsString())
+                .path("data").path("records").get(0).path("id").asLong();
+
+        // Admin inspects session detail + rejects (status=2) -> enters wrong-questions; then approves (status=1) -> mastered
+        mockMvc.perform(get("/api/admin/users/" + studentId + "/quiz-records/" + sessionNo)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(items.size()));
+
+        mockMvc.perform(put("/api/admin/users/essay-answers/" + essayId + "/review")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "teacherStatus", 2,
+                                "teacherComment", "需补充过程"
+                        ))))
+                .andExpect(status().isOk());
+
         MvcResult wrongRes = mockMvc.perform(get("/api/app/wrong-questions?pageNum=1&pageSize=10")
                         .header("Authorization", "Bearer " + studentToken))
                 .andExpect(status().isOk())
@@ -283,25 +313,9 @@ class FeatureRegressionTests {
                 break;
             }
         }
-        assertNotNull(essayWrong, "Wrong questions should contain ESSAY item");
+        assertNotNull(essayWrong, "Rejected ESSAY should enter wrong questions");
         assertFalse(essayWrong.path("lastAnswerImageUrl").asText("").isBlank());
         assertEquals("解：原式 $= -8 + 5 = -3$", essayWrong.path("referenceAnswer").asText(""));
-
-        // Student essay-answers endpoint returns saved drawing record
-        MvcResult myEssayRes = mockMvc.perform(get("/api/app/user/essay-answers?pageNum=1&pageSize=10")
-                        .header("Authorization", "Bearer " + studentToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.records.length()").value(1))
-                .andExpect(jsonPath("$.data.records[0].answerText").value("答案是 -3"))
-                .andReturn();
-        long essayId = objectMapper.readTree(myEssayRes.getResponse().getContentAsString())
-                .path("data").path("records").get(0).path("id").asLong();
-
-        // Admin inspects session detail + reviews student essay drawing
-        mockMvc.perform(get("/api/admin/users/" + studentId + "/quiz-records/" + sessionNo)
-                        .header("Authorization", "Bearer " + adminToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(items.size()));
 
         mockMvc.perform(put("/api/admin/users/essay-answers/" + essayId + "/review")
                         .header("Authorization", "Bearer " + adminToken)

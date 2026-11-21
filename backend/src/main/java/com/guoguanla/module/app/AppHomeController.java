@@ -12,6 +12,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Arrays;
 import java.util.List;
@@ -74,14 +75,26 @@ public class AppHomeController {
 
     @Operation(summary = "获取当前学生资料")
     @GetMapping("/user/profile")
-    public Result<AppUserProfileVO> profile() {
-        return Result.ok(bankService.currentProfile());
+    public Result<AppUserProfileVO> profile(HttpServletRequest request) {
+        return Result.ok(bankService.currentProfile(ServletUrlHelper.resolveBaseOrigin(request)));
     }
 
-    @Operation(summary = "修改学生昵称")
+    @Operation(summary = "修改学生昵称与头像")
     @PutMapping("/user/profile")
-    public Result<AppUserProfileVO> updateProfile(@Valid @RequestBody AppLoginReq.ProfileUpdateReq req) {
-        return Result.ok(bankService.updateProfile(req));
+    public Result<AppUserProfileVO> updateProfile(
+            @Valid @RequestBody AppLoginReq.ProfileUpdateReq req,
+            HttpServletRequest request
+    ) {
+        return Result.ok(bankService.updateProfile(req, ServletUrlHelper.resolveBaseOrigin(request)));
+    }
+
+    @Operation(summary = "上传学生头像")
+    @PostMapping("/user/avatar")
+    public Result<AppUserProfileVO> uploadAvatar(
+            @RequestParam("file") MultipartFile file,
+            HttpServletRequest request
+    ) {
+        return Result.ok(bankService.uploadAvatar(file, ServletUrlHelper.resolveBaseOrigin(request)));
     }
 
     @Operation(summary = "获取各章过关战绩")

@@ -40,6 +40,7 @@ public class AppLoginReq {
         @NotBlank(message = "昵称不能为空")
         private String nickname;
 
+        private String avatarUrl;
         private String gradeCode;
     }
 }

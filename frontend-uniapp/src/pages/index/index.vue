@@ -4,8 +4,8 @@
       :title="navTitle"
       :show-back="false"
       :show-home="false"
-      fixed
-      placeholder
+      :fixed="false"
+      :placeholder="false"
     >
       <template v-if="selectedChapter" #left>
         <view class="nav-back-btn" @click="exitChapter">
@@ -15,7 +15,14 @@
       </template>
     </app-navbar>
 
-    <view class="page-body">
+    <scroll-view
+      scroll-y
+      :scroll-top="innerScrollTop"
+      :show-scrollbar="false"
+      class="home-scroll"
+      @scroll="onBodyScroll"
+    >
+      <view class="page-body">
       <template v-if="!selectedChapter">
         <!-- 顶部境界主卡（雅致翡翠渐变收口） -->
         <view class="realm-hero">
@@ -258,7 +265,8 @@
           </view>
         </view>
       </template>
-    </view>
+      </view>
+    </scroll-view>
   </view>
 </template>
 
@@ -289,6 +297,20 @@ const chapters = ref<ChapterCard[]>([]);
 const gates = ref<GateCard[]>([]);
 const loadingChapters = ref(false);
 const loadingGates = ref(false);
+const currentScrollY = ref(0);
+const innerScrollTop = ref(0);
+
+function onBodyScroll(e: { detail?: { scrollTop?: number } }): void {
+  currentScrollY.value = e?.detail?.scrollTop ?? 0;
+}
+
+function resetScroll(): void {
+  innerScrollTop.value = currentScrollY.value;
+  void nextTick(() => {
+    innerScrollTop.value = 0;
+    currentScrollY.value = 0;
+  });
+}
 
 const currentRealm = computed(() => userStore.currentRealm);
 
@@ -385,11 +407,13 @@ async function enterChapter(chapter: ChapterCard): Promise<void> {
     return;
   }
   selectedChapter.value = chapter;
+  resetScroll();
   await fetchGates(chapter.id);
 }
 
 function exitChapter(): void {
   selectedChapter.value = null;
+  resetScroll();
   void fetchChapters(viewingRealmCode.value);
 }
 
@@ -437,8 +461,16 @@ onShow(() => {
 
 <style lang="scss" scoped>
 .home-page {
-  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
   background: var(--color-bg-page);
+}
+
+.home-scroll {
+  flex: 1;
+  min-height: 0;
 }
 
 .page-body {

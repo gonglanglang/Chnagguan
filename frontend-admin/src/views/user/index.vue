@@ -162,6 +162,25 @@ function openReviewDialog(item: EssayAnswerItem) {
   reviewDialogVisible.value = true;
 }
 
+async function quickReviewEssay(item: EssayAnswerItem, status: 1 | 2) {
+  reviewSaving.value = true;
+  try {
+    await reviewEssayAnswer(item.id, {
+      teacherStatus: status,
+      teacherComment: item.teacherComment || ""
+    });
+    ElMessage.success(status === 1 ? "已批改通过" : "已标为待订正并记入错题");
+    if (detailUserId.value) {
+      await loadUserEssays(detailUserId.value);
+      const res = await getUserDetail(detailUserId.value);
+      detailData.value = res.data;
+    }
+    fetchUsers();
+  } finally {
+    reviewSaving.value = false;
+  }
+}
+
 async function submitReview() {
   if (!reviewTarget.value) return;
   reviewSaving.value = true;
@@ -174,7 +193,10 @@ async function submitReview() {
     reviewDialogVisible.value = false;
     if (detailUserId.value) {
       await loadUserEssays(detailUserId.value);
+      const res = await getUserDetail(detailUserId.value);
+      detailData.value = res.data;
     }
+    fetchUsers();
   } finally {
     reviewSaving.value = false;
   }
@@ -360,9 +382,26 @@ onMounted(() => {
     <el-card shadow="never">
       <el-table v-loading="loading" :data="tableData" border stripe>
         <el-table-column prop="id" label="ID" width="64" align="center" />
-        <el-table-column label="学生信息" min-width="160">
+        <el-table-column label="学生信息" min-width="190">
           <template #default="{ row }">
-            <div class="truncate font-semibold text-gray-800">{{ row.nickname }}</div>
+            <div class="flex items-center gap-1.5">
+              <el-button
+                link
+                type="primary"
+                class="!h-auto !p-0 text-left font-semibold"
+                @click="openDetail(row)"
+              >
+                {{ row.nickname }}
+              </el-button>
+              <el-tag
+                v-if="(row.pendingEssayCount || 0) > 0"
+                type="warning"
+                size="small"
+                class="shrink-0 whitespace-nowrap"
+              >
+                待批 {{ row.pendingEssayCount }}
+              </el-tag>
+            </div>
             <div class="truncate text-xs text-gray-500">账号：{{ row.username || "-" }}</div>
           </template>
         </el-table-column>
@@ -400,10 +439,10 @@ onMounted(() => {
             <span class="whitespace-nowrap">{{ row.lastActiveAt || "-" }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="268" align="center">
+        <el-table-column label="操作" width="280" align="center">
           <template #default="{ row }">
             <div class="inline-flex items-center justify-center whitespace-nowrap">
-              <el-button link type="primary" @click="openDetail(row)">战绩</el-button>
+              <el-button link type="primary" @click="openDetail(row)">详情批改</el-button>
               <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
               <el-button link type="warning" @click="openPasswordDialog(row)">改密</el-button>
               <el-button
@@ -522,27 +561,41 @@ onMounted(() => {
                     <div class="text-xs text-gray-500">
                       {{ item.chapterName || "解答练习" }} · {{ item.gateName || "-" }} · {{ item.createdAt }}
                     </div>
-                    <div class="flex items-center gap-2 whitespace-nowrap">
-                      <el-tag
-                        v-if="item.selfCorrect !== null"
-                        size="small"
-                        :type="item.selfCorrect === 1 ? 'success' : 'warning'"
-                      >
-                        {{ item.selfCorrect === 1 ? "学生自评：正确" : "学生自评：待巩固" }}
-                      </el-tag>
+                    <div class="flex flex-wrap items-center gap-1.5 whitespace-nowrap">
                       <el-tag
                         size="small"
-                        :type="item.teacherStatus === 1 ? 'success' : item.teacherStatus === 2 ? 'danger' : 'info'"
+                        :type="item.teacherStatus === 1 ? 'success' : item.teacherStatus === 2 ? 'danger' : 'warning'"
                       >
-                        {{ item.teacherStatus === 1 ? "老师批改：通过" : item.teacherStatus === 2 ? "老师批改：待订正" : "待批改" }}
+                        {{ item.teacherStatus === 1 ? "批改通过" : item.teacherStatus === 2 ? "待订正（已入错题）" : "待批改" }}
                       </el-tag>
+                      <el-button
+                        v-if="item.teacherStatus !== 1"
+                        link
+                        type="success"
+                        size="small"
+                        @click="quickReviewEssay(item, 1)"
+                      >
+                        判对通过
+                      </el-button>
+                      <el-button
+                        v-if="item.teacherStatus !== 2"
+                        link
+                        type="danger"
+                        size="small"
+                        @click="quickReviewEssay(item, 2)"
+                      >
+                        判错入错题
+                      </el-button>
                       <el-button link type="primary" size="small" @click="openReviewDialog(item)">
-                        批改点评
+                        评语批改
                       </el-button>
                     </div>
                   </div>
                   <div class="mt-2 font-medium text-gray-800">
                     <MathFormulaText :text="item.stem" />
+                  </div>
+                  <div v-if="item.referenceAnswer" class="mt-1.5 text-xs text-green-700">
+                    参考答案：<MathFormulaText :text="item.referenceAnswer" inline />
                   </div>
                   <div v-if="item.answerText" class="mt-2 rounded bg-gray-50 px-3 py-2 text-xs text-gray-700">
                     学生文字作答：{{ item.answerText }}

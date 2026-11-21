@@ -57,6 +57,7 @@ public class AppQuizVO {
         private String answerText;
         private String answerImageUrl;
         private Boolean selfCorrect;
+        private boolean pendingReview;
         private String analysis;
     }
 
@@ -67,6 +68,7 @@ public class AppQuizVO {
         private String mode;
         private Integer totalCount;
         private Integer correctCount;
+        private Integer pendingReviewCount;
         private Integer score;
         private Integer passScore;
         private Integer passCount;
