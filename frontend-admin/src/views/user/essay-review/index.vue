@@ -41,10 +41,9 @@ const QUICK_COMMENTS = [
   "缺少关键推导步骤，请补齐后再提交。"
 ];
 
-const IMAGE_PAD = 40;
-const MIN_ZOOM = 0.35;
-const MAX_ZOOM = 2.6;
-const MAX_WORLD_SIZE = 4400;
+const IMAGE_PAD = 44;
+const MIN_ZOOM = 0.25;
+const MAX_ZOOM = 3.5;
 const MAX_EXPORT_DIM = 2400;
 
 const route = useRoute();
@@ -60,23 +59,21 @@ const reviewForm = reactive({
   teacherComment: ""
 });
 
-// 无限自动延申批改视口 + 独立墨迹离屏画布（橡皮擦仅擦除老师批注，不损学生原卷）
+// 蓝湖风格全铺无限白板 + 视口级透明墨迹离屏层（支持四向无界平移缩放，橡皮仅擦批注不损原卷）
 const stageHostRef = ref<HTMLElement | null>(null);
 const viewCanvasRef = ref<HTMLCanvasElement | null>(null);
 
 const viewWidth = ref(960);
 const viewHeight = ref(640);
-const worldWidth = ref(1200);
-const worldHeight = ref(900);
 const camera = reactive({
-  panX: 24,
-  panY: 20,
+  panX: 0,
+  panY: 0,
   zoom: 1
 });
 
 const imgDrawRect = reactive({
-  x: IMAGE_PAD,
-  y: IMAGE_PAD,
+  x: 0,
+  y: 0,
   w: 0,
   h: 0
 });
@@ -120,12 +117,15 @@ function revokeObjectUrl() {
 }
 
 function ensureInkCanvasSize() {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const pw = Math.max(1, Math.round(viewWidth.value * dpr));
+  const ph = Math.max(1, Math.round(viewHeight.value * dpr));
   if (!inkCanvas) {
     inkCanvas = document.createElement("canvas");
   }
-  if (inkCanvas.width !== worldWidth.value || inkCanvas.height !== worldHeight.value) {
-    inkCanvas.width = worldWidth.value;
-    inkCanvas.height = worldHeight.value;
+  if (inkCanvas.width !== pw || inkCanvas.height !== ph) {
+    inkCanvas.width = pw;
+    inkCanvas.height = ph;
     renderInkLayer();
   }
 }
@@ -136,7 +136,7 @@ function drawStrokeOnCtx(ctx: CanvasRenderingContext2D, s: Stroke, scale = 1, of
   ctx.globalCompositeOperation = s.eraser ? "destination-out" : "source-over";
   ctx.strokeStyle = s.eraser ? "#000000" : s.color;
   ctx.fillStyle = s.eraser ? "#000000" : s.color;
-  ctx.lineWidth = Math.max(1, s.width * scale);
+  ctx.lineWidth = Math.max(0.8, s.width * scale);
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
@@ -148,7 +148,7 @@ function drawStrokeOnCtx(ctx: CanvasRenderingContext2D, s: Stroke, scale = 1, of
   if (s.points.length === 1) {
     const p0 = map(s.points[0]);
     ctx.beginPath();
-    ctx.arc(p0.x, p0.y, Math.max(1, s.width * scale) / 2, 0, Math.PI * 2);
+    ctx.arc(p0.x, p0.y, Math.max(0.8, s.width * scale) / 2, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
     return;
@@ -168,13 +168,62 @@ function drawStrokeOnCtx(ctx: CanvasRenderingContext2D, s: Stroke, scale = 1, of
   ctx.restore();
 }
 
-function renderInkLayer() {
+function drawInkSegmentIncremental(fromPt: Point, toPt: Point, s: Stroke) {
+  ensureInkCanvasSize();
   if (!inkCanvas) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
   const ctx = inkCanvas.getContext("2d");
   if (!ctx) return;
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.translate(camera.panX, camera.panY);
+  ctx.scale(camera.zoom, camera.zoom);
+  ctx.globalCompositeOperation = s.eraser ? "destination-out" : "source-over";
+  ctx.strokeStyle = s.eraser ? "#000000" : s.color;
+  ctx.lineWidth = Math.max(0.8, s.width);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  ctx.moveTo(fromPt.x, fromPt.y);
+  ctx.lineTo(toPt.x, toPt.y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function renderInkLayer() {
+  ensureInkCanvasSize();
+  if (!inkCanvas) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const ctx = inkCanvas.getContext("2d");
+  if (!ctx) return;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, inkCanvas.width, inkCanvas.height);
+
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.translate(camera.panX, camera.panY);
+  ctx.scale(camera.zoom, camera.zoom);
   for (const s of strokes.value) {
-    drawStrokeOnCtx(ctx, s);
+    drawStrokeOnCtx(ctx, s, 1, 0, 0);
+  }
+  ctx.restore();
+}
+
+function drawInfiniteDotGrid(ctx: CanvasRenderingContext2D) {
+  // 随相机平移缩放的极淡设计点阵，无边框全屏感
+  let stepWorld = 32;
+  while (stepWorld * camera.zoom < 18) {
+    stepWorld *= 2;
+  }
+  const stepScreen = stepWorld * camera.zoom;
+  const startX = ((camera.panX % stepScreen) + stepScreen) % stepScreen;
+  const startY = ((camera.panY % stepScreen) + stepScreen) % stepScreen;
+
+  ctx.fillStyle = "#e2e8f0";
+  for (let x = startX; x < viewWidth.value; x += stepScreen) {
+    for (let y = startY; y < viewHeight.value; y += stepScreen) {
+      ctx.fillRect(x - 0.75, y - 0.75, 1.5, 1.5);
+    }
   }
 }
 
@@ -191,77 +240,70 @@ function renderViewport() {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
+  // 纯白画板铺满全区（零外围背景框）
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  // 工作台深浅对比底色
-  ctx.fillStyle = "#e2e8f0";
+  ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, viewWidth.value, viewHeight.value);
 
+  drawInfiniteDotGrid(ctx);
+
+  // 学生作答原图直接平铺于无限画板世界坐标系中
   ctx.save();
   ctx.translate(camera.panX, camera.panY);
   ctx.scale(camera.zoom, camera.zoom);
-
-  // 可自动延申白纸
-  ctx.shadowColor = "rgba(15, 23, 42, 0.10)";
-  ctx.shadowBlur = 18;
-  ctx.shadowOffsetY = 4;
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, worldWidth.value, worldHeight.value);
-  ctx.shadowColor = "transparent";
-  ctx.shadowBlur = 0;
-  ctx.shadowOffsetY = 0;
-
-  ctx.strokeStyle = "#cbd5e1";
-  ctx.lineWidth = 1 / camera.zoom;
-  ctx.strokeRect(0, 0, worldWidth.value, worldHeight.value);
-
-  // 学生作答原图
   if (baseImageEl.value && imgDrawRect.w > 0 && imgDrawRect.h > 0) {
     ctx.drawImage(baseImageEl.value, imgDrawRect.x, imgDrawRect.y, imgDrawRect.w, imgDrawRect.h);
-    const guideY = imgDrawRect.y + imgDrawRect.h + 16;
-    ctx.save();
     ctx.strokeStyle = "#e2e8f0";
-    ctx.setLineDash([8, 6]);
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(IMAGE_PAD, guideY);
-    ctx.lineTo(worldWidth.value - IMAGE_PAD, guideY);
-    ctx.stroke();
+    ctx.lineWidth = 1 / camera.zoom;
+    ctx.strokeRect(imgDrawRect.x, imgDrawRect.y, imgDrawRect.w, imgDrawRect.h);
     ctx.fillStyle = "#94a3b8";
-    ctx.font = "12px sans-serif";
-    ctx.fillText("以下空白区支持自由书写与自动延申讲解（导出自动包含全部笔迹）", IMAGE_PAD, guideY + 20);
-    ctx.restore();
-  }
-
-  // 叠加老师批注墨迹层
-  if (inkCanvas) {
-    ctx.drawImage(inkCanvas, 0, 0);
+    ctx.font = `${Math.max(10, Math.round(12 / Math.max(0.5, camera.zoom)))}px sans-serif`;
+    ctx.fillText("学生原卷（四周空白处可无限手写批改推导）", imgDrawRect.x, imgDrawRect.y - 8);
   }
   ctx.restore();
+
+  // 叠加视口级透明批注墨迹层
+  if (inkCanvas && inkCanvas.width > 0 && inkCanvas.height > 0) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(inkCanvas, 0, 0);
+  }
 }
 
-function clampPan() {
-  const scaledW = worldWidth.value * camera.zoom;
-  const scaledH = worldHeight.value * camera.zoom;
-  const padX = Math.max(80, Math.round(viewWidth.value * 0.18));
-  const padY = Math.max(80, Math.round(viewHeight.value * 0.18));
-  const minX = Math.min(padX, viewWidth.value - scaledW - padX);
-  const maxX = Math.max(padX, viewWidth.value - 120);
-  const minY = Math.min(padY, viewHeight.value - scaledH - padY);
-  const maxY = Math.max(padY, viewHeight.value - 120);
-  camera.panX = Math.max(minX, Math.min(maxX, camera.panX));
-  camera.panY = Math.max(minY, Math.min(maxY, camera.panY));
-}
+function fitContentToView() {
+  let minX = imgDrawRect.w > 0 ? imgDrawRect.x : Number.POSITIVE_INFINITY;
+  let minY = imgDrawRect.w > 0 ? imgDrawRect.y : Number.POSITIVE_INFINITY;
+  let maxX = imgDrawRect.w > 0 ? imgDrawRect.x + imgDrawRect.w : Number.NEGATIVE_INFINITY;
+  let maxY = imgDrawRect.w > 0 ? imgDrawRect.y + imgDrawRect.h : Number.NEGATIVE_INFINITY;
 
-function fitSheetToView() {
-  const fitW = imgDrawRect.w > 0 ? imgDrawRect.w + IMAGE_PAD * 2 + 120 : worldWidth.value;
+  for (const s of strokes.value) {
+    if (s.eraser) continue;
+    for (const p of s.points) {
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+  }
+
+  if (!Number.isFinite(minX)) {
+    camera.zoom = 1;
+    camera.panX = 0;
+    camera.panY = 0;
+    renderInkLayer();
+    renderViewport();
+    return;
+  }
+
+  const contentW = Math.max(300, maxX - minX);
+  const contentH = Math.max(240, maxY - minY);
   const nextZoom = Math.max(
-    0.45,
-    Math.min(1, Number(((viewWidth.value - 48) / Math.max(400, fitW)).toFixed(2)))
+    MIN_ZOOM,
+    Math.min(1, Number((Math.min((viewWidth.value - 80) / contentW, (viewHeight.value - 80) / contentH)).toFixed(2)))
   );
   camera.zoom = nextZoom;
-  camera.panX = Math.max(20, Math.round((viewWidth.value - worldWidth.value * nextZoom) / 2));
-  camera.panY = 18;
-  clampPan();
+  camera.panX = Math.round(viewWidth.value / 2 - ((minX + maxX) / 2) * nextZoom);
+  camera.panY = Math.max(32, Math.round(viewHeight.value * 0.44 - ((minY + maxY) / 2) * nextZoom));
+  renderInkLayer();
   renderViewport();
 }
 
@@ -276,44 +318,22 @@ function adjustZoom(delta: number, centerX?: number, centerY?: number) {
   camera.zoom = nextZoom;
   camera.panX = cx - wx * nextZoom;
   camera.panY = cy - wy * nextZoom;
-  clampPan();
+  renderInkLayer();
   renderViewport();
 }
 
 function extendPaper(dir: "down" | "right") {
   if (dir === "down") {
-    if (worldHeight.value >= MAX_WORLD_SIZE) return;
-    worldHeight.value = Math.min(MAX_WORLD_SIZE, worldHeight.value + 480);
-    ensureInkCanvasSize();
-    camera.panY -= 260;
-    clampPan();
+    camera.panY -= Math.round(viewHeight.value * 0.42);
+    renderInkLayer();
     renderViewport();
-    notifyExtend(`画板已向下延申（${worldWidth.value}×${worldHeight.value}）`);
+    notifyExtend("已向下平移空出批改区");
   } else {
-    if (worldWidth.value >= MAX_WORLD_SIZE) return;
-    worldWidth.value = Math.min(MAX_WORLD_SIZE, worldWidth.value + 480);
-    ensureInkCanvasSize();
-    camera.panX -= 260;
-    clampPan();
+    camera.panX -= Math.round(viewWidth.value * 0.42);
+    renderInkLayer();
     renderViewport();
-    notifyExtend(`画板已向右延申（${worldWidth.value}×${worldHeight.value}）`);
+    notifyExtend("已向右平移空出批改区");
   }
-}
-
-function ensurePaperCovers(wx: number, wy: number): boolean {
-  let grew = false;
-  if (wx > worldWidth.value - 90 && worldWidth.value < MAX_WORLD_SIZE) {
-    worldWidth.value = Math.min(MAX_WORLD_SIZE, Math.max(worldWidth.value + 480, Math.ceil((wx + 480) / 80) * 80));
-    grew = true;
-  }
-  if (wy > worldHeight.value - 90 && worldHeight.value < MAX_WORLD_SIZE) {
-    worldHeight.value = Math.min(MAX_WORLD_SIZE, Math.max(worldHeight.value + 480, Math.ceil((wy + 480) / 80) * 80));
-    grew = true;
-  }
-  if (grew) {
-    ensureInkCanvasSize();
-  }
-  return grew;
 }
 
 function screenToStage(e: MouseEvent | PointerEvent): Point {
@@ -323,8 +343,8 @@ function screenToStage(e: MouseEvent | PointerEvent): Point {
 
 function screenToWorld(sx: number, sy: number): Point {
   return {
-    x: Math.max(0, Math.min(MAX_WORLD_SIZE, (sx - camera.panX) / camera.zoom)),
-    y: Math.max(0, Math.min(MAX_WORLD_SIZE, (sy - camera.panY) / camera.zoom))
+    x: (sx - camera.panX) / camera.zoom,
+    y: (sy - camera.panY) / camera.zoom
   };
 }
 
@@ -341,9 +361,6 @@ function onPointerDown(e: PointerEvent) {
   if (e.button !== 0 && e.pointerType === "mouse") return;
 
   const wPt = screenToWorld(sPt.x, sPt.y);
-  if (!eraserMode.value) {
-    ensurePaperCovers(wPt.x, wPt.y);
-  }
   drawing = true;
   strokeMaxX = wPt.x;
   strokeMaxY = wPt.y;
@@ -356,8 +373,16 @@ function onPointerDown(e: PointerEvent) {
   strokes.value.push(currentStroke);
   ensureInkCanvasSize();
   if (inkCanvas) {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
     const inkCtx = inkCanvas.getContext("2d");
-    if (inkCtx) drawStrokeOnCtx(inkCtx, currentStroke);
+    if (inkCtx) {
+      inkCtx.save();
+      inkCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      inkCtx.translate(camera.panX, camera.panY);
+      inkCtx.scale(camera.zoom, camera.zoom);
+      drawStrokeOnCtx(inkCtx, currentStroke);
+      inkCtx.restore();
+    }
   }
   renderViewport();
 }
@@ -368,7 +393,7 @@ function onPointerMove(e: PointerEvent) {
     camera.panX += sPt.x - panLastScreen.x;
     camera.panY += sPt.y - panLastScreen.y;
     panLastScreen = sPt;
-    clampPan();
+    renderInkLayer();
     renderViewport();
     return;
   }
@@ -376,16 +401,15 @@ function onPointerMove(e: PointerEvent) {
 
   const wPt = screenToWorld(sPt.x, sPt.y);
   const prev = currentStroke.points[currentStroke.points.length - 1];
-  if (prev && Math.hypot(wPt.x - prev.x, wPt.y - prev.y) < 1.5) return;
+  if (prev && Math.hypot(wPt.x - prev.x, wPt.y - prev.y) * camera.zoom < 1.5) return;
 
-  if (!currentStroke.eraser) {
-    ensurePaperCovers(wPt.x, wPt.y);
-  }
   if (wPt.x > strokeMaxX) strokeMaxX = wPt.x;
   if (wPt.y > strokeMaxY) strokeMaxY = wPt.y;
 
   currentStroke.points.push(wPt);
-  renderInkLayer();
+  if (prev) {
+    drawInkSegmentIncremental(prev, wPt, currentStroke);
+  }
   renderViewport();
 }
 
@@ -393,29 +417,28 @@ function onPointerUp(e: PointerEvent) {
   if (panning.value) {
     panning.value = false;
   }
-  if (drawing && currentStroke && !currentStroke.eraser) {
-    const endScreenY = camera.panY + strokeMaxY * camera.zoom;
-    const endScreenX = camera.panX + strokeMaxX * camera.zoom;
-    let shifted = false;
-    let msg = "";
-    if (endScreenY > viewHeight.value - 48 && worldHeight.value < MAX_WORLD_SIZE) {
-      worldHeight.value = Math.min(MAX_WORLD_SIZE, Math.max(worldHeight.value + 420, Math.ceil(strokeMaxY + 480)));
-      ensureInkCanvasSize();
-      camera.panY -= 200;
-      shifted = true;
-      msg = `已自动向下延申（${worldWidth.value}×${worldHeight.value}）`;
-    } else if (endScreenX > viewWidth.value - 48 && worldWidth.value < MAX_WORLD_SIZE) {
-      worldWidth.value = Math.min(MAX_WORLD_SIZE, Math.max(worldWidth.value + 420, Math.ceil(strokeMaxX + 480)));
-      ensureInkCanvasSize();
-      camera.panX -= 200;
-      shifted = true;
-      msg = `已自动向右延申（${worldWidth.value}×${worldHeight.value}）`;
+  if (drawing) {
+    renderInkLayer();
+    if (currentStroke && !currentStroke.eraser) {
+      const endScreenY = camera.panY + strokeMaxY * camera.zoom;
+      const endScreenX = camera.panX + strokeMaxX * camera.zoom;
+      let shifted = false;
+      let msg = "";
+      if (endScreenY > viewHeight.value - 44) {
+        camera.panY -= 180;
+        shifted = true;
+        msg = "已自动向下延伸空白区";
+      } else if (endScreenX > viewWidth.value - 44) {
+        camera.panX -= 180;
+        shifted = true;
+        msg = "已自动向右延伸空白区";
+      }
+      if (shifted) {
+        renderInkLayer();
+        notifyExtend(msg);
+      }
     }
-    if (shifted) {
-      clampPan();
-      renderViewport();
-      notifyExtend(msg);
-    }
+    renderViewport();
   }
   drawing = false;
   currentStroke = null;
@@ -438,7 +461,7 @@ function onWheel(e: WheelEvent) {
     camera.panX -= e.deltaX;
     camera.panY -= e.deltaY;
   }
-  clampPan();
+  renderInkLayer();
   renderViewport();
 }
 
@@ -477,11 +500,8 @@ async function initCanvasImage() {
     baseImageEl.value = null;
     imgDrawRect.w = 0;
     imgDrawRect.h = 0;
-    worldWidth.value = 1200;
-    worldHeight.value = 900;
-    ensureInkCanvasSize();
     await nextTick();
-    fitSheetToView();
+    fitContentToView();
     return;
   }
 
@@ -495,15 +515,12 @@ async function initCanvasImage() {
       const img = new Image();
       img.onload = () => {
         baseImageEl.value = img;
-        const drawW = Math.max(760, Math.min(1100, img.naturalWidth || 960));
-        const drawH = Math.max(380, Math.round(drawW * (img.naturalHeight / Math.max(1, img.naturalWidth))));
-        imgDrawRect.x = IMAGE_PAD;
-        imgDrawRect.y = IMAGE_PAD;
+        const drawW = Math.max(720, Math.min(1080, img.naturalWidth || 920));
+        const drawH = Math.max(360, Math.round(drawW * (img.naturalHeight / Math.max(1, img.naturalWidth))));
+        imgDrawRect.x = 0;
+        imgDrawRect.y = 0;
         imgDrawRect.w = drawW;
         imgDrawRect.h = drawH;
-        // 初始即预留右侧及下方充裕批改与延申推演区
-        worldWidth.value = Math.max(1200, drawW + IMAGE_PAD * 2 + 180);
-        worldHeight.value = Math.max(880, drawH + IMAGE_PAD * 2 + 360);
         resolve();
       };
       img.onerror = () => reject(new Error("图片加载失败"));
@@ -515,27 +532,40 @@ async function initCanvasImage() {
     imgDrawRect.h = 0;
   }
 
-  ensureInkCanvasSize();
   await nextTick();
-  fitSheetToView();
+  fitContentToView();
 }
 
 async function exportCompositePngBlob(): Promise<Blob | null> {
   if (strokes.value.length === 0) return null;
 
-  // 计算学生原卷与老师所有有效批注笔迹的联合外接范围，避免遗漏延申区批注
-  let maxX = imgDrawRect.w > 0 ? imgDrawRect.x + imgDrawRect.w + IMAGE_PAD : 900;
-  let maxY = imgDrawRect.h > 0 ? imgDrawRect.y + imgDrawRect.h + IMAGE_PAD : 600;
+  // 计算学生原卷与老师所有有效批注（含任意正负坐标方向延申区）的联合外接包围盒
+  let minX = imgDrawRect.w > 0 ? imgDrawRect.x - IMAGE_PAD : Number.POSITIVE_INFINITY;
+  let minY = imgDrawRect.w > 0 ? imgDrawRect.y - IMAGE_PAD : Number.POSITIVE_INFINITY;
+  let maxX = imgDrawRect.w > 0 ? imgDrawRect.x + imgDrawRect.w + IMAGE_PAD : Number.NEGATIVE_INFINITY;
+  let maxY = imgDrawRect.w > 0 ? imgDrawRect.y + imgDrawRect.h + IMAGE_PAD : Number.NEGATIVE_INFINITY;
+
   for (const s of strokes.value) {
     if (s.eraser) continue;
     const pad = s.width + 44;
     for (const p of s.points) {
+      if (p.x - pad < minX) minX = p.x - pad;
+      if (p.y - pad < minY) minY = p.y - pad;
       if (p.x + pad > maxX) maxX = p.x + pad;
       if (p.y + pad > maxY) maxY = p.y + pad;
     }
   }
-  const rawW = Math.min(worldWidth.value, Math.max(800, Math.ceil(maxX)));
-  const rawH = Math.min(worldHeight.value, Math.max(560, Math.ceil(maxY)));
+  if (!Number.isFinite(minX)) {
+    minX = 0;
+    minY = 0;
+    maxX = 900;
+    maxY = 600;
+  }
+
+  const originX = Math.floor(minX);
+  const originY = Math.floor(minY);
+  const rawW = Math.max(640, Math.ceil(maxX - originX));
+  const rawH = Math.max(420, Math.ceil(maxY - originY));
   const scale = Math.min(1, MAX_EXPORT_DIM / Math.max(rawW, rawH));
   const outW = Math.round(rawW * scale);
   const outH = Math.round(rawH * scale);
@@ -547,7 +577,7 @@ async function exportCompositePngBlob(): Promise<Blob | null> {
   const inkOutCtx = inkOut.getContext("2d");
   if (inkOutCtx) {
     for (const s of strokes.value) {
-      drawStrokeOnCtx(inkOutCtx, s, scale, 0, 0);
+      drawStrokeOnCtx(inkOutCtx, s, scale, originX, originY);
     }
   }
 
@@ -562,8 +592,8 @@ async function exportCompositePngBlob(): Promise<Blob | null> {
   if (baseImageEl.value && imgDrawRect.w > 0 && imgDrawRect.h > 0) {
     ctx.drawImage(
       baseImageEl.value,
-      imgDrawRect.x * scale,
-      imgDrawRect.y * scale,
+      (imgDrawRect.x - originX) * scale,
+      (imgDrawRect.y - originY) * scale,
       imgDrawRect.w * scale,
       imgDrawRect.h * scale
     );
@@ -613,7 +643,7 @@ function syncStageSize() {
   if (!stageHostRef.value) return;
   viewWidth.value = Math.max(320, stageHostRef.value.clientWidth);
   viewHeight.value = Math.max(320, stageHostRef.value.clientHeight);
-  clampPan();
+  renderInkLayer();
   renderViewport();
 }
 
@@ -717,11 +747,11 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <!-- 主工作区：左侧可自动延申无限画板 + 右侧题目与评分栏 -->
-    <main class="grid min-h-0 flex-1 grid-cols-12 gap-4 overflow-hidden p-4">
+    <!-- 主工作区：左侧全铺纯白无限批改画板 + 右侧题目与评分栏 -->
+    <main class="grid min-h-0 flex-1 grid-cols-12 gap-0 overflow-hidden bg-white">
       <section
         ref="stageHostRef"
-        class="relative col-span-8 flex min-h-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-200/80"
+        class="relative col-span-8 flex min-h-0 overflow-hidden border-r border-slate-200 bg-white"
       >
         <canvas
           ref="viewCanvasRef"
@@ -742,13 +772,13 @@ onBeforeUnmount(() => {
           {{ extendHint }}
         </div>
 
-        <!-- 左下角延申与缩放浮动控制器 -->
+        <!-- 左下角极简浮动控制器（蓝湖画板风格） -->
         <div
-          class="absolute bottom-3 left-3 z-20 flex items-center gap-1.5 rounded-full border border-slate-200/90 bg-white/95 px-3 py-1.5 text-xs text-slate-600 shadow-md backdrop-blur-xs"
+          class="absolute bottom-4 left-4 z-20 flex items-center gap-1.5 rounded-full border border-slate-200/90 bg-white/95 px-3 py-1.5 text-xs text-slate-600 shadow-md backdrop-blur-xs"
           @pointerdown.stop
         >
-          <el-button size="small" text @click="extendPaper('down')">↓ 向下延申</el-button>
-          <el-button size="small" text @click="extendPaper('right')">→ 向右延申</el-button>
+          <el-button size="small" text @click="extendPaper('down')">↓ 下移空白</el-button>
+          <el-button size="small" text @click="extendPaper('right')">→ 右移空白</el-button>
           <div class="mx-1 h-3.5 w-px bg-slate-200" />
           <el-button size="small" text @click="adjustZoom(-0.15)">
             <GglIcon name="zoom-out" :size="14" />
@@ -757,15 +787,15 @@ onBeforeUnmount(() => {
           <el-button size="small" text @click="adjustZoom(0.15)">
             <GglIcon name="zoom-in" :size="14" />
           </el-button>
-          <el-button size="small" text @click="fitSheetToView">自适应</el-button>
+          <el-button size="small" text @click="fitContentToView">全览</el-button>
           <div class="mx-1 h-3.5 w-px bg-slate-200" />
           <span class="text-[11px] text-slate-400">
-            画布 {{ worldWidth }}×{{ worldHeight }} · 滚轮翻页 / Ctrl+滚轮缩放
+            无限画板 · 滚轮翻页 / Ctrl+滚轮缩放 / 空格拖拽
           </span>
         </div>
       </section>
 
-      <aside class="col-span-4 flex min-h-0 flex-col gap-4 overflow-y-auto rounded-xl border border-slate-200 bg-white p-5">
+      <aside class="col-span-4 flex min-h-0 flex-col gap-4 overflow-y-auto bg-white p-5">
         <div v-if="essay" class="space-y-4">
           <div>
             <div class="mb-1 text-xs font-bold uppercase tracking-wider text-slate-400">题目内容</div>

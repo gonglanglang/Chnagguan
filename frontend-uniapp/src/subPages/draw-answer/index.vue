@@ -101,18 +101,18 @@
           />
           <view v-if="!hasDrawn && !handMode" class="canvas-placeholder">
             <text class="canvas-placeholder__text">
-              写至边缘会自动延申画布 · 支持双指缩放平移或点击底部延申
+              无限纯白画板 · 写至边缘自动扩展 · 双指缩放拖动
             </text>
           </view>
         </view>
 
-        <!-- 左下角自动延申与缩放悬浮条 -->
+        <!-- 左下角无限画布悬浮控制条 -->
         <view class="stage-hud">
           <view class="hud-btn" @click="extendPaper('down')">
-            <text class="hud-btn__text">↓ 向下延申</text>
+            <text class="hud-btn__text">↓ 下移空白</text>
           </view>
           <view class="hud-btn" @click="extendPaper('right')">
-            <text class="hud-btn__text">→ 向右延申</text>
+            <text class="hud-btn__text">→ 右移空白</text>
           </view>
           <view class="hud-divider" />
           <view class="hud-icon-btn" @click="adjustZoom(-0.2)">
@@ -122,8 +122,8 @@
           <view class="hud-icon-btn" @click="adjustZoom(0.2)">
             <app-icon name="zoom-in" size="13" color="#475569" />
           </view>
-          <view class="hud-btn" @click="resetViewport">
-            <text class="hud-btn__text">复位</text>
+          <view class="hud-btn" @click="fitContentOrReset">
+            <text class="hud-btn__text">{{ strokes.length > 0 ? "全览" : "复位" }}</text>
           </view>
         </view>
 
@@ -197,9 +197,8 @@ interface TouchPointLike {
 
 const PEN_COLORS = ["#111827", "#2563eb", "#dc2626"];
 const ACTIVE_ESSAY_PROMPT_KEY = "ggl_active_essay_prompt";
-const MIN_ZOOM = 0.45;
-const MAX_ZOOM = 2.4;
-const MAX_WORLD_SIZE = 4200;
+const MIN_ZOOM = 0.25;
+const MAX_ZOOM = 3.0;
 const MAX_EXPORT_DIM = 1800;
 
 const instance = getCurrentInstance()?.proxy;
@@ -221,8 +220,6 @@ const extendHint = ref("");
 
 const canvasWidth = ref(0);
 const canvasHeight = ref(0);
-const worldWidth = ref(0);
-const worldHeight = ref(0);
 const exportCanvasW = ref(0);
 const exportCanvasH = ref(0);
 
@@ -319,13 +316,10 @@ function measureCanvas(): void {
         width: w,
         height: h,
       };
-      if (worldWidth.value < w) worldWidth.value = w;
-      if (worldHeight.value < h) worldHeight.value = h;
 
       if (w !== canvasWidth.value || h !== canvasHeight.value) {
         canvasWidth.value = w;
         canvasHeight.value = h;
-        clampPan();
         void nextTick(() => {
           ctx = uni.createCanvasContext("drawAnswerCanvas", instance);
           redrawAll();
@@ -367,23 +361,10 @@ function getStrokeWidth(): number {
   return eraserMode.value ? 18 : 3;
 }
 
-function clampPan(): void {
-  const cw = canvasWidth.value || stageRect.width || 600;
-  const ch = canvasHeight.value || stageRect.height || 320;
-  const scaledW = Math.max(cw, worldWidth.value) * camera.zoom;
-  const scaledH = Math.max(ch, worldHeight.value) * camera.zoom;
-  const minX = Math.min(24, cw - scaledW - 36);
-  const maxX = 36;
-  const minY = Math.min(24, ch - scaledH - 36);
-  const maxY = 36;
-  camera.panX = Math.max(minX, Math.min(maxX, camera.panX));
-  camera.panY = Math.max(minY, Math.min(maxY, camera.panY));
-}
-
 function screenToWorld(sx: number, sy: number): Point {
   return {
-    x: Math.max(0, Math.min(MAX_WORLD_SIZE, (sx - camera.panX) / camera.zoom)),
-    y: Math.max(0, Math.min(MAX_WORLD_SIZE, (sy - camera.panY) / camera.zoom)),
+    x: (sx - camera.panX) / camera.zoom,
+    y: (sy - camera.panY) / camera.zoom,
   };
 }
 
@@ -392,19 +373,6 @@ function worldToScreen(pt: Point): Point {
     x: camera.panX + pt.x * camera.zoom,
     y: camera.panY + pt.y * camera.zoom,
   };
-}
-
-function ensurePaperCovers(wx: number, wy: number): boolean {
-  let grew = false;
-  if (wx > worldWidth.value - 64 && worldWidth.value < MAX_WORLD_SIZE) {
-    worldWidth.value = Math.min(MAX_WORLD_SIZE, Math.max(worldWidth.value + 320, Math.ceil((wx + 320) / 80) * 80));
-    grew = true;
-  }
-  if (wy > worldHeight.value - 56 && worldHeight.value < MAX_WORLD_SIZE) {
-    worldHeight.value = Math.min(MAX_WORLD_SIZE, Math.max(worldHeight.value + 240, Math.ceil((wy + 240) / 80) * 80));
-    grew = true;
-  }
-  return grew;
 }
 
 function touchToStagePoint(t: TouchPointLike): Point | null {
@@ -482,17 +450,9 @@ function drawStrokeList(
 function redrawAll(): void {
   if (!ctx || canvasWidth.value <= 0 || canvasHeight.value <= 0) return;
 
-  // 外围浅灰工作台背景，便于平移缩放时清晰识别可延申白纸边缘
-  ctx.setFillStyle("#eef2f6");
-  ctx.fillRect(0, 0, canvasWidth.value, canvasHeight.value);
-
-  const sheetW = Math.max(canvasWidth.value, worldWidth.value) * camera.zoom;
-  const sheetH = Math.max(canvasHeight.value, worldHeight.value) * camera.zoom;
+  // 纯白无限画板铺满全屏（无外围背景、无边框限制）
   ctx.setFillStyle("#ffffff");
-  ctx.fillRect(camera.panX, camera.panY, sheetW, sheetH);
-  ctx.setStrokeStyle("#cbd5e1");
-  ctx.setLineWidth(1);
-  ctx.strokeRect(camera.panX, camera.panY, sheetW, sheetH);
+  ctx.fillRect(0, 0, canvasWidth.value, canvasHeight.value);
 
   drawStrokeList(ctx, strokes.value, worldToScreen, camera.zoom);
   ctx.draw(false);
@@ -556,10 +516,6 @@ function beginStroke(screenPt: Point): void {
     redrawAll();
   }
   const worldPt = screenToWorld(screenPt.x, screenPt.y);
-  const grew = !eraserMode.value && ensurePaperCovers(worldPt.x, worldPt.y);
-  if (grew && camera.zoom < 0.99) {
-    redrawAll();
-  }
 
   pendingPoints = [];
   if (flushTimer !== null) {
@@ -595,9 +551,6 @@ function moveStroke(screenPt: Point): void {
   const dy = worldPt.y - refPt.y;
   if ((dx * dx + dy * dy) * camera.zoom * camera.zoom < 2.25) return;
 
-  if (!currentStroke.eraser) {
-    ensurePaperCovers(worldPt.x, worldPt.y);
-  }
   if (worldPt.x > strokeMaxWorldX) strokeMaxWorldX = worldPt.x;
   if (worldPt.y > strokeMaxWorldY) strokeMaxWorldY = worldPt.y;
 
@@ -619,26 +572,21 @@ function endStroke(): void {
   lastPoint = null;
   currentStroke = null;
 
-  // 若笔迹贴近底部或右侧视口边缘，自动延申白纸并温和推进视野，释放新书写空间
+  // 若笔迹贴近底部或右侧视口边缘，自动推进无限画布，释放新书写空间
   if (finished && !finished.eraser && canvasWidth.value > 0 && canvasHeight.value > 0) {
     const endScreen = worldToScreen({ x: strokeMaxWorldX, y: strokeMaxWorldY });
     let shifted = false;
     let hint = "";
-    if (endScreen.y > canvasHeight.value - 42 && worldHeight.value < MAX_WORLD_SIZE) {
-      const targetWorldH = Math.ceil(strokeMaxWorldY + canvasHeight.value / camera.zoom + 160);
-      worldHeight.value = Math.min(MAX_WORLD_SIZE, Math.max(worldHeight.value + 240, targetWorldH));
+    if (endScreen.y > canvasHeight.value - 42) {
       camera.panY -= Math.round(canvasHeight.value * 0.34);
       shifted = true;
-      hint = "已自动向下延申画布";
-    } else if (endScreen.x > canvasWidth.value - 48 && worldWidth.value < MAX_WORLD_SIZE) {
-      const targetWorldW = Math.ceil(strokeMaxWorldX + canvasWidth.value / camera.zoom + 200);
-      worldWidth.value = Math.min(MAX_WORLD_SIZE, Math.max(worldWidth.value + 320, targetWorldW));
+      hint = "已自动向下延申书写区";
+    } else if (endScreen.x > canvasWidth.value - 48) {
       camera.panX -= Math.round(canvasWidth.value * 0.28);
       shifted = true;
-      hint = "已自动向右延申画布";
+      hint = "已自动向右延申书写区";
     }
     if (shifted) {
-      clampPan();
       redrawAll();
       notifyExtend(hint);
     }
@@ -649,21 +597,13 @@ function extendPaper(dir: "down" | "right"): void {
   const cw = canvasWidth.value || 640;
   const ch = canvasHeight.value || 320;
   if (dir === "down") {
-    const stepScreen = Math.round(ch * 0.45);
-    const needWorldH = Math.ceil((ch - camera.panY + stepScreen) / camera.zoom + 120);
-    worldHeight.value = Math.min(MAX_WORLD_SIZE, Math.max(worldHeight.value + 260, needWorldH));
-    camera.panY -= stepScreen;
-    clampPan();
+    camera.panY -= Math.round(ch * 0.45);
     redrawAll();
-    notifyExtend("已向下延申画布");
+    notifyExtend("已向下空出书写区");
   } else {
-    const stepScreen = Math.round(cw * 0.42);
-    const needWorldW = Math.ceil((cw - camera.panX + stepScreen) / camera.zoom + 160);
-    worldWidth.value = Math.min(MAX_WORLD_SIZE, Math.max(worldWidth.value + 340, needWorldW));
-    camera.panX -= stepScreen;
-    clampPan();
+    camera.panX -= Math.round(cw * 0.42);
     redrawAll();
-    notifyExtend("已向右延申画布");
+    notifyExtend("已向右空出书写区");
   }
 }
 
@@ -678,7 +618,6 @@ function adjustZoom(delta: number): void {
   camera.zoom = nextZoom;
   camera.panX = cw / 2 - centerWorldX * nextZoom;
   camera.panY = ch / 2 - centerWorldY * nextZoom;
-  clampPan();
   redrawAll();
 }
 
@@ -686,6 +625,37 @@ function resetViewport(): void {
   camera.zoom = 1;
   camera.panX = 0;
   camera.panY = 0;
+  redrawAll();
+}
+
+function fitContentOrReset(): void {
+  const inkStrokes = strokes.value.filter((s) => !s.eraser && s.points.length > 0);
+  if (inkStrokes.length === 0 || canvasWidth.value <= 0 || canvasHeight.value <= 0) {
+    resetViewport();
+    return;
+  }
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (const s of inkStrokes) {
+    for (const pt of s.points) {
+      if (pt.x < minX) minX = pt.x;
+      if (pt.y < minY) minY = pt.y;
+      if (pt.x > maxX) maxX = pt.x;
+      if (pt.y > maxY) maxY = pt.y;
+    }
+  }
+  const pad = 40;
+  const boxW = Math.max(120, maxX - minX + pad * 2);
+  const boxH = Math.max(100, maxY - minY + pad * 2);
+  const nextZoom = Math.max(
+    MIN_ZOOM,
+    Math.min(1.2, Math.min(canvasWidth.value / boxW, canvasHeight.value / boxH)),
+  );
+  camera.zoom = Number(nextZoom.toFixed(2));
+  camera.panX = canvasWidth.value / 2 - ((minX + maxX) / 2) * camera.zoom;
+  camera.panY = canvasHeight.value / 2 - ((minY + maxY) / 2) * camera.zoom;
   redrawAll();
 }
 
@@ -760,7 +730,6 @@ function onTouchMove(e: unknown): void {
     camera.zoom = nextZoom;
     camera.panX = midX - gestureAnchorWorld.x * nextZoom;
     camera.panY = midY - gestureAnchorWorld.y * nextZoom;
-    clampPan();
     scheduleRedraw();
     return;
   }
@@ -773,7 +742,6 @@ function onTouchMove(e: unknown): void {
     camera.panX += pt.x - singlePanLast.x;
     camera.panY += pt.y - singlePanLast.y;
     singlePanLast = pt;
-    clampPan();
     scheduleRedraw();
     return;
   }
@@ -827,7 +795,6 @@ function onMouseMove(e: unknown): void {
     camera.panX += pt.x - singlePanLast.x;
     camera.panY += pt.y - singlePanLast.y;
     singlePanLast = pt;
-    clampPan();
     scheduleRedraw();
     return;
   }
@@ -855,8 +822,6 @@ function clearBoard(): void {
   if (saving.value || (strokes.value.length === 0 && !hasDrawn.value)) return;
   strokes.value = [];
   hasDrawn.value = false;
-  worldWidth.value = Math.max(0, canvasWidth.value);
-  worldHeight.value = Math.max(0, canvasHeight.value);
   resetViewport();
 }
 
@@ -888,8 +853,8 @@ async function exportCanvasTempFile(): Promise<string> {
   }
 
   const pad = 40;
-  const originX = Math.max(0, Math.floor(minX - pad));
-  const originY = Math.max(0, Math.floor(minY - pad));
+  const originX = Math.floor(minX - pad);
+  const originY = Math.floor(minY - pad);
   const rawW = Math.max(480, Math.ceil(maxX + pad) - originX);
   const rawH = Math.max(280, Math.ceil(maxY + pad) - originY);
   const scale = Math.min(1, MAX_EXPORT_DIM / Math.max(rawW, rawH));
@@ -1263,7 +1228,7 @@ onUnload(() => {
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  background: #eef2f6;
+  background: #ffffff;
 }
 
 .draw-canvas {
