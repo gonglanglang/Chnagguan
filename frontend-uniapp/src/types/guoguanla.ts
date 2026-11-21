@@ -189,3 +189,18 @@ export interface RegisterPayload {
   nickname: string;
   guestPassedGateIds?: number[];
 }
+
+export interface AppVersionInfo {
+  currentVersion: string;
+  latestVersion: string;
+  latestVersionCode: number;
+  hasUpdate: boolean;
+  forceUpdate: boolean;
+  releaseNotes: string;
+  downloadUrl: string;
+  githubReleaseUrl: string;
+  githubRepo: string;
+  githubReachable: boolean;
+  publishedAt: string;
+  source: string;
+}

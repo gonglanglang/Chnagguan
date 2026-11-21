@@ -1,5 +1,6 @@
 server:
   port: 8080
+  forward-headers-strategy: native
   servlet:
     encoding:
       charset: UTF-8
@@ -11,6 +12,10 @@ spring:
     name: guoguanla-backend
   profiles:
     active: dev
+  servlet:
+    multipart:
+      max-file-size: 200MB
+      max-request-size: 200MB
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: GMT+8
@@ -43,6 +48,9 @@ sa-token:
 guoguanla:
   seed:
     enabled: true
+  upload-dir: ${UPLOAD_DIR:./downloads}
+  github:
+    token: ${GITHUB_TOKEN:}
 
 springdoc:
   swagger-ui:

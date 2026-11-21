@@ -58,6 +58,7 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
         repairMojibakeRealms();
         backfillUserRealms(addedUserRealm);
         upgradeNoticeCopy();
+        ensureAppVersionConfigs();
     }
 
     private void ensureEduRealmTable() {
@@ -193,6 +194,28 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
         if (cfg != null && cfg.getConfigValue() != null && cfg.getConfigValue().startsWith("初一到高三全章节已就绪")) {
             cfg.setConfigValue("修仙闯关开启：练气至化神六大境界，学成可挑战进阶考核！");
             sysConfigMapper.updateById(cfg);
+        }
+    }
+
+    private void ensureAppVersionConfigs() {
+        ensureConfig("github_release_repo", "gonglanglang/Chnagguan", "GitHub Release 发布仓库 (owner/repo)");
+        ensureConfig("app_latest_version", "1.0.0", "App最新版本号");
+        ensureConfig("app_latest_version_code", "100", "App最新版本数字编码(versionCode)");
+        ensureConfig("app_update_notes", "1. 初始正式版发布，支持六大修仙境界闯关与错题巩固\n2. 支持在线检测新版本更新", "App最新版本更新日志");
+        ensureConfig("app_download_url", "", "App最新APK下载地址");
+        ensureConfig("app_force_update", "false", "App是否强制更新");
+    }
+
+    private void ensureConfig(String key, String value, String desc) {
+        long count = sysConfigMapper.selectCount(
+                new LambdaQueryWrapper<SysConfig>().eq(SysConfig::getConfigKey, key)
+        );
+        if (count == 0) {
+            SysConfig cfg = new SysConfig();
+            cfg.setConfigKey(key);
+            cfg.setConfigValue(value);
+            cfg.setDescription(desc);
+            sysConfigMapper.insert(cfg);
         }
     }
 }

@@ -1,6 +1,7 @@
 import request from "@/utils/request";
 import type {
   AppUserProfile,
+  AppVersionInfo,
   AuthResult,
   ChapterCard,
   CheckItemResult,
@@ -172,6 +173,19 @@ export const AppWrongAPI = {
     return request<void>({
       url: "/app/wrong-questions/clear",
       method: "DELETE",
+    });
+  },
+};
+
+export const AppVersionAPI = {
+  checkLatest(params: { currentVersion: string; versionCode: number }) {
+    return request<AppVersionInfo>({
+      url: "/app/version/latest",
+      method: "GET",
+      params,
+      skipAuth: true,
+      silent: true,
+      timeout: 8000,
     });
   },
 };

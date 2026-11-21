@@ -7,12 +7,15 @@ import com.guoguanla.module.system.dto.RealmConfigReq;
 import com.guoguanla.module.system.entity.EduLevelRule;
 import com.guoguanla.module.system.entity.SysConfig;
 import com.guoguanla.module.system.entity.SysOperLog;
+import com.guoguanla.module.system.vo.AppVersionVO;
 import com.guoguanla.module.system.vo.RealmConfigVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.util.List;
 import java.util.Map;
@@ -24,6 +27,7 @@ import java.util.Map;
 public class AdminSystemController {
 
     private final AdminSystemService systemService;
+    private final AppVersionService appVersionService;
 
     @Operation(summary = "修仙境界与进阶考核规则列表")
     @GetMapping("/realms")
@@ -65,6 +69,27 @@ public class AdminSystemController {
     public Result<Void> updateConfig(@RequestBody Map<String, String> body) {
         systemService.updateConfig(body.get("configKey"), body.get("configValue"));
         return Result.ok();
+    }
+
+    @Operation(summary = "检测并刷新 App 最新版本（含 GitHub Releases）")
+    @GetMapping("/app/version/latest")
+    public Result<AppVersionVO> checkAppVersion(@RequestParam(defaultValue = "false") boolean refresh) {
+        String baseOrigin = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString();
+        return Result.ok(appVersionService.checkLatestVersion(null, null, baseOrigin, refresh));
+    }
+
+    @Operation(summary = "上传 APK 更新包并发布为最新版本")
+    @OperLog(module = "SYSTEM", action = "上传发布APK安装包")
+    @PostMapping("/app/upload-apk")
+    public Result<AppVersionVO> uploadApk(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(required = false) String version,
+            @RequestParam(required = false) Integer versionCode,
+            @RequestParam(required = false) String releaseNotes,
+            @RequestParam(required = false) Boolean forceUpdate
+    ) {
+        String baseOrigin = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString();
+        return Result.ok(appVersionService.uploadApk(file, version, versionCode, releaseNotes, forceUpdate, baseOrigin));
     }
 
     @Operation(summary = "分页查询操作审计日志")

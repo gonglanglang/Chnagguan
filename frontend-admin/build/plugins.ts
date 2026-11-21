@@ -1,5 +1,7 @@
 import { cdn } from "./cdn";
 import vue from "@vitejs/plugin-vue";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { viteBuildInfo } from "./info";
 import svgLoader from "vite-svg-loader";
 import Icons from "unplugin-icons/vite";
@@ -11,6 +13,15 @@ import removeNoMatch from "vite-plugin-router-warn";
 import { visualizer } from "rollup-plugin-visualizer";
 import removeConsole from "vite-plugin-remove-console";
 import { codeInspectorPlugin } from "code-inspector-plugin";
+
+const iconCollectionCache: Record<string, any> = {};
+function loadIconCollection(name: string) {
+  if (!iconCollectionCache[name]) {
+    const file = resolve(process.cwd(), `node_modules/@iconify/json/json/${name}.json`);
+    iconCollectionCache[name] = JSON.parse(readFileSync(file, "utf-8"));
+  }
+  return iconCollectionCache[name];
+}
 
 export function getPluginsList(
   VITE_CDN: boolean,
@@ -47,10 +58,14 @@ export function getPluginsList(
     removeNoMatch(),
     // svg组件化支持
     svgLoader(),
-    // 自动按需加载图标
+    // 自动按需加载图标（直接读取本地 @iconify/json，避免向上级目录回溯扫描）
     Icons({
       compiler: "vue3",
-      scale: 1
+      scale: 1,
+      customCollections: {
+        ep: () => loadIconCollection("ep"),
+        ri: () => loadIconCollection("ri")
+      }
     }),
     VITE_CDN ? cdn : null,
     configCompressPlugin(VITE_COMPRESSION),

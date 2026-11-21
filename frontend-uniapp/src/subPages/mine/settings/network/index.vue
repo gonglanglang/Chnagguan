@@ -82,9 +82,10 @@ const statusColor = computed(() => {
  * 探测目标：与请求层同源，微信端用完整地址，其余端走代理前缀
  */
 function getProbeUrl(): string {
-  let baseUrl = import.meta.env.VITE_API_BASE;
-  // #ifdef MP-WEIXIN
-  baseUrl = import.meta.env.VITE_API_URL + "/api";
+  let baseUrl = import.meta.env.VITE_API_BASE || "/api";
+  // #ifndef H5
+  const origin = (import.meta.env.VITE_API_URL || "http://47.107.94.90").replace(/\/$/, "");
+  baseUrl = `${origin}/api`;
   // #endif
   return `${baseUrl}/app/home/summary`;
 }

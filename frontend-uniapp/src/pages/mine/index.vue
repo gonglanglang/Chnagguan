@@ -56,6 +56,7 @@ import { useNavbarMetrics } from "@/composables/useNavbarMetrics";
 import { useUserStore } from "@/store";
 import type { ChapterCard } from "@/types/guoguanla";
 import { ensureAuthenticated } from "@/utils/auth";
+import { checkAppUpdate, getLocalAppVersion } from "@/utils/app-update";
 import MenuSection, { type MenuGroup } from "./components/MenuSection.vue";
 import ProfileCard from "./components/ProfileCard.vue";
 
@@ -75,6 +76,7 @@ const { usageText, loadUsage, clearCache } = useCacheCleaner();
 
 const chapterRecords = ref<ChapterCard[]>([]);
 const passedChapters = computed(() => chapterRecords.value.filter((c) => c.passedCount > 0));
+const currentAppVersion = ref(import.meta.env.VITE_APP_VERSION || "1.0.0");
 
 const menuGroups = computed<MenuGroup[]>(() => [
   {
@@ -112,6 +114,12 @@ const menuGroups = computed<MenuGroup[]>(() => [
         key: "network",
         title: "网络服务检测",
         icon: "wifi",
+      },
+      {
+        key: "update",
+        title: "检查新版本",
+        icon: "refresh",
+        value: `v${currentAppVersion.value}`,
       },
       {
         key: "about",
@@ -160,6 +168,9 @@ function handleMenuSelect(key: string): void {
     case "network":
       uni.navigateTo({ url: "/subPages/mine/settings/network/index" });
       break;
+    case "update":
+      void checkAppUpdate({ silent: false });
+      break;
     case "about":
       uni.navigateTo({ url: "/subPages/mine/about/index" });
       break;
@@ -168,6 +179,9 @@ function handleMenuSelect(key: string): void {
 
 async function syncMineData(): Promise<void> {
   void loadUsage();
+  void getLocalAppVersion().then((info) => {
+    currentAppVersion.value = info.version;
+  });
   if (!userStore.isAuthenticated) {
     chapterRecords.value = [];
     return;

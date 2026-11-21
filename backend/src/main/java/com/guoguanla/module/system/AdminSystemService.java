@@ -128,13 +128,22 @@ public class AdminSystemService {
     }
 
     public void updateConfig(String key, String value) {
+        if (key == null || key.isBlank()) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "配置项 Key 不能为空");
+        }
+        String trimmedKey = key.trim();
         SysConfig cfg = sysConfigMapper.selectOne(
-                new LambdaQueryWrapper<SysConfig>().eq(SysConfig::getConfigKey, key)
+                new LambdaQueryWrapper<SysConfig>().eq(SysConfig::getConfigKey, trimmedKey)
         );
         if (cfg == null) {
-            throw new BizException(ErrorCode.NOT_FOUND, "配置项不存在: " + key);
+            SysConfig created = new SysConfig();
+            created.setConfigKey(trimmedKey);
+            created.setConfigValue(value == null ? "" : value);
+            created.setDescription("后台配置项");
+            sysConfigMapper.insert(created);
+            return;
         }
-        cfg.setConfigValue(value);
+        cfg.setConfigValue(value == null ? "" : value);
         sysConfigMapper.updateById(cfg);
     }
 

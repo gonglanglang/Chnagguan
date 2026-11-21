@@ -22,16 +22,40 @@
       <wd-cell title="进阶考核" value="本境学成后随机抽题达标即晋升" />
       <wd-cell title="错题巩固" value="答错自动收录，重做答对即掌握" />
     </wd-cell-group>
+
+    <view class="mt-32rpx">
+      <wd-button type="primary" block :loading="checking" @click="handleCheckUpdate">
+        检查新版本
+      </wd-button>
+    </view>
   </view>
 </template>
 
 <script setup lang="ts">
+import { onMounted, ref } from "vue";
+import { checkAppUpdate, getLocalAppVersion } from "@/utils/app-update";
+
 definePage({
   name: "about",
   style: { navigationBarTitleText: "关于过关啦" },
 });
 
-const version = import.meta.env.VITE_APP_VERSION || "1.0.0";
+const version = ref(import.meta.env.VITE_APP_VERSION || "1.0.0");
+const checking = ref(false);
+
+onMounted(async () => {
+  const local = await getLocalAppVersion();
+  version.value = local.version;
+});
+
+async function handleCheckUpdate(): Promise<void> {
+  checking.value = true;
+  try {
+    await checkAppUpdate({ silent: false });
+  } finally {
+    checking.value = false;
+  }
+}
 </script>
 
 <style lang="scss" scoped>

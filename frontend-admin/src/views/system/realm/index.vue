@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, type UploadRequestOptions } from "element-plus";
 import {
   getRealms,
   updateRealm,
   getConfigs,
   updateConfig,
-  type RealmConfig
+  getAdminAppVersion,
+  uploadAppApk,
+  type RealmConfig,
+  type AppVersionInfo
 } from "@/api/guoguanla";
 
 defineOptions({
@@ -15,23 +18,49 @@ defineOptions({
 
 const loading = ref(false);
 const savingBasic = ref(false);
+const savingVersion = ref(false);
+const syncingGithub = ref(false);
+const uploadingApk = ref(false);
 const realms = ref<RealmConfig[]>([]);
+const effectiveVersion = ref<AppVersionInfo | null>(null);
 
 const basicForm = reactive({
   guestMode: true,
   appNotice: ""
 });
 
+const versionForm = reactive({
+  githubRepo: "gonglanglang/Chnagguan",
+  latestVersion: "1.0.0",
+  latestVersionCode: 100,
+  downloadUrl: "",
+  forceUpdate: false,
+  updateNotes: ""
+});
+
 async function fetchAll() {
   loading.value = true;
   try {
-    const [realmRes, cfgRes] = await Promise.all([getRealms(), getConfigs()]);
+    const [realmRes, cfgRes, verRes] = await Promise.all([
+      getRealms(),
+      getConfigs(),
+      getAdminAppVersion(false)
+    ]);
     realms.value = realmRes.data;
     const cfgList = cfgRes.data || [];
-    const guestCfg = cfgList.find(c => c.configKey === "guest_mode_enabled");
-    const noticeCfg = cfgList.find(c => c.configKey === "app_notice");
-    basicForm.guestMode = guestCfg ? guestCfg.configValue === "true" : true;
-    basicForm.appNotice = noticeCfg?.configValue || "";
+    const map = new Map(cfgList.map(c => [c.configKey, c.configValue]));
+    basicForm.guestMode = map.has("guest_mode_enabled")
+      ? map.get("guest_mode_enabled") === "true"
+      : true;
+    basicForm.appNotice = map.get("app_notice") || "";
+
+    versionForm.githubRepo = map.get("github_release_repo") || "gonglanglang/Chnagguan";
+    versionForm.latestVersion = map.get("app_latest_version") || "1.0.0";
+    versionForm.latestVersionCode = Number(map.get("app_latest_version_code") || 100);
+    versionForm.downloadUrl = map.get("app_download_url") || "";
+    versionForm.forceUpdate = map.get("app_force_update") === "true";
+    versionForm.updateNotes = map.get("app_update_notes") || "";
+    effectiveVersion.value = verRes.data;
   } finally {
     loading.value = false;
   }
@@ -63,6 +92,63 @@ async function saveBasicSettings() {
     ElMessage.success("基础设置已保存");
   } finally {
     savingBasic.value = false;
+  }
+}
+
+async function saveVersionSettings() {
+  if (!versionForm.latestVersion.trim()) {
+    ElMessage.warning("请填写最新版本号");
+    return;
+  }
+  savingVersion.value = true;
+  try {
+    await Promise.all([
+      updateConfig("github_release_repo", versionForm.githubRepo.trim()),
+      updateConfig("app_latest_version", versionForm.latestVersion.trim()),
+      updateConfig("app_latest_version_code", String(versionForm.latestVersionCode || 100)),
+      updateConfig("app_download_url", versionForm.downloadUrl.trim()),
+      updateConfig("app_force_update", versionForm.forceUpdate ? "true" : "false"),
+      updateConfig("app_update_notes", versionForm.updateNotes.trim())
+    ]);
+    const verRes = await getAdminAppVersion(true);
+    effectiveVersion.value = verRes.data;
+    ElMessage.success("App 版本配置已保存");
+  } finally {
+    savingVersion.value = false;
+  }
+}
+
+async function refreshGithubRelease() {
+  syncingGithub.value = true;
+  try {
+    await updateConfig("github_release_repo", versionForm.githubRepo.trim());
+    const res = await getAdminAppVersion(true);
+    effectiveVersion.value = res.data;
+    if (res.data.githubReachable) {
+      ElMessage.success(`已同步 GitHub Release：v${res.data.latestVersion}`);
+    } else {
+      ElMessage.warning("未检测到公开的 GitHub Release（仓库为私有或尚未发布 Release），当前使用服务器配置");
+    }
+  } finally {
+    syncingGithub.value = false;
+  }
+}
+
+async function handleApkUpload(options: UploadRequestOptions) {
+  uploadingApk.value = true;
+  try {
+    const fd = new FormData();
+    fd.append("file", options.file);
+    fd.append("version", versionForm.latestVersion.trim() || "1.0.0");
+    fd.append("versionCode", String(versionForm.latestVersionCode || 100));
+    fd.append("releaseNotes", versionForm.updateNotes.trim());
+    fd.append("forceUpdate", String(versionForm.forceUpdate));
+    const res = await uploadAppApk(fd);
+    effectiveVersion.value = res.data;
+    versionForm.downloadUrl = res.data.downloadUrl;
+    ElMessage.success("APK 上传成功并已发布为当前版本");
+  } finally {
+    uploadingApk.value = false;
   }
 }
 
@@ -203,6 +289,88 @@ onMounted(fetchAll);
         <el-form-item>
           <el-button type="primary" :loading="savingBasic" @click="saveBasicSettings">
             保存基础设置
+          </el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
+
+    <el-card shadow="never">
+      <template #header>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <span class="font-bold text-gray-800">App 版本更新与发布管理</span>
+          <div v-if="effectiveVersion" class="flex items-center gap-2 text-xs">
+            <el-tag :type="effectiveVersion.githubReachable ? 'success' : 'info'" size="small">
+              {{ effectiveVersion.githubReachable ? "GitHub Release 已连通" : "当前使用服务器配置" }}
+            </el-tag>
+            <span class="text-gray-500">
+              当前对外版本：v{{ effectiveVersion.latestVersion }} ({{ effectiveVersion.latestVersionCode }})
+            </span>
+          </div>
+        </div>
+      </template>
+
+      <el-form label-width="140px" class="max-w-3xl">
+        <el-form-item label="GitHub 发布仓库">
+          <div class="flex w-full flex-wrap items-center gap-2">
+            <el-input
+              v-model="versionForm.githubRepo"
+              placeholder="格式：用户名/仓库名，如 gonglanglang/Chnagguan"
+              class="min-w-[260px] flex-1"
+            />
+            <el-button :loading="syncingGithub" @click="refreshGithubRelease">
+              检测 GitHub Release
+            </el-button>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="最新版本号">
+          <div class="flex flex-wrap items-center gap-3">
+            <el-input v-model="versionForm.latestVersion" placeholder="如 1.0.1" style="width: 150px" />
+            <span class="whitespace-nowrap text-xs text-gray-500">内部编码 (versionCode)：</span>
+            <el-input-number v-model="versionForm.latestVersionCode" :min="1" style="width: 130px" />
+          </div>
+        </el-form-item>
+
+        <el-form-item label="APK 下载地址">
+          <div class="flex w-full flex-wrap items-center gap-2">
+            <el-input
+              v-model="versionForm.downloadUrl"
+              placeholder="上传 APK 后自动填充，也可填入 GitHub Release 直链"
+              class="min-w-[260px] flex-1"
+            />
+            <el-upload
+              :show-file-list="false"
+              accept=".apk"
+              :http-request="handleApkUpload"
+            >
+              <el-button type="success" plain :loading="uploadingApk">
+                上传 APK 到服务器
+              </el-button>
+            </el-upload>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="强制更新">
+          <div class="flex flex-wrap items-center gap-3">
+            <el-switch v-model="versionForm.forceUpdate" class="shrink-0" />
+            <span class="text-xs text-gray-500">
+              开启后，低于该版本的学生端将无法跳过本次更新弹窗
+            </span>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="更新说明">
+          <el-input
+            v-model="versionForm.updateNotes"
+            type="textarea"
+            :rows="3"
+            placeholder="展示给学生的版本更新内容"
+          />
+        </el-form-item>
+
+        <el-form-item>
+          <el-button type="primary" :loading="savingVersion" @click="saveVersionSettings">
+            保存版本设置
           </el-button>
         </el-form-item>
       </el-form>

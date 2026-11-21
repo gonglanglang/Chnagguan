@@ -190,6 +190,21 @@ export interface SysConfigItem {
   updatedAt: string;
 }
 
+export interface AppVersionInfo {
+  currentVersion: string;
+  latestVersion: string;
+  latestVersionCode: number;
+  hasUpdate: boolean;
+  forceUpdate: boolean;
+  releaseNotes: string;
+  downloadUrl: string;
+  githubReleaseUrl: string;
+  githubRepo: string;
+  githubReachable: boolean;
+  publishedAt: string;
+  source: string;
+}
+
 // 1. 数据概览
 export const getDashboardOverview = () =>
   http.get<ApiResult<DashboardOverview>, any>("/dashboard/overview");
@@ -207,6 +222,18 @@ export const getConfigs = () =>
 export const updateConfig = (configKey: string, configValue: string) =>
   http.request<ApiResult<void>>("put", "/configs", {
     data: { configKey, configValue }
+  });
+
+export const getAdminAppVersion = (refresh = false) =>
+  http.get<ApiResult<AppVersionInfo>, any>("/app/version/latest", {
+    params: { refresh }
+  });
+
+export const uploadAppApk = (formData: FormData) =>
+  http.post<ApiResult<AppVersionInfo>, any>("/app/upload-apk", {
+    data: formData,
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 120000
   });
 
 // 3. 学生管理

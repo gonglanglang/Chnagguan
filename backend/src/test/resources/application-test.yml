@@ -12,3 +12,6 @@ spring:
 mybatis-plus:
   configuration:
     log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
+guoguanla:
+  upload-dir: target/test-downloads
