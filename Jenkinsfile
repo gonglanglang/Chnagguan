@@ -3,6 +3,7 @@ pipeline {
 
   options {
     disableConcurrentBuilds()
+    skipDefaultCheckout(true)
     buildDiscarder(logRotator(numToKeepStr: '10'))
     timestamps()
     timeout(time: 20, unit: 'MINUTES')
@@ -53,7 +54,7 @@ pipeline {
             checkout([
               $class: 'GitSCM',
               branches: [[name: "*/${targetBranch}"]],
-              extensions: [[$class: 'CloneOption', shallow: true, depth: 1]],
+              extensions: [[$class: 'CloneOption', shallow: true, depth: 1, noTags: true, timeout: 10]],
               userRemoteConfigs: scm.userRemoteConfigs
             ])
           }
