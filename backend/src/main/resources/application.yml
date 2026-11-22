@@ -12,6 +12,9 @@ spring:
     name: guoguanla-backend
   profiles:
     active: dev
+  mvc:
+    async:
+      request-timeout: 600000
   servlet:
     multipart:
       max-file-size: 500MB
@@ -55,6 +58,8 @@ guoguanla:
   oss:
     enabled: ${OSS_ENABLED:false}
     endpoint: ${OSS_ENDPOINT:oss-cn-shenzhen.aliyuncs.com}
+    internal-endpoint: ${OSS_INTERNAL_ENDPOINT:}
+    custom-domain: ${OSS_CUSTOM_DOMAIN:}
     bucket: ${OSS_BUCKET:chuangguang}
     access-key-id: ${OSS_ACCESS_KEY_ID:}
     access-key-secret: ${OSS_ACCESS_KEY_SECRET:}

@@ -322,11 +322,35 @@ export const getAdminAppVersion = (refresh = false) =>
     params: { refresh }
   });
 
+export interface ApkDirectUploadInitResult {
+  objectKey: string;
+  uploadUrl: string;
+  contentType: string;
+  storageType: string;
+  directUpload: boolean;
+}
+
+export const initAppApkUpload = (data: { fileName: string; version?: string }) =>
+  http.post<ApiResult<ApkDirectUploadInitResult>, any>("/app/upload-apk/init", {
+    data
+  });
+
+export const publishAppApk = (data: {
+  objectKey: string;
+  version?: string;
+  versionCode?: number;
+  releaseNotes?: string;
+  forceUpdate?: boolean;
+}) =>
+  http.post<ApiResult<AppVersionInfo>, any>("/app/upload-apk/publish", {
+    data
+  });
+
 export const uploadAppApk = (formData: FormData) =>
   http.post<ApiResult<AppVersionInfo>, any>("/app/upload-apk", {
     data: formData,
     headers: { "Content-Type": "multipart/form-data" },
-    timeout: 120000
+    timeout: 300000
   });
 
 // 3. 学生管理
@@ -499,23 +523,25 @@ export class OssDirectNetworkError extends Error {
   }
 }
 
-export function uploadPartDirectToOss(options: {
+function putBlobDirectToOss(options: {
   uploadUrl: string;
-  partNumber: number;
   blob: Blob;
   contentType?: string;
   signal?: AbortSignal;
+  timeoutMs?: number;
+  label?: string;
   onProgress?: (loadedBytes: number) => void;
-}): Promise<{ partNumber: number; eTag: string }> {
+}): Promise<{ eTag: string }> {
   return new Promise((resolve, reject) => {
     if (options.signal?.aborted) {
       reject(new DOMException("Upload aborted", "AbortError"));
       return;
     }
 
+    const label = options.label || "直传 OSS";
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", options.uploadUrl, true);
-    xhr.timeout = 180000;
+    xhr.timeout = options.timeoutMs ?? 180000;
     xhr.withCredentials = false;
     xhr.setRequestHeader("Content-Type", options.contentType || "application/octet-stream");
 
@@ -549,27 +575,67 @@ export function uploadPartDirectToOss(options: {
       if (xhr.status >= 200 && xhr.status < 300) {
         options.onProgress?.(options.blob.size);
         const rawTag = (xhr.getResponseHeader("ETag") || xhr.getResponseHeader("etag") || "").trim();
-        resolve({ partNumber: options.partNumber, eTag: rawTag });
+        resolve({ eTag: rawTag });
         return;
       }
-      reject(new Error(`直传 OSS 第 ${options.partNumber} 片失败 (HTTP ${xhr.status})`));
+      reject(new Error(`${label}失败 (HTTP ${xhr.status})`));
     };
 
     xhr.onerror = () => {
       if (settled) return;
       settled = true;
       cleanup();
-      reject(new OssDirectNetworkError(`直传 OSS 网络或跨域受限（第 ${options.partNumber} 片）`));
+      reject(new OssDirectNetworkError(`${label}网络或跨域受限`));
     };
 
     xhr.ontimeout = () => {
       if (settled) return;
       settled = true;
       cleanup();
-      reject(new Error(`直传 OSS 第 ${options.partNumber} 片超时`));
+      reject(new Error(`${label}超时`));
     };
 
     xhr.send(options.blob);
+  });
+}
+
+export async function uploadPartDirectToOss(options: {
+  uploadUrl: string;
+  partNumber: number;
+  blob: Blob;
+  contentType?: string;
+  signal?: AbortSignal;
+  onProgress?: (loadedBytes: number) => void;
+}): Promise<{ partNumber: number; eTag: string }> {
+  const res = await putBlobDirectToOss({
+    uploadUrl: options.uploadUrl,
+    blob: options.blob,
+    contentType: options.contentType,
+    signal: options.signal,
+    timeoutMs: 180000,
+    label: `直传 OSS 第 ${options.partNumber} 片`,
+    onProgress: options.onProgress
+  });
+  return { partNumber: options.partNumber, eTag: res.eTag };
+}
+
+export async function uploadApkDirectToOss(options: {
+  uploadUrl: string;
+  file: Blob;
+  contentType?: string;
+  onProgress?: (percent: number) => void;
+}): Promise<void> {
+  await putBlobDirectToOss({
+    uploadUrl: options.uploadUrl,
+    blob: options.file,
+    contentType: options.contentType || "application/vnd.android.package-archive",
+    timeoutMs: 300000,
+    label: "直传 APK 至 OSS",
+    onProgress: loaded => {
+      if (options.onProgress && options.file.size > 0) {
+        options.onProgress(Math.min(99, Math.round((loaded * 99) / options.file.size)));
+      }
+    }
   });
 }
 

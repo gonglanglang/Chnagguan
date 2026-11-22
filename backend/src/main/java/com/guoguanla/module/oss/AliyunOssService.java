@@ -17,6 +17,7 @@ import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -49,13 +50,16 @@ public class AliyunOssService {
     private static final long MAX_ATTACHMENT_BYTES = 50L * 1024 * 1024;
     private static final long DEFAULT_SIGN_TTL_SECONDS = 7200L;
     private static final long PART_UPLOAD_SIGN_TTL_SECONDS = 4L * 3600L;
+    private static final long APK_UPLOAD_SIGN_TTL_SECONDS = 3600L;
     private static final String DIRECT_PART_CONTENT_TYPE = "application/octet-stream";
+    private static final String APK_CONTENT_TYPE = "application/vnd.android.package-archive";
     private static final Set<String> ALLOWED_ATTACHMENT_EXTS = Set.of(
             "png", "jpg", "jpeg", "webp", "gif",
             "pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "txt", "md", "zip"
     );
     private static final Pattern SAFE_UPLOAD_ID_PATTERN = Pattern.compile("^[A-Za-z0-9_-]{8,128}$");
     private static final Pattern SAFE_VIDEO_KEY_PATTERN = Pattern.compile("^course-videos/[A-Za-z0-9/_.-]{4,240}$");
+    private static final Pattern SAFE_APK_KEY_PATTERN = Pattern.compile("^app-releases/[A-Za-z0-9/_.-]{4,240}\\.apk$", Pattern.CASE_INSENSITIVE);
     private static final DateTimeFormatter GMT_FORMATTER =
             DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.ENGLISH).withZone(ZoneOffset.UTC);
     private static final DateTimeFormatter DATE_DIR_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
@@ -65,6 +69,12 @@ public class AliyunOssService {
 
     @Value("${guoguanla.oss.endpoint:oss-cn-shenzhen.aliyuncs.com}")
     private String endpoint;
+
+    @Value("${guoguanla.oss.internal-endpoint:}")
+    private String internalEndpoint;
+
+    @Value("${guoguanla.oss.custom-domain:}")
+    private String customDomain;
 
     @Value("${guoguanla.oss.bucket:chuangguang}")
     private String bucket;
@@ -86,6 +96,44 @@ public class AliyunOssService {
             .build();
 
     public record UploadResult(String objectKey, String previewUrl, String storageType) {}
+
+    public record DirectPutInitResult(
+            String objectKey,
+            String uploadUrl,
+            String contentType,
+            String storageType,
+            boolean directUpload
+    ) {}
+
+    public record OssObjectStream(
+            int statusCode,
+            long contentLength,
+            String contentType,
+            String contentRange,
+            InputStream body
+    ) {}
+
+    public boolean hasCustomDomain() {
+        return customDomain != null && !customDomain.isBlank();
+    }
+
+    private String resolveBackendBaseUrl() {
+        if (internalEndpoint != null && !internalEndpoint.isBlank()) {
+            return "http://" + bucket.trim() + "." + stripScheme(internalEndpoint);
+        }
+        return "https://" + bucket.trim() + "." + stripScheme(endpoint);
+    }
+
+    private String resolvePublicGetBaseUrl() {
+        if (hasCustomDomain()) {
+            String raw = customDomain.trim();
+            if (raw.startsWith("http://") || raw.startsWith("https://")) {
+                return raw.endsWith("/") ? raw.substring(0, raw.length() - 1) : raw;
+            }
+            return "https://" + stripScheme(raw);
+        }
+        return "https://" + bucket.trim() + "." + stripScheme(endpoint);
+    }
 
     public record MultipartPartUploadUrl(int partNumber, String uploadUrl) {}
 
@@ -155,24 +203,10 @@ public class AliyunOssService {
         String objectKey = "course-videos/" + datePart + "/lesson_" + rand + "." + meta.ext();
 
         if (isOssConfigured()) {
-            Path tempFile = null;
-            try {
-                tempFile = Files.createTempFile("ggl-video-", "." + meta.ext());
-                file.transferTo(tempFile);
-                putFileToOss(objectKey, tempFile, meta.contentType(), Duration.ofMinutes(10));
-            } catch (BizException e) {
-                throw e;
-            } catch (IOException e) {
-                log.error("Failed to buffer course video", e);
-                throw new BizException(ErrorCode.INTERNAL_ERROR, "读取视频文件失败");
-            } finally {
-                if (tempFile != null) {
-                    try {
-                        Files.deleteIfExists(tempFile);
-                    } catch (IOException ignored) {
-                    }
-                }
-            }
+            uploadMultipartFileViaTempToOss(
+                    file, "ggl-video-", "." + meta.ext(),
+                    objectKey, meta.contentType(), Duration.ofMinutes(10), "读取视频文件失败"
+            );
             return new UploadResult(objectKey, generatePresignedGetUrl(objectKey, DEFAULT_SIGN_TTL_SECONDS), "ALIYUN_OSS");
         }
 
@@ -184,6 +218,48 @@ public class AliyunOssService {
         } catch (IOException e) {
             log.error("Failed to save course video locally", e);
             throw new BizException(ErrorCode.INTERNAL_ERROR, "保存视频文件失败");
+        }
+        return new UploadResult(relPath, resolveViewUrl(relPath, baseOrigin), "LOCAL");
+    }
+
+    public DirectPutInitResult initAppApkDirectUpload(String fileName, String version) {
+        String origName = fileName == null ? "" : fileName.trim();
+        if (!origName.toLowerCase(Locale.ROOT).endsWith(".apk")) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "仅支持上传 .apk 格式的 Android 安装包");
+        }
+        if (!isOssConfigured()) {
+            return new DirectPutInitResult("", "", "", "LOCAL", false);
+        }
+        String safeFileName = buildSafeApkFileName(version);
+        String objectKey = "app-releases/" + safeFileName;
+        String uploadUrl = generatePresignedPutUrl(objectKey, APK_CONTENT_TYPE, APK_UPLOAD_SIGN_TTL_SECONDS);
+        return new DirectPutInitResult(objectKey, uploadUrl, APK_CONTENT_TYPE, "ALIYUN_OSS", true);
+    }
+
+    public UploadResult uploadAppApk(MultipartFile file, String safeFileName, String baseOrigin) {
+        if (file == null || file.isEmpty()) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "请选择要上传的 APK 安装包");
+        }
+        String origName = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().trim();
+        if (!origName.toLowerCase(Locale.ROOT).endsWith(".apk")) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "仅支持上传 .apk 格式的 Android 安装包");
+        }
+        if (isOssConfigured()) {
+            String objectKey = sanitizeAppApkKey("app-releases/" + safeFileName);
+            uploadMultipartFileViaTempToOss(
+                    file, "ggl-apk-", ".apk",
+                    objectKey, APK_CONTENT_TYPE, Duration.ofMinutes(5), "读取 APK 安装包失败"
+            );
+            return new UploadResult(objectKey, generatePresignedGetUrl(objectKey, DEFAULT_SIGN_TTL_SECONDS), "ALIYUN_OSS");
+        }
+        String relPath = "/downloads/" + safeFileName;
+        try {
+            Path target = Path.of(uploadDir).toAbsolutePath().normalize().resolve(safeFileName).normalize();
+            Files.createDirectories(target.getParent());
+            file.transferTo(target);
+        } catch (IOException e) {
+            log.error("Failed to save APK file locally", e);
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "保存 APK 文件失败: " + e.getMessage());
         }
         return new UploadResult(relPath, resolveViewUrl(relPath, baseOrigin), "LOCAL");
     }
@@ -363,23 +439,10 @@ public class AliyunOssService {
         String objectKey = "class-notes-attachments/" + datePart + "/att_" + rand + "." + meta.ext();
 
         if (isOssConfigured()) {
-            Path tempFile = null;
-            try {
-                tempFile = Files.createTempFile("ggl-att-", "." + meta.ext());
-                file.transferTo(tempFile);
-                putFileToOss(objectKey, tempFile, meta.contentType(), Duration.ofMinutes(3));
-            } catch (BizException e) {
-                throw e;
-            } catch (IOException e) {
-                throw new BizException(ErrorCode.INTERNAL_ERROR, "读取附件失败");
-            } finally {
-                if (tempFile != null) {
-                    try {
-                        Files.deleteIfExists(tempFile);
-                    } catch (IOException ignored) {
-                    }
-                }
-            }
+            uploadMultipartFileViaTempToOss(
+                    file, "ggl-att-", "." + meta.ext(),
+                    objectKey, meta.contentType(), Duration.ofMinutes(3), "读取附件失败"
+            );
             return new AttachmentUploadResult(
                     originalName,
                     objectKey,
@@ -520,8 +583,7 @@ public class AliyunOssService {
     }
 
     void putToOss(String objectKey, byte[] bytes, String contentType) {
-        String cleanEndpoint = stripScheme(endpoint);
-        String url = "https://" + bucket.trim() + "." + cleanEndpoint + "/" + objectKey;
+        String url = resolveBackendBaseUrl() + "/" + objectKey;
         String dateHeader = GMT_FORMATTER.format(Instant.now());
         String stringToSign = "PUT\n\n" + contentType + "\n" + dateHeader + "\n/" + bucket.trim() + "/" + objectKey;
         String signature = signHmacSha1(accessKeySecret.trim(), stringToSign);
@@ -550,8 +612,7 @@ public class AliyunOssService {
     }
 
     void putFileToOss(String objectKey, Path filePath, String contentType, Duration timeout) {
-        String cleanEndpoint = stripScheme(endpoint);
-        String url = "https://" + bucket.trim() + "." + cleanEndpoint + "/" + objectKey;
+        String url = resolveBackendBaseUrl() + "/" + objectKey;
         String dateHeader = GMT_FORMATTER.format(Instant.now());
         String stringToSign = "PUT\n\n" + contentType + "\n" + dateHeader + "\n/" + bucket.trim() + "/" + objectKey;
         String signature = signHmacSha1(accessKeySecret.trim(), stringToSign);
@@ -583,6 +644,57 @@ public class AliyunOssService {
         String cleanKey = objectKey.startsWith("/") ? objectKey.substring(1) : objectKey;
         long expires = Instant.now().getEpochSecond() + Math.max(60L, ttlSeconds);
         String stringToSign = "GET\n\n\n" + expires + "\n/" + bucket.trim() + "/" + cleanKey;
+        String signature = signHmacSha1(accessKeySecret.trim(), stringToSign);
+        String encodedAk = URLEncoder.encode(accessKeyId.trim(), StandardCharsets.UTF_8);
+        String encodedSig = URLEncoder.encode(signature, StandardCharsets.UTF_8);
+        return resolvePublicGetBaseUrl() + "/" + cleanKey
+                + "?OSSAccessKeyId=" + encodedAk
+                + "&Expires=" + expires
+                + "&Signature=" + encodedSig;
+    }
+
+    public OssObjectStream openInternalObjectStream(String objectKey, String rangeHeader) {
+        String cleanKey = objectKey.startsWith("/") ? objectKey.substring(1) : objectKey;
+        String url = resolveBackendBaseUrl() + "/" + cleanKey;
+        String dateHeader = GMT_FORMATTER.format(Instant.now());
+        String stringToSign = "GET\n\n\n" + dateHeader + "\n/" + bucket.trim() + "/" + cleanKey;
+        String authHeader = "OSS " + accessKeyId.trim() + ":" + signHmacSha1(accessKeySecret.trim(), stringToSign);
+
+        try {
+            HttpRequest.Builder builder = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofMinutes(5))
+                    .header("Date", dateHeader)
+                    .header("Authorization", authHeader)
+                    .GET();
+            if (rangeHeader != null && !rangeHeader.isBlank()) {
+                builder.header("Range", rangeHeader.trim());
+            }
+            HttpResponse<InputStream> resp = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
+            if (resp.statusCode() != 200 && resp.statusCode() != 206) {
+                try (InputStream errIn = resp.body()) {
+                    String errBody = new String(errIn.readNBytes(2048), StandardCharsets.UTF_8);
+                    log.error("OSS internal stream failed: key={}, status={}, body={}", cleanKey, resp.statusCode(), errBody);
+                }
+                throw new BizException(ErrorCode.NOT_FOUND, "读取 OSS 安装包失败 (" + resp.statusCode() + ")");
+            }
+            long contentLength = resp.headers().firstValueAsLong("Content-Length").orElse(-1L);
+            String ct = resp.headers().firstValue("Content-Type").orElse(APK_CONTENT_TYPE);
+            String contentRange = resp.headers().firstValue("Content-Range").orElse("");
+            return new OssObjectStream(resp.statusCode(), contentLength, ct, contentRange, resp.body());
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("OSS internal stream exception: key={}", cleanKey, e);
+            throw new BizException(ErrorCode.INTERNAL_ERROR, "拉取 OSS 安装包异常: " + e.getMessage());
+        }
+    }
+
+    public String generatePresignedPutUrl(String objectKey, String contentType, long ttlSeconds) {
+        String cleanKey = objectKey.startsWith("/") ? objectKey.substring(1) : objectKey;
+        long expires = Instant.now().getEpochSecond() + Math.max(60L, ttlSeconds);
+        String ct = (contentType == null || contentType.isBlank()) ? "application/octet-stream" : contentType.trim();
+        String stringToSign = "PUT\n\n" + ct + "\n" + expires + "\n/" + bucket.trim() + "/" + cleanKey;
         String signature = signHmacSha1(accessKeySecret.trim(), stringToSign);
         String encodedAk = URLEncoder.encode(accessKeyId.trim(), StandardCharsets.UTF_8);
         String encodedSig = URLEncoder.encode(signature, StandardCharsets.UTF_8);
@@ -710,6 +822,58 @@ public class AliyunOssService {
         return trimmed;
     }
 
+    public String sanitizeAppApkKey(String objectKey) {
+        String trimmed = objectKey == null ? "" : objectKey.trim();
+        while (trimmed.startsWith("/")) {
+            trimmed = trimmed.substring(1);
+        }
+        if (trimmed.contains("..") || !SAFE_APK_KEY_PATTERN.matcher(trimmed).matches()) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "无效的 APK 安装包对象路径");
+        }
+        return trimmed;
+    }
+
+    public static String buildSafeApkFileName(String version) {
+        String clean = version == null ? "" : version.trim();
+        if (clean.startsWith("v") || clean.startsWith("V")) {
+            clean = clean.substring(1).trim();
+        }
+        String safeVersion = clean.replaceAll("[^0-9A-Za-z._-]", "");
+        if (safeVersion.isBlank()) {
+            safeVersion = String.valueOf(System.currentTimeMillis());
+        }
+        return "guoguanla-v" + safeVersion + ".apk";
+    }
+
+    private void uploadMultipartFileViaTempToOss(
+            MultipartFile file,
+            String tempPrefix,
+            String tempSuffix,
+            String objectKey,
+            String contentType,
+            Duration timeout,
+            String readErrorMsg
+    ) {
+        Path tempFile = null;
+        try {
+            tempFile = Files.createTempFile(tempPrefix, tempSuffix);
+            file.transferTo(tempFile);
+            putFileToOss(objectKey, tempFile, contentType, timeout);
+        } catch (BizException e) {
+            throw e;
+        } catch (IOException e) {
+            log.error("Failed to buffer multipart file for objectKey={}", objectKey, e);
+            throw new BizException(ErrorCode.INTERNAL_ERROR, readErrorMsg);
+        } finally {
+            if (tempFile != null) {
+                try {
+                    Files.deleteIfExists(tempFile);
+                } catch (IOException ignored) {
+                }
+            }
+        }
+    }
+
     private String sanitizeAttachmentName(String raw) {
         String name = raw == null ? "课程附件" : raw.trim().replace("\\", "/");
         int slashIdx = name.lastIndexOf('/');
@@ -769,8 +933,7 @@ public class AliyunOssService {
     }
 
     private String initiateOssMultipartUpload(String objectKey, String contentType) {
-        String cleanEndpoint = stripScheme(endpoint);
-        String url = "https://" + bucket.trim() + "." + cleanEndpoint + "/" + objectKey + "?uploads";
+        String url = resolveBackendBaseUrl() + "/" + objectKey + "?uploads";
         String dateHeader = GMT_FORMATTER.format(Instant.now());
         String stringToSign = "POST\n\n" + contentType + "\n" + dateHeader + "\n/" + bucket.trim() + "/" + objectKey + "?uploads";
         String authHeader = "OSS " + accessKeyId.trim() + ":" + signHmacSha1(accessKeySecret.trim(), stringToSign);
@@ -828,14 +991,13 @@ public class AliyunOssService {
     }
 
     private Map<Integer, String> listOssPartETags(String objectKey, String uploadId) {
-        String cleanEndpoint = stripScheme(endpoint);
         String resourceQuery = "uploadId=" + uploadId;
         Map<Integer, String> eTagMap = new HashMap<>();
         String marker = null;
 
         try {
             while (true) {
-                String url = "https://" + bucket.trim() + "." + cleanEndpoint + "/" + objectKey + "?" + resourceQuery
+                String url = resolveBackendBaseUrl() + "/" + objectKey + "?" + resourceQuery
                         + (marker != null && !marker.isBlank()
                         ? "&part-number-marker=" + URLEncoder.encode(marker, StandardCharsets.UTF_8)
                         : "");
@@ -913,9 +1075,8 @@ public class AliyunOssService {
     }
 
     private String uploadOssPart(String objectKey, String uploadId, int partNumber, byte[] bytes) {
-        String cleanEndpoint = stripScheme(endpoint);
         String query = "partNumber=" + partNumber + "&uploadId=" + uploadId;
-        String url = "https://" + bucket.trim() + "." + cleanEndpoint + "/" + objectKey + "?" + query;
+        String url = resolveBackendBaseUrl() + "/" + objectKey + "?" + query;
         String contentType = "application/octet-stream";
         String dateHeader = GMT_FORMATTER.format(Instant.now());
         String stringToSign = "PUT\n\n" + contentType + "\n" + dateHeader + "\n/" + bucket.trim() + "/" + objectKey + "?" + query;
@@ -949,9 +1110,8 @@ public class AliyunOssService {
     }
 
     private void completeOssMultipartUpload(String objectKey, String uploadId, List<CompletedPart> parts) {
-        String cleanEndpoint = stripScheme(endpoint);
         String query = "uploadId=" + uploadId;
-        String url = "https://" + bucket.trim() + "." + cleanEndpoint + "/" + objectKey + "?" + query;
+        String url = resolveBackendBaseUrl() + "/" + objectKey + "?" + query;
         String contentType = "application/xml";
         String dateHeader = GMT_FORMATTER.format(Instant.now());
         String stringToSign = "POST\n\n" + contentType + "\n" + dateHeader + "\n/" + bucket.trim() + "/" + objectKey + "?" + query;
@@ -994,9 +1154,8 @@ public class AliyunOssService {
     }
 
     private void abortOssMultipartUpload(String objectKey, String uploadId) {
-        String cleanEndpoint = stripScheme(endpoint);
         String query = "uploadId=" + uploadId;
-        String url = "https://" + bucket.trim() + "." + cleanEndpoint + "/" + objectKey + "?" + query;
+        String url = resolveBackendBaseUrl() + "/" + objectKey + "?" + query;
         String dateHeader = GMT_FORMATTER.format(Instant.now());
         String stringToSign = "DELETE\n\n\n" + dateHeader + "\n/" + bucket.trim() + "/" + objectKey + "?" + query;
         String authHeader = "OSS " + accessKeyId.trim() + ":" + signHmacSha1(accessKeySecret.trim(), stringToSign);

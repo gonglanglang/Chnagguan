@@ -8,6 +8,10 @@ guoguanla:
   oss:
     enabled: true
     endpoint: oss-cn-shenzhen.aliyuncs.com
+    # ECS 同地域部署时可填内网节点（如 oss-cn-shenzhen-internal.aliyuncs.com），免公网出站流量且支持流式转发 APK
+    internal-endpoint: ""
+    # 若在 OSS 绑定已备案自定义域名（CNAME），填入后 APK 与媒体签名直链将自动切换为自定义域名
+    custom-domain: ""
     bucket: chuangguang
     access-key-id: your_oss_access_key_id
     access-key-secret: your_oss_access_key_secret

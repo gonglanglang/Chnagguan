@@ -3,8 +3,7 @@ package com.guoguanla.module.system;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.guoguanla.common.exception.BizException;
-import com.guoguanla.common.result.ErrorCode;
+import com.guoguanla.module.oss.AliyunOssService;
 import com.guoguanla.module.system.entity.SysConfig;
 import com.guoguanla.module.system.mapper.SysConfigMapper;
 import com.guoguanla.module.system.vo.AppVersionVO;
@@ -14,14 +13,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -30,7 +25,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * App 版本检查与更新发布服务：支持 GitHub Releases 自动同步与本地服务器 APK 托管兜底。
+ * App 版本检查与更新发布服务：支持 GitHub Releases 自动同步与阿里云 OSS 安装包托管（无 OSS 时本地降级）。
  */
 @Slf4j
 @Service
@@ -43,9 +38,7 @@ public class AppVersionService {
 
     private final SysConfigMapper sysConfigMapper;
     private final ObjectMapper objectMapper;
-
-    @Value("${guoguanla.upload-dir:./downloads}")
-    private String uploadDir;
+    private final AliyunOssService ossService;
 
     @Value("${guoguanla.github.token:}")
     private String githubToken;
@@ -68,7 +61,22 @@ public class AppVersionService {
 
     private record GithubReleaseCache(String repo, long fetchedAtMs, boolean reachable, GithubReleaseInfo info) {}
 
-    public AppVersionVO checkLatestVersion(String currentVersion, Integer currentVersionCode, String baseOrigin, boolean forceRefresh) {
+    public record DownloadAction(String redirectUrl, String fileName, AliyunOssService.OssObjectStream ossStream) {}
+
+    private record ResolvedMeta(
+            String githubRepo,
+            String latestVersion,
+            Integer latestCode,
+            boolean cfgForce,
+            String notes,
+            String rawDownloadUrl,
+            String githubReleaseUrl,
+            boolean githubReachable,
+            String publishedAt,
+            String source
+    ) {}
+
+    private ResolvedMeta resolveEffectiveMeta(boolean forceRefresh) {
         Map<String, String> cfg = loadConfigMap();
 
         String githubRepo = cfg.getOrDefault("github_release_repo", "gonglanglang/Chnagguan").trim();
@@ -119,26 +127,81 @@ public class AppVersionService {
                 }
             }
         }
+        return new ResolvedMeta(
+                githubRepo, latestVersion, latestCode, cfgForce, notes,
+                downloadUrl, githubReleaseUrl, githubReachable, publishedAt, source
+        );
+    }
 
-        String resolvedUrl = resolveAbsoluteUrl(downloadUrl, baseOrigin);
+    private String resolveClientDownloadUrl(String rawDownloadUrl, String baseOrigin) {
+        if (rawDownloadUrl != null
+                && rawDownloadUrl.trim().startsWith("app-releases/")
+                && ossService.isOssConfigured()
+                && !ossService.hasCustomDomain()) {
+            if (baseOrigin == null || baseOrigin.isBlank()) {
+                return "/api/app/version/download";
+            }
+            String origin = baseOrigin.endsWith("/") ? baseOrigin.substring(0, baseOrigin.length() - 1) : baseOrigin;
+            return origin + "/api/app/version/download";
+        }
+        return ossService.resolveViewUrl(rawDownloadUrl, baseOrigin);
+    }
+
+    public AppVersionVO checkLatestVersion(String currentVersion, Integer currentVersionCode, String baseOrigin, boolean forceRefresh) {
+        ResolvedMeta meta = resolveEffectiveMeta(forceRefresh);
+        String resolvedUrl = resolveClientDownloadUrl(meta.rawDownloadUrl(), baseOrigin);
         boolean hasDownloadTarget = (resolvedUrl != null && !resolvedUrl.isBlank())
-                || (githubReleaseUrl != null && !githubReleaseUrl.isBlank());
-        boolean hasUpdate = hasDownloadTarget && isNewer(latestVersion, latestCode, currentVersion, currentVersionCode);
+                || (meta.githubReleaseUrl() != null && !meta.githubReleaseUrl().isBlank());
+        boolean hasUpdate = hasDownloadTarget && isNewer(meta.latestVersion(), meta.latestCode(), currentVersion, currentVersionCode);
 
         return AppVersionVO.builder()
                 .currentVersion(normalizeVersion(currentVersion))
-                .latestVersion(latestVersion)
-                .latestVersionCode(latestCode)
+                .latestVersion(meta.latestVersion())
+                .latestVersionCode(meta.latestCode())
                 .hasUpdate(hasUpdate)
-                .forceUpdate(hasUpdate && cfgForce)
-                .releaseNotes(notes)
+                .forceUpdate(hasUpdate && meta.cfgForce())
+                .releaseNotes(meta.notes())
                 .downloadUrl(resolvedUrl)
-                .githubReleaseUrl(githubReleaseUrl)
-                .githubRepo(githubRepo)
-                .githubReachable(githubReachable)
-                .publishedAt(publishedAt)
-                .source(source)
+                .githubReleaseUrl(meta.githubReleaseUrl())
+                .githubRepo(meta.githubRepo())
+                .githubReachable(meta.githubReachable())
+                .publishedAt(meta.publishedAt())
+                .source(meta.source())
                 .build();
+    }
+
+    public DownloadAction prepareDownload(String rangeHeader, String baseOrigin) {
+        ResolvedMeta meta = resolveEffectiveMeta(false);
+        String rawUrl = meta.rawDownloadUrl() == null ? "" : meta.rawDownloadUrl().trim();
+        if (rawUrl.startsWith("app-releases/") && ossService.isOssConfigured() && !ossService.hasCustomDomain()) {
+            String safeKey = ossService.sanitizeAppApkKey(rawUrl);
+            String fileName = safeKey.substring(safeKey.lastIndexOf('/') + 1);
+            return new DownloadAction(null, fileName, ossService.openInternalObjectStream(safeKey, rangeHeader));
+        }
+        String target = ossService.resolveViewUrl(rawUrl, baseOrigin);
+        if (target == null || target.isBlank()) {
+            target = meta.githubReleaseUrl();
+        }
+        return new DownloadAction(target, null, null);
+    }
+
+    public AliyunOssService.DirectPutInitResult initApkDirectUpload(String fileName, String version) {
+        String cleanVersion = resolveTargetVersion(version);
+        return ossService.initAppApkDirectUpload(fileName, cleanVersion);
+    }
+
+    public AppVersionVO publishUploadedApk(
+            String objectKey,
+            String version,
+            Integer versionCode,
+            String releaseNotes,
+            Boolean forceUpdate,
+            String baseOrigin
+    ) {
+        String safeKey = ossService.sanitizeAppApkKey(objectKey);
+        String cleanVersion = resolveTargetVersion(version);
+        persistPublishedVersion(safeKey, cleanVersion, versionCode, releaseNotes, forceUpdate);
+        return checkLatestVersion(null, null, baseOrigin, false);
     }
 
     public AppVersionVO uploadApk(
@@ -149,46 +212,38 @@ public class AppVersionService {
             Boolean forceUpdate,
             String baseOrigin
     ) {
-        if (file == null || file.isEmpty()) {
-            throw new BizException(ErrorCode.BAD_REQUEST, "请选择要上传的 APK 安装包");
-        }
-        String origName = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().trim();
-        if (!origName.toLowerCase().endsWith(".apk")) {
-            throw new BizException(ErrorCode.BAD_REQUEST, "仅支持上传 .apk 格式的 Android 安装包");
-        }
+        String cleanVersion = resolveTargetVersion(version);
+        String fileName = AliyunOssService.buildSafeApkFileName(cleanVersion);
+        AliyunOssService.UploadResult res = ossService.uploadAppApk(file, fileName, baseOrigin);
+        persistPublishedVersion(res.objectKey(), cleanVersion, versionCode, releaseNotes, forceUpdate);
+        return checkLatestVersion(null, null, baseOrigin, false);
+    }
 
+    private String resolveTargetVersion(String version) {
         String cleanVersion = normalizeVersion(version);
         if (cleanVersion.isBlank()) {
             cleanVersion = loadConfigMap().getOrDefault("app_latest_version", "1.0.0");
         }
-        String safeVersion = cleanVersion.replaceAll("[^0-9A-Za-z._-]", "");
-        if (safeVersion.isBlank()) {
-            safeVersion = String.valueOf(System.currentTimeMillis());
-        }
-        String fileName = "guoguanla-v" + safeVersion + ".apk";
+        return cleanVersion;
+    }
 
-        try {
-            Path dir = Path.of(uploadDir).toAbsolutePath().normalize();
-            Files.createDirectories(dir);
-            Path target = dir.resolve(fileName);
-            Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            log.error("Failed to save APK file", e);
-            throw new BizException(ErrorCode.INTERNAL_ERROR, "保存 APK 文件失败: " + e.getMessage());
-        }
-
+    private void persistPublishedVersion(
+            String downloadUrlOrKey,
+            String cleanVersion,
+            Integer versionCode,
+            String releaseNotes,
+            Boolean forceUpdate
+    ) {
         int finalCode = versionCode != null && versionCode > 0 ? versionCode : deriveVersionCode(cleanVersion);
         upsertConfig("app_latest_version", cleanVersion, "App最新版本号");
         upsertConfig("app_latest_version_code", String.valueOf(finalCode), "App最新版本数字编码(versionCode)");
-        upsertConfig("app_download_url", "/downloads/" + fileName, "App最新APK下载地址");
+        upsertConfig("app_download_url", downloadUrlOrKey, "App最新APK OSS对象键或下载地址");
         if (releaseNotes != null) {
             upsertConfig("app_update_notes", releaseNotes.trim(), "App最新版本更新日志");
         }
         if (forceUpdate != null) {
             upsertConfig("app_force_update", String.valueOf(forceUpdate), "App是否强制更新");
         }
-
-        return checkLatestVersion(null, null, baseOrigin, false);
     }
 
     private GithubReleaseCache fetchGithubRelease(String repo, boolean forceRefresh) {
@@ -271,21 +326,6 @@ public class AppVersionService {
             cfg.setConfigValue(value);
             sysConfigMapper.updateById(cfg);
         }
-    }
-
-    private String resolveAbsoluteUrl(String url, String baseOrigin) {
-        if (url == null || url.isBlank()) {
-            return "";
-        }
-        String trimmed = url.trim();
-        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-            return trimmed;
-        }
-        if (baseOrigin == null || baseOrigin.isBlank()) {
-            return trimmed;
-        }
-        String origin = baseOrigin.endsWith("/") ? baseOrigin.substring(0, baseOrigin.length() - 1) : baseOrigin;
-        return trimmed.startsWith("/") ? origin + trimmed : origin + "/" + trimmed;
     }
 
     private boolean isNewer(String latestVer, Integer latestCode, String currentVer, Integer currentCode) {

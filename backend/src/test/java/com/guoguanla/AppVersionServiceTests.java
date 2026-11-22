@@ -2,7 +2,10 @@ package com.guoguanla;
 
 import com.guoguanla.module.system.AppVersionService;
 import com.guoguanla.module.system.vo.AppVersionVO;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -14,12 +17,12 @@ import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class AppVersionServiceTests {
 
     @Autowired
@@ -29,6 +32,7 @@ class AppVersionServiceTests {
     private AppVersionService appVersionService;
 
     @Test
+    @Order(1)
     void versionCheckEndpointShouldReturnLatestWithoutAuth() throws Exception {
         mockMvc.perform(get("/api/app/version/latest")
                         .param("currentVersion", "1.0.0")
@@ -41,6 +45,7 @@ class AppVersionServiceTests {
     }
 
     @Test
+    @Order(2)
     void adminVersionEndpointShouldRequireAuth() throws Exception {
         mockMvc.perform(get("/api/admin/app/version/latest"))
                 .andExpect(status().isUnauthorized())
@@ -48,6 +53,7 @@ class AppVersionServiceTests {
     }
 
     @Test
+    @Order(3)
     void uploadApkAndCompareVersionShouldDetectUpdate() {
         MockMultipartFile apk = new MockMultipartFile(
                 "file",
@@ -73,5 +79,25 @@ class AppVersionServiceTests {
 
         AppVersionVO sameClient = appVersionService.checkLatestVersion("1.0.1", 101, "http://47.107.94.90", false);
         assertFalse(sameClient.getHasUpdate());
+    }
+
+    @Test
+    @Order(4)
+    void publishUploadedApkAndDownloadRedirectShouldWork() throws Exception {
+        AppVersionVO published = appVersionService.publishUploadedApk(
+                "app-releases/guoguanla-v1.0.12.apk",
+                "1.0.12",
+                112,
+                "OSS 直传包测试发布",
+                false,
+                "http://47.107.94.90"
+        );
+        assertEquals("1.0.12", published.getLatestVersion());
+        assertEquals(112, published.getLatestVersionCode());
+        assertTrue(published.getDownloadUrl().endsWith("app-releases/guoguanla-v1.0.12.apk"));
+
+        mockMvc.perform(get("/api/app/version/download"))
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location", org.hamcrest.Matchers.endsWith("app-releases/guoguanla-v1.0.12.apk")));
     }
 }

@@ -3,6 +3,7 @@ package com.guoguanla.module.system;
 import com.guoguanla.common.annotation.OperLog;
 import com.guoguanla.common.result.PageResult;
 import com.guoguanla.common.result.Result;
+import com.guoguanla.module.oss.AliyunOssService;
 import com.guoguanla.module.system.dto.RealmConfigReq;
 import com.guoguanla.module.system.entity.EduLevelRule;
 import com.guoguanla.module.system.entity.SysConfig;
@@ -12,6 +13,8 @@ import com.guoguanla.module.system.vo.RealmConfigVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -78,7 +81,28 @@ public class AdminSystemController {
         return Result.ok(appVersionService.checkLatestVersion(null, null, baseOrigin, refresh));
     }
 
-    @Operation(summary = "上传 APK 更新包并发布为最新版本")
+    @Operation(summary = "初始化 APK 直传阿里云 OSS 预签名上传地址")
+    @PostMapping("/app/upload-apk/init")
+    public Result<AliyunOssService.DirectPutInitResult> initApkUpload(@Valid @RequestBody ApkInitReq req) {
+        return Result.ok(appVersionService.initApkDirectUpload(req.getFileName(), req.getVersion()));
+    }
+
+    @Operation(summary = "登记直传 OSS 后的 APK 版本信息并发布")
+    @OperLog(module = "SYSTEM", action = "发布OSS直传APK版本")
+    @PostMapping("/app/upload-apk/publish")
+    public Result<AppVersionVO> publishApk(@Valid @RequestBody ApkPublishReq req) {
+        String baseOrigin = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString();
+        return Result.ok(appVersionService.publishUploadedApk(
+                req.getObjectKey(),
+                req.getVersion(),
+                req.getVersionCode(),
+                req.getReleaseNotes(),
+                req.getForceUpdate(),
+                baseOrigin
+        ));
+    }
+
+    @Operation(summary = "上传 APK 更新包至阿里云 OSS（或本地降级）并发布为最新版本")
     @OperLog(module = "SYSTEM", action = "上传发布APK安装包")
     @PostMapping("/app/upload-apk")
     public Result<AppVersionVO> uploadApk(
@@ -90,6 +114,23 @@ public class AdminSystemController {
     ) {
         String baseOrigin = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString();
         return Result.ok(appVersionService.uploadApk(file, version, versionCode, releaseNotes, forceUpdate, baseOrigin));
+    }
+
+    @Data
+    public static class ApkInitReq {
+        @NotBlank(message = "安装包文件名不能为空")
+        private String fileName;
+        private String version = "";
+    }
+
+    @Data
+    public static class ApkPublishReq {
+        @NotBlank(message = "objectKey 不能为空")
+        private String objectKey;
+        private String version = "";
+        private Integer versionCode;
+        private String releaseNotes;
+        private Boolean forceUpdate;
     }
 
     @Operation(summary = "分页查询操作审计日志")

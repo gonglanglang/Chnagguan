@@ -7,7 +7,11 @@ import {
   getConfigs,
   updateConfig,
   getAdminAppVersion,
+  initAppApkUpload,
+  publishAppApk,
+  uploadApkDirectToOss,
   uploadAppApk,
+  OssDirectNetworkError,
   type RealmConfig,
   type AppVersionInfo
 } from "@/api/guoguanla";
@@ -21,6 +25,7 @@ const savingBasic = ref(false);
 const savingVersion = ref(false);
 const syncingGithub = ref(false);
 const uploadingApk = ref(false);
+const apkUploadProgress = ref(0);
 const realms = ref<RealmConfig[]>([]);
 const effectiveVersion = ref<AppVersionInfo | null>(null);
 
@@ -136,17 +141,65 @@ async function refreshGithubRelease() {
 
 async function handleApkUpload(options: UploadRequestOptions) {
   uploadingApk.value = true;
-  try {
+  apkUploadProgress.value = 0;
+  const targetVersion = versionForm.latestVersion.trim() || "1.0.0";
+  const targetCode = versionForm.latestVersionCode || 100;
+  const targetNotes = versionForm.updateNotes.trim();
+  const targetForce = versionForm.forceUpdate;
+
+  const uploadViaBackendToOss = async () => {
     const fd = new FormData();
     fd.append("file", options.file);
-    fd.append("version", versionForm.latestVersion.trim() || "1.0.0");
-    fd.append("versionCode", String(versionForm.latestVersionCode || 100));
-    fd.append("releaseNotes", versionForm.updateNotes.trim());
-    fd.append("forceUpdate", String(versionForm.forceUpdate));
-    const res = await uploadAppApk(fd);
+    fd.append("version", targetVersion);
+    fd.append("versionCode", String(targetCode));
+    fd.append("releaseNotes", targetNotes);
+    fd.append("forceUpdate", String(targetForce));
+    const [res, cfgRes] = await Promise.all([uploadAppApk(fd), getConfigs().catch(() => null)]);
     effectiveVersion.value = res.data;
-    versionForm.downloadUrl = res.data.downloadUrl;
-    ElMessage.success("APK 上传成功并已发布为当前版本");
+    const savedKey = (cfgRes?.data || []).find(c => c.configKey === "app_download_url")?.configValue;
+    versionForm.downloadUrl = savedKey || res.data.downloadUrl;
+    apkUploadProgress.value = 100;
+    ElMessage.success("APK 已托管至阿里云 OSS 并发布为当前版本");
+  };
+
+  try {
+    const initRes = await initAppApkUpload({
+      fileName: options.file.name,
+      version: targetVersion
+    });
+    const init = initRes.data;
+    if (init.directUpload && init.uploadUrl && init.objectKey) {
+      try {
+        await uploadApkDirectToOss({
+          uploadUrl: init.uploadUrl,
+          file: options.file,
+          contentType: init.contentType,
+          onProgress: pct => {
+            apkUploadProgress.value = pct;
+          }
+        });
+        const pubRes = await publishAppApk({
+          objectKey: init.objectKey,
+          version: targetVersion,
+          versionCode: targetCode,
+          releaseNotes: targetNotes,
+          forceUpdate: targetForce
+        });
+        effectiveVersion.value = pubRes.data;
+        versionForm.downloadUrl = init.objectKey;
+        apkUploadProgress.value = 100;
+        ElMessage.success("APK 已直传阿里云 OSS 并发布为当前版本");
+        return;
+      } catch (err) {
+        if (err instanceof OssDirectNetworkError) {
+          ElMessage.warning("浏览器直传 OSS 受跨域限制，已自动通过服务端上传至 OSS");
+          await uploadViaBackendToOss();
+          return;
+        }
+        throw err;
+      }
+    }
+    await uploadViaBackendToOss();
   } finally {
     uploadingApk.value = false;
   }
@@ -298,13 +351,18 @@ onMounted(fetchAll);
       <template #header>
         <div class="flex flex-wrap items-center justify-between gap-2">
           <span class="font-bold text-gray-800">App 版本更新与发布管理</span>
-          <div v-if="effectiveVersion" class="flex items-center gap-2 text-xs">
-            <el-tag :type="effectiveVersion.githubReachable ? 'success' : 'info'" size="small">
-              {{ effectiveVersion.githubReachable ? "GitHub Release 已连通" : "当前使用服务器配置" }}
-            </el-tag>
-            <span class="text-gray-500">
-              当前对外版本：v{{ effectiveVersion.latestVersion }} ({{ effectiveVersion.latestVersionCode }})
-            </span>
+          <div class="flex flex-wrap items-center gap-3 text-xs">
+            <el-button link type="success" tag="a" href="/download/" target="_blank">
+              打开 App 下载官网
+            </el-button>
+            <template v-if="effectiveVersion">
+              <el-tag :type="effectiveVersion.githubReachable ? 'success' : 'info'" size="small">
+                {{ effectiveVersion.githubReachable ? "GitHub Release 已连通" : "当前使用 OSS/系统配置" }}
+              </el-tag>
+              <span class="text-gray-500">
+                当前对外版本：v{{ effectiveVersion.latestVersion }} ({{ effectiveVersion.latestVersionCode }})
+              </span>
+            </template>
           </div>
         </div>
       </template>
@@ -332,21 +390,24 @@ onMounted(fetchAll);
         </el-form-item>
 
         <el-form-item label="APK 下载地址">
-          <div class="flex w-full flex-wrap items-center gap-2">
-            <el-input
-              v-model="versionForm.downloadUrl"
-              placeholder="上传 APK 后自动填充，也可填入 GitHub Release 直链"
-              class="min-w-[260px] flex-1"
-            />
-            <el-upload
-              :show-file-list="false"
-              accept=".apk"
-              :http-request="handleApkUpload"
-            >
-              <el-button type="success" plain :loading="uploadingApk">
-                上传 APK 到服务器
-              </el-button>
-            </el-upload>
+          <div class="w-full space-y-2">
+            <div class="flex w-full flex-wrap items-center gap-2">
+              <el-input
+                v-model="versionForm.downloadUrl"
+                placeholder="上传 APK 后自动填充 OSS 对象键（app-releases/...），也可填入 GitHub 直链"
+                class="min-w-[260px] flex-1"
+              />
+              <el-upload
+                :show-file-list="false"
+                accept=".apk"
+                :http-request="handleApkUpload"
+              >
+                <el-button type="success" plain :loading="uploadingApk">
+                  上传 APK 到阿里云 OSS
+                </el-button>
+              </el-upload>
+            </div>
+            <el-progress v-if="uploadingApk && apkUploadProgress > 0" :percentage="apkUploadProgress" />
           </div>
         </el-form-item>
 
