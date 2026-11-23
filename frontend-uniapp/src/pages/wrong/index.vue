@@ -47,8 +47,8 @@
           <text class="guest-card__desc">
             每次闯关与解答的错题将自动收录，支持分境界筛选、错题重做与掌握消错。
           </text>
-          <view class="guest-card__btn" @click="goLogin">
-            <text class="guest-card__btn-text">登录 / 注册</text>
+          <view class="guest-card__actions">
+            <wd-button type="primary" size="medium" @click="goLogin">登录 / 注册</wd-button>
           </view>
         </view>
 
@@ -58,7 +58,7 @@
             <wd-skeleton
               animation="gradient"
               :row-col="[
-                [{ width: '38%', height: '38px' }, { width: '48%', height: '30px' }],
+                [{ width: '38%', height: '38px' }, { width: '48%', height: '32px', borderRadius: '6px' }],
                 [{ width: '76%', height: '20px' }],
                 [{ width: '45%', height: '14px' }],
               ]"
@@ -72,7 +72,7 @@
                 [{ width: '92%', height: '18px' }],
                 [{ width: '74%', height: '18px' }],
                 [{ width: '100%', height: '64px' }],
-                [{ width: '28%', height: '14px' }, { width: '24%', height: '26px' }],
+                [{ width: '28%', height: '14px' }, { width: '24%', height: '28px', borderRadius: '6px' }],
               ]"
             />
           </view>
@@ -92,20 +92,23 @@
               </view>
 
               <view class="summary-actions">
-                <view
-                  class="summary-btn summary-btn--outline"
-                  :class="{ 'summary-btn--disabled': total === 0 }"
-                  @click="total > 0 && handleClearAll()"
+                <wd-button
+                  type="info"
+                  variant="plain"
+                  size="small"
+                  :disabled="total === 0"
+                  @click="handleClearAll"
                 >
-                  <text class="summary-btn__text">清空</text>
-                </view>
-                <view
-                  class="summary-btn summary-btn--primary"
-                  :class="{ 'summary-btn--disabled': displayedTotal === 0 }"
-                  @click="displayedTotal > 0 && handleStartRedo()"
+                  清空
+                </wd-button>
+                <wd-button
+                  type="primary"
+                  size="small"
+                  :disabled="displayedTotal === 0"
+                  @click="handleStartRedo"
                 >
-                  <text class="summary-btn__text">错题重做</text>
-                </view>
+                  错题重做
+                </wd-button>
               </view>
             </view>
 
@@ -170,9 +173,14 @@
 
               <view class="wrong-card__foot">
                 <text class="wrong-card__time">{{ formatTime(item.lastWrongAt) }}</text>
-                <view class="master-btn" @click="handleMarkMastered(item.id)">
-                  <text class="master-btn__text">标为已掌握</text>
-                </view>
+                <wd-button
+                  type="success"
+                  variant="plain"
+                  size="mini"
+                  @click="handleMarkMastered(item.id)"
+                >
+                  标为已掌握
+                </wd-button>
               </view>
             </view>
 
@@ -487,21 +495,8 @@ onShow(() => {
   color: var(--color-text-muted);
 }
 
-.guest-card__btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 80rpx;
-  padding: 0 56rpx;
+.guest-card__actions {
   margin-top: 32rpx;
-  background-color: var(--color-primary);
-  border-radius: 9999px;
-}
-
-.guest-card__btn-text {
-  font-size: 28rpx;
-  font-weight: 600;
-  color: #ffffff;
 }
 
 .summary-card {
@@ -550,36 +545,6 @@ onShow(() => {
   display: flex;
   gap: 16rpx;
   align-items: center;
-}
-
-.summary-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 64rpx;
-  padding: 0 28rpx;
-  border-radius: 9999px;
-
-  &--outline {
-    color: var(--color-text-secondary);
-    background-color: var(--color-bg-card);
-    border: 1px solid var(--color-border-strong);
-  }
-
-  &--primary {
-    color: #ffffff;
-    background-color: var(--color-primary);
-  }
-
-  &--disabled {
-    opacity: 0.4;
-  }
-}
-
-.summary-btn__text {
-  font-size: 26rpx;
-  font-weight: 500;
-  color: inherit;
 }
 
 .summary-tags {
@@ -705,27 +670,6 @@ onShow(() => {
 .wrong-card__time {
   font-size: 24rpx;
   color: var(--color-text-placeholder);
-}
-
-.master-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 58rpx;
-  padding: 0 26rpx;
-  background-color: var(--color-bg-card);
-  border: 1px solid var(--color-success-outline);
-  border-radius: 9999px;
-
-  &:active {
-    background-color: var(--color-success-light);
-  }
-}
-
-.master-btn__text {
-  font-size: 24rpx;
-  font-weight: 500;
-  color: var(--color-success-outline);
 }
 
 .list-foot-status {

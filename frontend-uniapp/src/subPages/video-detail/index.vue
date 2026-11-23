@@ -682,7 +682,7 @@ onShow(() => {
   font-weight: 600;
   color: var(--color-primary);
   background: var(--color-primary-soft);
-  border-radius: 999rpx;
+  border-radius: var(--radius-btn);
 }
 
 .empty-tip {

@@ -19,7 +19,7 @@
             [{ width: '68%', height: '14px' }],
             [{ width: '100%', height: '42px' }],
             [{ width: '100%', height: '108px' }],
-            [{ width: '100%', height: '46px', type: 'circle' }],
+            [{ width: '100%', height: '44px', borderRadius: '6px' }],
           ]"
         />
       </view>
@@ -93,12 +93,16 @@
             <text class="forgot-link" @click="handleForgotPassword">忘记密码？</text>
           </view>
 
-          <view
-            class="submit-pill"
-            :class="{ 'submit-pill--busy': submitting }"
-            @click="!submitting && handleLogin()"
-          >
-            <text class="submit-pill__text">{{ submitting ? "正在登录..." : "登录" }}</text>
+          <view class="submit-action">
+            <wd-button
+              type="primary"
+              size="large"
+              block
+              :loading="submitting"
+              @click="handleLogin"
+            >
+              {{ submitting ? "正在登录..." : "登录" }}
+            </wd-button>
           </view>
         </template>
 
@@ -170,12 +174,16 @@
             </view>
           </view>
 
-          <view
-            class="submit-pill"
-            :class="{ 'submit-pill--busy': submitting }"
-            @click="!submitting && handleRegister()"
-          >
-            <text class="submit-pill__text">{{ submitting ? "正在注册..." : "注册" }}</text>
+          <view class="submit-action">
+            <wd-button
+              type="primary"
+              size="large"
+              block
+              :loading="submitting"
+              @click="handleRegister"
+            >
+              {{ submitting ? "正在注册..." : "注册" }}
+            </wd-button>
           </view>
         </template>
 
@@ -613,7 +621,7 @@ onLoad(async (query) => {
   height: 72rpx;
   background-color: var(--color-bg-page);
   border: 1px solid transparent;
-  border-radius: 9999px;
+  border-radius: var(--radius-btn);
 
   &--active {
     background-color: var(--color-primary-soft);
@@ -631,28 +639,8 @@ onLoad(async (query) => {
   color: var(--color-primary);
 }
 
-.submit-pill {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 92rpx;
+.submit-action {
   margin-top: 48rpx;
-  background-color: var(--color-primary);
-  border-radius: 9999px;
-
-  &:active {
-    opacity: 0.9;
-  }
-
-  &--busy {
-    opacity: 0.65;
-  }
-}
-
-.submit-pill__text {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #ffffff;
 }
 
 .guest-footer {

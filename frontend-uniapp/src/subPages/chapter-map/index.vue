@@ -108,13 +108,15 @@
     </view>
 
     <template #footer>
-      <view
-        class="footer-cta"
-        :class="{ 'footer-cta--disabled': !primaryActionGate }"
+      <wd-button
+        type="primary"
+        size="large"
+        block
+        :disabled="!primaryActionGate"
         @click="handlePrimaryStart"
       >
-        <text class="footer-cta__text">{{ primaryButtonText }}</text>
-      </view>
+        {{ primaryButtonText }}
+      </wd-button>
     </template>
   </app-page-shell>
 </template>
@@ -487,28 +489,5 @@ onShow(() => {
 .reward-hint__text {
   font-size: 24rpx;
   color: var(--color-text-muted);
-}
-
-.footer-cta {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 88rpx;
-  background-color: var(--color-primary);
-  border-radius: 9999px;
-
-  &:active {
-    opacity: 0.9;
-  }
-
-  &--disabled {
-    opacity: 0.45;
-  }
-}
-
-.footer-cta__text {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #ffffff;
 }
 </style>

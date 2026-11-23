@@ -1197,7 +1197,7 @@ onUnload(() => {
   padding: 5px 12px;
   line-height: 1;
   background: #0284c7;
-  border-radius: 999px;
+  border-radius: 6px;
 
   &--disabled {
     opacity: 0.65;

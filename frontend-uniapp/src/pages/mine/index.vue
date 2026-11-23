@@ -88,20 +88,23 @@
           <!-- 设置分组 -->
           <menu-section :groups="menuGroups" @select="handleMenuSelect" />
 
-          <!-- 退出 / 登录 胶囊按钮 -->
+          <!-- 退出 / 登录按钮 -->
           <view v-if="userStore.isAuthenticated" class="auth-action">
-            <view
-              class="logout-btn"
-              :class="{ 'logout-btn--busy': isLoggingOut }"
+            <wd-button
+              type="danger"
+              variant="plain"
+              size="large"
+              block
+              :loading="isLoggingOut"
               @click="requestLogout"
             >
-              <text class="logout-btn__text">{{ isLoggingOut ? "正在退出..." : "退出登录" }}</text>
-            </view>
+              {{ isLoggingOut ? "正在退出..." : "退出登录" }}
+            </wd-button>
           </view>
           <view v-else class="auth-action">
-            <view class="login-btn" @click="goLogin">
-              <text class="login-btn__text">登录 / 注册</text>
-            </view>
+            <wd-button type="primary" size="large" block @click="goLogin">
+              登录 / 注册
+            </wd-button>
           </view>
         </template>
       </view>
@@ -428,45 +431,6 @@ onShow(() => {
 
 .auth-action {
   margin-top: 12rpx;
-}
-
-.logout-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 88rpx;
-  background-color: var(--color-bg-card);
-  border: 1px solid var(--color-danger);
-  border-radius: 9999px;
-
-  &--busy {
-    opacity: 0.6;
-  }
-
-  &:active {
-    background-color: var(--color-danger-light);
-  }
-}
-
-.logout-btn__text {
-  font-size: 30rpx;
-  font-weight: 500;
-  color: var(--color-danger);
-}
-
-.login-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 88rpx;
-  background-color: var(--color-primary);
-  border-radius: 9999px;
-}
-
-.login-btn__text {
-  font-size: 30rpx;
-  font-weight: 600;
-  color: #ffffff;
 }
 
 .records-sheet {

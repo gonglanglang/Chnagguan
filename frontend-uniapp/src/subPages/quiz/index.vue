@@ -69,9 +69,7 @@
     <view v-else-if="loadError" class="state-card">
       <app-icon name="alert-circle" :size="36" color="danger" />
       <text class="state-card__title">{{ loadError }}</text>
-      <view class="state-card__btn" @click="goBack">
-        <text class="state-card__btn-text">返回上一页</text>
-      </view>
+      <wd-button type="primary" size="medium" @click="goBack">返回上一页</wd-button>
     </view>
 
     <!-- 答题主体 -->
@@ -161,9 +159,9 @@
             placeholder-class="essay-placeholder"
             :maxlength="500"
           />
-          <view class="essay-self-btn" @click="handleCheckEssayText">
-            <text class="essay-self-btn__text">提交解答并查看解析</text>
-          </view>
+          <wd-button type="info" variant="plain" size="medium" block @click="handleCheckEssayText">
+            提交解答并查看解析
+          </wd-button>
         </view>
       </view>
 
@@ -273,55 +271,64 @@
     <!-- 吸底操作按钮 -->
     <template #footer>
       <view v-if="loading" class="footer-skeleton">
-        <wd-skeleton animation="gradient" :row-col="[[{ width: '100%', height: '44px', type: 'circle' }]]" />
+        <wd-skeleton animation="gradient" :row-col="[[{ width: '100%', height: '44px', borderRadius: '6px' }]]" />
       </view>
 
       <view v-else-if="submitResult" class="result-footer">
-        <view class="footer-btn footer-btn--outline" @click="initQuiz">
-          <text class="footer-btn__text">再做一次</text>
-        </view>
-        <view class="footer-btn footer-btn--primary" @click="goBack">
-          <text class="footer-btn__text">返回地图</text>
-        </view>
+        <wd-button type="info" variant="plain" size="large" block @click="initQuiz">
+          再做一次
+        </wd-button>
+        <wd-button type="primary" size="large" block @click="goBack">
+          返回地图
+        </wd-button>
       </view>
 
       <view v-else-if="startData && currentItem">
         <!-- 未判题：提交答案 -->
-        <view
+        <wd-button
           v-if="!currentFeedback && !isCurrentEssay"
-          class="footer-btn footer-btn--primary"
-          :class="{ 'footer-btn--disabled': currentSelected === undefined || checking }"
-          @click="currentSelected !== undefined && !checking && handleConfirmChoice()"
+          type="primary"
+          size="large"
+          block
+          :disabled="currentSelected === undefined"
+          :loading="checking"
+          @click="handleConfirmChoice"
         >
-          <text class="footer-btn__text">{{ checking ? "正在判题..." : "提交答案" }}</text>
-        </view>
+          {{ checking ? "正在判题..." : "提交答案" }}
+        </wd-button>
 
         <!-- 解答题未作答前引导画板 -->
-        <view
+        <wd-button
           v-else-if="!currentFeedback && isCurrentEssay"
-          class="footer-btn footer-btn--primary"
+          type="primary"
+          size="large"
+          block
           @click="openLandscapeDraw"
         >
-          <text class="footer-btn__text">打开画板作答</text>
-        </view>
+          打开画板作答
+        </wd-button>
 
         <!-- 已判题：下一题 / 完成交卷 -->
-        <view
+        <wd-button
           v-else-if="currentIdx < startData.items.length - 1"
-          class="footer-btn footer-btn--primary"
+          type="primary"
+          size="large"
+          block
           @click="nextQuestion"
         >
-          <text class="footer-btn__text">下一题</text>
-        </view>
+          下一题
+        </wd-button>
 
-        <view
+        <wd-button
           v-else
-          class="footer-btn footer-btn--primary"
-          :class="{ 'footer-btn--disabled': submitting }"
-          @click="!submitting && handleSubmit()"
+          type="primary"
+          size="large"
+          block
+          :loading="submitting"
+          @click="handleSubmit"
         >
-          <text class="footer-btn__text">{{ submitting ? "正在交卷..." : "完成交卷" }}</text>
-        </view>
+          {{ submitting ? "正在交卷..." : "完成交卷" }}
+        </wd-button>
       </view>
     </template>
   </app-page-shell>
@@ -810,22 +817,6 @@ onUnload(() => {
   color: var(--color-text-secondary);
 }
 
-.state-card__btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 76rpx;
-  padding: 0 48rpx;
-  background-color: var(--color-primary);
-  border-radius: 9999px;
-}
-
-.state-card__btn-text {
-  font-size: 28rpx;
-  font-weight: 500;
-  color: #ffffff;
-}
-
 .question-card {
   padding: 32rpx;
   background-color: var(--color-bg-card);
@@ -1025,22 +1016,6 @@ onUnload(() => {
   color: var(--color-text-placeholder);
 }
 
-.essay-self-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 76rpx;
-  background-color: var(--color-bg-card);
-  border: 1px solid var(--color-border-strong);
-  border-radius: 9999px;
-}
-
-.essay-self-btn__text {
-  font-size: 26rpx;
-  font-weight: 500;
-  color: var(--color-text-secondary);
-}
-
 .feedback-card {
   display: flex;
   flex-direction: column;
@@ -1234,34 +1209,5 @@ onUnload(() => {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 20rpx;
-}
-
-.footer-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 88rpx;
-  border-radius: 9999px;
-
-  &--primary {
-    color: #ffffff;
-    background-color: var(--color-primary);
-  }
-
-  &--outline {
-    color: var(--color-text-secondary);
-    background-color: var(--color-bg-card);
-    border: 1px solid var(--color-border-strong);
-  }
-
-  &--disabled {
-    opacity: 0.4;
-  }
-}
-
-.footer-btn__text {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: inherit;
 }
 </style>

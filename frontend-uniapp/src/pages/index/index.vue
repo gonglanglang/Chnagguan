@@ -18,7 +18,7 @@
                 :row-col="[[{ width: '58%', height: '24px' }], [{ width: '74%', height: '14px' }]]"
               />
             </view>
-            <wd-skeleton animation="gradient" :row-col="[[{ width: '76px', height: '30px', type: 'circle' }]]" />
+            <wd-skeleton animation="gradient" :row-col="[[{ width: '76px', height: '32px', borderRadius: '6px' }]]" />
           </view>
 
           <view class="hero-card">
@@ -29,7 +29,7 @@
                 [{ width: '62%', height: '22px' }],
                 [{ width: '48%', height: '14px' }],
                 [{ width: '100%', height: '6px' }],
-                [{ width: '24%', height: '32px' }, { width: '24%', height: '32px' }],
+                [{ width: '24%', height: '32px', borderRadius: '6px' }, { width: '24%', height: '32px', borderRadius: '6px' }],
               ]"
             />
           </view>
@@ -62,9 +62,9 @@
                 </text>
               </view>
             </view>
-            <view class="system-btn" @click="openSystemPopup">
-              <text class="system-btn__text">学习体系</text>
-            </view>
+            <wd-button type="info" variant="plain" size="small" @click="openSystemPopup">
+              学习体系
+            </wd-button>
           </view>
 
           <!-- 继续修炼 Hero 主卡片 -->
@@ -85,12 +85,17 @@
             </view>
 
             <view class="hero-card__footer">
-              <view class="pill-btn pill-btn--outline" @click="openChapterMap(heroChapter, heroChapterSeq)">
-                <text class="pill-btn__text">查看地图</text>
-              </view>
-              <view class="pill-btn pill-btn--primary" @click="handleContinuePractice">
-                <text class="pill-btn__text">继续闯关</text>
-              </view>
+              <wd-button
+                type="info"
+                variant="plain"
+                size="small"
+                @click="openChapterMap(heroChapter, heroChapterSeq)"
+              >
+                查看地图
+              </wd-button>
+              <wd-button type="primary" size="small" @click="handleContinuePractice">
+                继续闯关
+              </wd-button>
             </view>
           </view>
 
@@ -246,16 +251,25 @@
         </scroll-view>
 
         <view class="system-sheet__footer">
-          <view
+          <wd-button
             v-if="currentRealm.examEligible"
-            class="sheet-primary-btn"
+            type="primary"
+            size="large"
+            block
             @click="handleExamFromPopup"
           >
-            <text class="sheet-primary-btn__text">参加{{ currentRealm.realmName }}进阶考核</text>
-          </view>
-          <view v-else class="sheet-secondary-btn" @click="goRealmsOverview">
-            <text class="sheet-secondary-btn__text">查看境界详情与进阶规则</text>
-          </view>
+            参加{{ currentRealm.realmName }}进阶考核
+          </wd-button>
+          <wd-button
+            v-else
+            type="info"
+            variant="plain"
+            size="large"
+            block
+            @click="goRealmsOverview"
+          >
+            查看境界详情与进阶规则
+          </wd-button>
         </view>
       </view>
     </wd-popup>
@@ -631,28 +645,6 @@ onShow(() => {
   color: var(--color-primary);
 }
 
-.system-btn {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  height: 60rpx;
-  padding: 0 24rpx;
-  background-color: var(--color-bg-card);
-  border: 1px solid var(--color-border-strong);
-  border-radius: 9999px;
-
-  &:active {
-    background-color: var(--color-fill-1);
-  }
-}
-
-.system-btn__text {
-  font-size: 24rpx;
-  font-weight: 500;
-  color: var(--color-text-secondary);
-}
-
 .hero-card {
   padding: 32rpx;
   margin: 12rpx 24rpx 0;
@@ -724,40 +716,6 @@ onShow(() => {
   padding-top: 24rpx;
   margin-top: 26rpx;
   border-top: 1px solid var(--color-border);
-}
-
-.pill-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 64rpx;
-  padding: 0 30rpx;
-  border-radius: 9999px;
-
-  &--outline {
-    color: var(--color-text-secondary);
-    background-color: var(--color-bg-card);
-    border: 1px solid var(--color-border-strong);
-
-    &:active {
-      background-color: var(--color-fill-1);
-    }
-  }
-
-  &--primary {
-    color: #ffffff;
-    background-color: var(--color-primary);
-
-    &:active {
-      opacity: 0.88;
-    }
-  }
-}
-
-.pill-btn__text {
-  font-size: 26rpx;
-  font-weight: 500;
-  color: inherit;
 }
 
 .notice-skeleton {
@@ -1085,36 +1043,5 @@ onShow(() => {
 
 .system-sheet__footer {
   margin-top: 28rpx;
-}
-
-.sheet-primary-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 88rpx;
-  background-color: var(--color-primary);
-  border-radius: 9999px;
-}
-
-.sheet-primary-btn__text {
-  font-size: 30rpx;
-  font-weight: 600;
-  color: #ffffff;
-}
-
-.sheet-secondary-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 84rpx;
-  background-color: var(--color-bg-card);
-  border: 1px solid var(--color-border-strong);
-  border-radius: 9999px;
-}
-
-.sheet-secondary-btn__text {
-  font-size: 28rpx;
-  font-weight: 500;
-  color: var(--color-text-secondary);
 }
 </style>

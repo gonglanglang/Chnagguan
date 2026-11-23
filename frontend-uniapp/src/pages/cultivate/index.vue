@@ -234,9 +234,9 @@
         </scroll-view>
 
         <view class="drawer-sheet__footer">
-          <view class="drawer-start-btn" @click="startLearningSelected">
-            <text class="drawer-start-btn__text">开始学习</text>
-          </view>
+          <wd-button type="primary" size="large" block @click="startLearningSelected">
+            开始学习
+          </wd-button>
         </view>
       </view>
     </wd-popup>
@@ -439,7 +439,7 @@ onShow(() => {
   bottom: 16rpx;
   padding: 6rpx 16rpx;
   background-color: rgba(0, 0, 0, 0.6);
-  border-radius: 9999px;
+  border-radius: 8rpx;
 }
 
 .featured-cover__badge-text {
@@ -799,20 +799,5 @@ onShow(() => {
 
 .drawer-sheet__footer {
   margin-top: 28rpx;
-}
-
-.drawer-start-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 88rpx;
-  background-color: var(--color-primary);
-  border-radius: 9999px;
-}
-
-.drawer-start-btn__text {
-  font-size: 30rpx;
-  font-weight: 600;
-  color: #ffffff;
 }
 </style>
