@@ -2,7 +2,36 @@
   <view class="wrong-page">
     <app-navbar title="错题本" :show-back="false" :show-home="false" :fixed="false" :placeholder="false" />
 
-    <scroll-view v-if="!userStore.isAuthenticated" scroll-y :show-scrollbar="false" class="wrong-scroll">
+    <scroll-view v-if="!pageReady" scroll-y :show-scrollbar="false" class="wrong-scroll">
+      <view class="page-body">
+        <view class="summary-bar">
+          <wd-skeleton
+            animation="gradient"
+            :row-col="[
+              [
+                { width: '44%', height: '16px' },
+                { width: '128px', height: '28px', borderRadius: '8px' },
+              ],
+            ]"
+          />
+        </view>
+        <view class="wrong-list">
+          <view v-for="n in 3" :key="n" class="wrong-card">
+            <wd-skeleton
+              animation="gradient"
+              :row-col="[
+                [{ width: '56%', height: '13px' }, { width: '18%', height: '18px', borderRadius: '6px' }],
+                { width: '92%', height: '16px' },
+                { width: '100%', height: '36px', borderRadius: '8px' },
+                [{ width: '32%', height: '12px' }, { width: '24%', height: '26px', borderRadius: '8px' }],
+              ]"
+            />
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+
+    <scroll-view v-else-if="!userStore.isAuthenticated" scroll-y :show-scrollbar="false" class="wrong-scroll">
       <view class="empty-auth">
         <wd-empty icon="lock" tip="登录后自动收录答错题目，支持按境界集中重做" />
         <view class="empty-auth__action">
@@ -27,7 +56,20 @@
 
       <scroll-view scroll-y :show-scrollbar="false" class="wrong-scroll">
         <view class="page-body">
-        <view class="summary-bar">
+        <view v-if="loading && list.length === 0" class="summary-bar">
+          <wd-skeleton
+            animation="gradient"
+            :row-col="[
+              [
+                { width: '42%', height: '18px' },
+                { width: '128px', height: '28px', borderRadius: '8px' },
+              ],
+              { width: '52%', height: '12px' },
+            ]"
+          />
+        </view>
+
+        <view v-else class="summary-bar">
           <view class="summary-bar__left">
             <text class="summary-bar__count">待巩固 {{ total }} 题</text>
             <text class="summary-bar__hint">重做答对将自动移出错题本</text>
@@ -53,8 +95,25 @@
           </view>
         </view>
 
-        <view v-if="loading && list.length === 0" class="loading-box">
-          <wd-loading />
+        <view v-if="loading && list.length === 0" class="wrong-list">
+          <view v-for="n in 3" :key="n" class="wrong-card">
+            <wd-skeleton
+              animation="gradient"
+              :row-col="[
+                [
+                  { width: '58%', height: '13px' },
+                  { width: '18%', height: '18px', borderRadius: '6px' },
+                ],
+                { width: '96%', height: '16px' },
+                { width: '74%', height: '16px' },
+                { width: '100%', height: '38px', borderRadius: '8px' },
+                [
+                  { width: '34%', height: '12px' },
+                  { width: '26%', height: '28px', borderRadius: '8px' },
+                ],
+              ]"
+            />
+          </view>
         </view>
 
         <wd-empty
@@ -142,6 +201,7 @@ const pageSize = 15;
 const total = ref(0);
 const list = ref<WrongQuestionItem[]>([]);
 const loading = ref(false);
+const pageReady = ref(false);
 
 const LETTERS = ["A", "B", "C", "D", "E", "F"];
 
@@ -188,6 +248,7 @@ async function fetchList(reset = true): Promise<void> {
 
 function onRealmChange(payload: { name: string | number }): void {
   selectedRealm.value = String(payload.name);
+  list.value = [];
   void fetchList(true);
 }
 
@@ -247,7 +308,11 @@ function goLogin(): void {
 }
 
 onShow(() => {
+  pageReady.value = true;
   if (userStore.isAuthenticated) {
+    if (list.value.length === 0) {
+      loading.value = true;
+    }
     void userStore.loadHomeSummary(true);
     void fetchList(true);
   }
@@ -325,12 +390,6 @@ onShow(() => {
   display: flex;
   gap: 12rpx;
   align-items: center;
-}
-
-.loading-box {
-  display: flex;
-  justify-content: center;
-  padding: 80rpx 0;
 }
 
 .wrong-list {

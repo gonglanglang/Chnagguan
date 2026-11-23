@@ -116,6 +116,12 @@ export const AppUserAPI = {
       params,
     });
   },
+  clearEssayAnswers() {
+    return request<void>({
+      url: "/app/user/essay-answers/clear",
+      method: "DELETE",
+    });
+  },
 };
 
 export interface AnswerSubmitPayload {

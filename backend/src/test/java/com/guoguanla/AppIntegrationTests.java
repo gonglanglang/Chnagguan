@@ -178,18 +178,19 @@ class AppIntegrationTests {
         UserWrongQuestion masteredWq = wrongMapper.selectById(wrongId);
         assertEquals(1, masteredWq.getIsMastered());
 
-        // 6. Cultivation Realm Enforcement: lianqi user MUST BE BLOCKED from zhuji (g8) gates!
+        // 6. Cross-realm free learning: lianqi user CAN browse & challenge zhuji (g8) gates without level lock
         MvcResult zhujiChaps = mockMvc.perform(get("/api/app/realms/zhuji/chapters")
                         .header("Authorization", "Bearer " + studentToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].lockedByRealm").value(true))
+                .andExpect(jsonPath("$.data[0].lockedByRealm").value(false))
                 .andReturn();
         long zhujiChapId = objectMapper.readTree(zhujiChaps.getResponse().getContentAsString())
                 .path("data").get(0).path("id").asLong();
         MvcResult zhujiGates = mockMvc.perform(get("/api/app/chapters/" + zhujiChapId + "/gates")
                         .header("Authorization", "Bearer " + studentToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].lockedByRealm").value(true))
+                .andExpect(jsonPath("$.data[0].lockedByRealm").value(false))
+                .andExpect(jsonPath("$.data[0].locked").value(false))
                 .andReturn();
         long zhujiGate1Id = objectMapper.readTree(zhujiGates.getResponse().getContentAsString())
                 .path("data").get(0).path("id").asLong();
@@ -199,7 +200,8 @@ class AppIntegrationTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("gateId", zhujiGate1Id))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(20006));
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.suppressedMode").value(false));
 
         // 7. Admin lowers unlockGates for lianqi to 1, sets examQuestionCount=3, passScore=60 -> student takes advance exam & promotes to zhuji!
         String adminLoginJson = objectMapper.writeValueAsString(Map.of("username", "admin", "password", "admin123"));

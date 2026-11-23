@@ -270,6 +270,7 @@ export interface RegisterPayload {
   username: string;
   password: string;
   nickname: string;
+  gradeCode: string;
   guestPassedGateIds?: number[];
 }
 

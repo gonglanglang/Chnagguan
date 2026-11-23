@@ -1,99 +1,155 @@
 <template>
   <app-page-shell title="账号登录" :show-home="false">
-    <view class="login-header">
-      <view class="login-logo">
-        <app-icon name="book" size="28" color="#ffffff" />
+    <template v-if="initialLoading">
+      <view class="login-header">
+        <wd-skeleton
+          animation="gradient"
+          :row-col="[{ type: 'rect', width: '48px', height: '48px', borderRadius: '12px' }]"
+        />
+        <view class="login-sk-title">
+          <wd-skeleton
+            animation="gradient"
+            :row-col="[
+              { width: '96px', height: '20px', margin: '0 auto' },
+              { width: '210px', height: '13px', margin: '0 auto' },
+            ]"
+          />
+        </view>
       </view>
-      <text class="login-title">过关啦</text>
-      <text class="login-subtitle">登录后保存修仙境界、通关记录与错题本</text>
-    </view>
 
-    <view class="login-card">
-      <wd-tabs v-model="authMode">
-        <wd-tab name="login" title="账号登录" />
-        <wd-tab name="register" title="拜师入门（注册）" />
-      </wd-tabs>
+      <view class="login-card login-sk-card">
+        <wd-skeleton
+          animation="gradient"
+          :row-col="[
+            [
+              { width: '44%', height: '20px' },
+              { width: '44%', height: '20px' },
+            ],
+            { width: '100%', height: '44px', borderRadius: '10px' },
+            { width: '100%', height: '44px', borderRadius: '10px' },
+            { width: '100%', height: '42px', borderRadius: '10px' },
+          ]"
+        />
+      </view>
 
-      <view v-if="authMode === 'login'" class="form-body">
-        <wd-cell-group border>
-          <wd-input
-            v-model="loginForm.account"
-            label="账号"
-            label-width="120rpx"
-            clearable
-            placeholder="请输入学生用户名"
-          />
-          <wd-input
-            v-model="loginForm.password"
-            label="密码"
-            label-width="120rpx"
-            show-password
-            clearable
-            placeholder="请输入密码"
-            @confirm="handleLogin"
-          />
-        </wd-cell-group>
+      <view class="guest-link">
+        <wd-skeleton animation="gradient" :row-col="[{ width: '140px', height: '16px' }]" />
+      </view>
+    </template>
 
-        <view class="demo-accounts">
-          <text class="demo-accounts__label">快捷体验账号（点击填入）：</text>
-          <view class="demo-accounts__row">
-            <text class="demo-chip" @click="fillDemo('stu_linxiaoyu')">练气 · 林小雨</text>
-            <text class="demo-chip" @click="fillDemo('stu_chenziyu')">筑基 · 陈子轩</text>
+    <template v-else>
+      <view class="login-header">
+        <view class="login-logo">
+          <app-icon name="book" size="28" color="#ffffff" />
+        </view>
+        <text class="login-title">过关啦</text>
+        <text class="login-subtitle">登录后保存修仙境界、通关记录与错题本</text>
+      </view>
+
+      <view class="login-card">
+        <wd-tabs v-model="authMode">
+          <wd-tab name="login" title="账号登录" />
+          <wd-tab name="register" title="拜师入门（注册）" />
+        </wd-tabs>
+
+        <view v-if="authMode === 'login'" class="form-body">
+          <wd-cell-group border>
+            <wd-input
+              v-model="loginForm.account"
+              label="账号"
+              label-width="120rpx"
+              clearable
+              placeholder="请输入学生用户名"
+            />
+            <wd-input
+              v-model="loginForm.password"
+              label="密码"
+              label-width="120rpx"
+              show-password
+              clearable
+              placeholder="请输入密码"
+              @confirm="handleLogin"
+            />
+          </wd-cell-group>
+
+          <view class="form-submit">
+            <wd-button type="primary" block :loading="submitting" @click="handleLogin">
+              登录
+            </wd-button>
           </view>
         </view>
 
-        <view class="form-submit">
-          <wd-button type="primary" block :loading="submitting" @click="handleLogin">
-            登录
-          </wd-button>
+        <view v-else class="form-body">
+          <wd-cell-group border>
+            <wd-input
+              v-model="registerForm.username"
+              label="用户名"
+              label-width="120rpx"
+              clearable
+              placeholder="3-32位字母或数字"
+            />
+            <wd-input
+              v-model="registerForm.nickname"
+              label="昵称"
+              label-width="120rpx"
+              clearable
+              placeholder="请输入昵称"
+            />
+            <wd-input
+              v-model="registerForm.password"
+              label="密码"
+              label-width="120rpx"
+              show-password
+              clearable
+              placeholder="至少6位密码"
+            />
+          </wd-cell-group>
+
+          <view class="grade-field">
+            <view class="grade-field__head">
+              <text class="grade-field__label">所在年级</text>
+              <text class="grade-field__req">* 必选</text>
+            </view>
+            <view class="grade-grid">
+              <view
+                v-for="g in gradeOptions"
+                :key="g.gradeCode"
+                class="grade-chip"
+                :class="{ 'grade-chip--active': registerForm.gradeCode === g.gradeCode }"
+                @click="registerForm.gradeCode = g.gradeCode"
+              >
+                <text class="grade-chip__name">{{ g.gradeName }}</text>
+              </view>
+            </view>
+          </view>
+
+          <text class="register-note">
+            {{
+              selectedGradeName
+                ? `已选「${selectedGradeName}」，将自动匹配初始境界，全境界题目均开放自由学习`
+                : "请先选择当前所在年级，全境界题目均开放自由研习"
+            }}
+          </text>
+
+          <view class="form-submit">
+            <wd-button type="primary" block :loading="submitting" @click="handleRegister">
+              完成注册
+            </wd-button>
+          </view>
         </view>
       </view>
 
-      <view v-else class="form-body">
-        <wd-cell-group border>
-          <wd-input
-            v-model="registerForm.username"
-            label="用户名"
-            label-width="120rpx"
-            clearable
-            placeholder="3-32位字母或数字"
-          />
-          <wd-input
-            v-model="registerForm.nickname"
-            label="昵称"
-            label-width="120rpx"
-            clearable
-            placeholder="请输入昵称"
-          />
-          <wd-input
-            v-model="registerForm.password"
-            label="密码"
-            label-width="120rpx"
-            show-password
-            clearable
-            placeholder="至少6位密码"
-          />
-        </wd-cell-group>
-
-        <text class="register-note">新注册账号统一从「练气」境界开启修炼</text>
-
-        <view class="form-submit">
-          <wd-button type="primary" block :loading="submitting" @click="handleRegister">
-            注册并进入练气
-          </wd-button>
-        </view>
+      <view class="guest-link">
+        <wd-button variant="text" @click="goHome">暂不登录，游客试玩</wd-button>
       </view>
-    </view>
-
-    <view class="guest-link">
-      <wd-button variant="text" @click="goHome">暂不登录，先试玩练气关卡</wd-button>
-    </view>
+    </template>
   </app-page-shell>
 </template>
 
 <script setup lang="ts">
 import { onLoad } from "@dcloudio/uni-app";
 import { useUserStore } from "@/store";
+import type { GradeItem } from "@/types/guoguanla";
 import { getErrorMessage } from "@/utils/error";
 
 definePage({
@@ -105,11 +161,26 @@ definePage({
   },
 });
 
-const TAB_PAGES = ["/pages/index/index", "/pages/cultivate/index", "/pages/wrong/index", "/pages/mine/index"];
+const TAB_PAGES = [
+  "/pages/index/index",
+  "/pages/cultivate/index",
+  "/pages/wrong/index",
+  "/pages/mine/index",
+];
+
+const FALLBACK_GRADES: GradeItem[] = [
+  { gradeCode: "g7", gradeName: "初一", icon: "🌱", chapterCount: 10 },
+  { gradeCode: "g8", gradeName: "初二", icon: "🌿", chapterCount: 10 },
+  { gradeCode: "g9", gradeName: "初三", icon: "🌳", chapterCount: 9 },
+  { gradeCode: "h1", gradeName: "高一", icon: "🍃", chapterCount: 10 },
+  { gradeCode: "h2", gradeName: "高二", icon: "🌲", chapterCount: 8 },
+  { gradeCode: "h3", gradeName: "高三", icon: "🎯", chapterCount: 4 },
+];
 
 const userStore = useUserStore();
 const toast = useToast();
 
+const initialLoading = ref(false);
 const authMode = ref<"login" | "register">("login");
 const redirectUrl = ref("");
 const submitting = ref(false);
@@ -123,12 +194,18 @@ const registerForm = reactive({
   username: "",
   nickname: "",
   password: "",
+  gradeCode: "",
 });
 
-function fillDemo(account: string): void {
-  loginForm.account = account;
-  loginForm.password = "123456";
-}
+const gradeOptions = computed<GradeItem[]>(() => {
+  const list = userStore.homeSummary?.grades;
+  return list && list.length > 0 ? list : FALLBACK_GRADES;
+});
+
+const selectedGradeName = computed(() => {
+  const found = gradeOptions.value.find((g) => g.gradeCode === registerForm.gradeCode);
+  return found?.gradeName || "";
+});
 
 function navigateAfterAuth(): void {
   const target = redirectUrl.value;
@@ -184,12 +261,17 @@ async function handleRegister(): Promise<void> {
     toast.warning("密码长度至少为 6 位");
     return;
   }
+  if (!registerForm.gradeCode) {
+    toast.warning("请选择所在年级");
+    return;
+  }
   submitting.value = true;
   try {
     await userStore.register({
       username: registerForm.username.trim(),
       nickname: registerForm.nickname.trim(),
       password: registerForm.password,
+      gradeCode: registerForm.gradeCode,
     });
     toast.success("注册成功");
     navigateAfterAuth();
@@ -204,9 +286,19 @@ function goHome(): void {
   uni.switchTab({ url: "/pages/index/index" });
 }
 
-onLoad((query) => {
+onLoad(async (query) => {
   if (query?.redirect) {
     redirectUrl.value = decodeURIComponent(query.redirect);
+  }
+  if (!userStore.homeSummary) {
+    initialLoading.value = true;
+    try {
+      await userStore.loadHomeSummary(true);
+    } catch {
+      // Fallback to static grade options
+    } finally {
+      initialLoading.value = false;
+    }
   }
 });
 </script>
@@ -218,6 +310,14 @@ onLoad((query) => {
   align-items: center;
   padding-top: 20rpx;
   margin-bottom: 36rpx;
+}
+
+.login-sk-title {
+  margin-top: 20rpx;
+}
+
+.login-sk-card {
+  padding: 28rpx 24rpx 32rpx;
 }
 
 .login-logo {
@@ -254,35 +354,65 @@ onLoad((query) => {
   padding: 20rpx 24rpx 32rpx;
 }
 
-.demo-accounts {
-  padding: 20rpx 8rpx 4rpx;
+.grade-field {
+  padding: 22rpx 8rpx 4rpx;
 }
 
-.demo-accounts__label {
-  display: block;
-  font-size: 22rpx;
-  color: var(--color-text-muted);
-}
-
-.demo-accounts__row {
+.grade-field__head {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12rpx;
-  margin-top: 10rpx;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14rpx;
 }
 
-.demo-chip {
-  padding: 8rpx 18rpx;
-  font-size: 23rpx;
-  color: var(--color-primary);
-  background: var(--color-primary-soft);
-  border-radius: 999rpx;
+.grade-field__label {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.grade-field__req {
+  font-size: 22rpx;
+  color: var(--color-danger);
+}
+
+.grade-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12rpx;
+}
+
+.grade-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 68rpx;
+  background: var(--color-bg-page);
+  border: 2rpx solid var(--color-border);
+  border-radius: 14rpx;
+  transition: all 0.15s ease;
+
+  &--active {
+    background: var(--color-primary-soft);
+    border-color: var(--color-primary);
+
+    .grade-chip__name {
+      font-weight: 600;
+      color: var(--color-primary);
+    }
+  }
+}
+
+.grade-chip__name {
+  font-size: 26rpx;
+  color: var(--color-text);
 }
 
 .register-note {
   display: block;
   padding: 18rpx 8rpx 0;
-  font-size: 24rpx;
+  font-size: 23rpx;
+  line-height: 1.45;
   color: var(--color-text-secondary);
 }
 

@@ -72,6 +72,9 @@ page {
   --wot-button-radius-main: 18rpx;
   --wot-cell-bg-active: var(--color-fill-2);
   --wot-fab-z-index: 6;
+  --wot-skeleton-col-bg: #e7ece9;
+  --wot-skeleton-animation-gradient: rgba(255, 255, 255, 0.65);
+  --wot-skeleton-animation-flashed: #f1f5f3;
 }
 
 // 暗色主题
@@ -127,4 +130,7 @@ page {
   --wot-primary-5: #4ade80;
   --wot-primary-6: #22c55e;
   --wot-primary-7: #16a34a;
+  --wot-skeleton-col-bg: #334155;
+  --wot-skeleton-animation-gradient: rgba(148, 163, 184, 0.16);
+  --wot-skeleton-animation-flashed: #1e293b;
 }

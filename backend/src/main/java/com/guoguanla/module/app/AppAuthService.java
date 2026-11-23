@@ -10,6 +10,8 @@ import com.guoguanla.module.bank.entity.EduGate;
 import com.guoguanla.module.bank.mapper.EduGateMapper;
 import com.guoguanla.module.progress.entity.UserGateProgress;
 import com.guoguanla.module.progress.mapper.UserGateProgressMapper;
+import com.guoguanla.module.system.RealmHelperService;
+import com.guoguanla.module.system.entity.EduRealm;
 import com.guoguanla.module.user.entity.AppUser;
 import com.guoguanla.module.user.mapper.AppUserMapper;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +30,7 @@ public class AppAuthService {
     private final EduGateMapper gateMapper;
     private final UserGateProgressMapper gateProgressMapper;
     private final AppBankService bankService;
+    private final RealmHelperService realmHelper;
 
     @Transactional(rollbackFor = Exception.class)
     public AppUserProfileVO.AuthVO login(AppLoginReq req) {
@@ -65,12 +68,17 @@ public class AppAuthService {
         if (exists > 0) {
             throw new BizException(ErrorCode.USER_EXISTS, "用户名已被注册");
         }
+        String gradeCode = req.getGradeCode() == null ? "" : req.getGradeCode().trim();
+        EduRealm targetRealm = realmHelper.findByGradeCode(gradeCode);
+        if (targetRealm == null) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "请选择有效的年级");
+        }
         AppUser user = new AppUser();
         user.setUsername(username);
         user.setPasswordHash(BCrypt.hashpw(req.getPassword(), BCrypt.gensalt()));
         user.setNickname(req.getNickname().trim());
-        user.setRealmCode("lianqi");
-        user.setGradeCode("g7");
+        user.setRealmCode(targetRealm.getRealmCode());
+        user.setGradeCode(targetRealm.getGradeCode());
         user.setPassedGateCount(0);
         user.setCurrentLevelId(1L);
         user.setStatus(1);

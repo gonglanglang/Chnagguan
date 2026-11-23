@@ -138,7 +138,7 @@ public class AppBankService {
                     .chapterCount(chaps.size())
                     .gateCount(totalGates)
                     .passedGateCount(passedInRealm)
-                    .unlocked(r.getRealmOrder() <= userRealm.getRealmOrder())
+                    .unlocked(true)
                     .isCurrent(isCurrent)
                     .isLower(r.getRealmOrder() < userRealm.getRealmOrder())
                     .isHigher(r.getRealmOrder() > userRealm.getRealmOrder())
@@ -159,7 +159,7 @@ public class AppBankService {
     public List<AppUserProfileVO.ChapterCardVO> listChaptersByGrade(String gradeCode, Set<Long> guestPassedGateIds) {
         EduRealm targetRealm = realmHelper.findByGradeCode(gradeCode);
         EduRealm userRealm = currentUserRealm();
-        boolean lockedByRealm = targetRealm != null && targetRealm.getRealmOrder() > userRealm.getRealmOrder();
+        boolean lockedByRealm = false;
         boolean suppressed = targetRealm != null && targetRealm.getRealmOrder() < userRealm.getRealmOrder();
 
         List<EduChapter> chapters = chapterMapper.selectList(
@@ -212,7 +212,7 @@ public class AppBankService {
         }
         EduRealm targetRealm = realmHelper.findByGradeCode(chapter.getGradeCode());
         EduRealm userRealm = currentUserRealm();
-        boolean lockedByRealm = targetRealm != null && targetRealm.getRealmOrder() > userRealm.getRealmOrder();
+        boolean lockedByRealm = false;
         boolean suppressed = targetRealm != null && targetRealm.getRealmOrder() < userRealm.getRealmOrder();
 
         List<EduGate> gates = gateMapper.selectList(

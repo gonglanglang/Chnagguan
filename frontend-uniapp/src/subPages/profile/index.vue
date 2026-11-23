@@ -1,47 +1,84 @@
 <template>
   <app-page-shell title="个人资料" :has-footer="true">
-    <view class="avatar-card" @click="chooseAvatar">
-      <view class="avatar-card__left">
-        <view class="avatar-box">
-          <image
-            v-if="avatarPreview"
-            :src="avatarPreview"
-            mode="aspectFill"
-            class="avatar-box__img"
-          />
-          <text v-else class="avatar-box__text">{{ avatarLetter }}</text>
-        </view>
-        <view class="avatar-card__info">
-          <text class="avatar-card__title">个人头像</text>
-          <text class="avatar-card__sub">点击可从相册选择或拍照更换头像</text>
-        </view>
+    <template v-if="loading">
+      <view class="avatar-card">
+        <wd-skeleton
+          animation="gradient"
+          :row-col="[
+            [
+              { type: 'circle', width: '54px', height: '54px', marginRight: '12px' },
+              { width: '52%', height: '18px' },
+              { width: '16%', height: '14px' },
+            ],
+            { width: '68%', height: '12px' },
+          ]"
+        />
       </view>
-      <view class="avatar-card__right">
-        <text class="avatar-card__action">{{ uploadingAvatar ? "上传中..." : "更换" }}</text>
-        <app-icon name="right" size="14" color="muted" />
-      </view>
-    </view>
 
-    <view class="profile-card">
-      <wd-cell-group border>
-        <wd-cell title="用户名" :value="userStore.userInfo?.username || '--'" />
-        <wd-cell
-          title="当前修仙境界"
-          :value="userStore.userInfo?.realmName || '练气'"
-          label="境界由进阶考核或管理员调整，不可自行更改"
+      <view class="profile-card profile-sk-card">
+        <wd-skeleton
+          animation="gradient"
+          :row-col="[
+            [{ width: '28%', height: '16px' }, { width: '40%', height: '16px' }],
+            [{ width: '32%', height: '16px' }, { width: '28%', height: '16px' }],
+            [{ width: '32%', height: '16px' }, { width: '36%', height: '16px' }],
+            [{ width: '28%', height: '16px' }, { width: '56%', height: '16px' }],
+          ]"
         />
-        <wd-input
-          v-model="nickname"
-          label="昵称"
-          label-width="140rpx"
-          clearable
-          placeholder="请输入学生昵称"
-        />
-      </wd-cell-group>
-    </view>
+      </view>
+    </template>
+
+    <template v-else>
+      <view class="avatar-card" @click="chooseAvatar">
+        <view class="avatar-card__left">
+          <view class="avatar-box">
+            <image
+              v-if="avatarPreview"
+              :src="avatarPreview"
+              mode="aspectFill"
+              class="avatar-box__img"
+            />
+            <text v-else class="avatar-box__text">{{ avatarLetter }}</text>
+          </view>
+          <view class="avatar-card__info">
+            <text class="avatar-card__title">个人头像</text>
+            <text class="avatar-card__sub">点击可从相册选择或拍照更换头像</text>
+          </view>
+        </view>
+        <view class="avatar-card__right">
+          <text class="avatar-card__action">{{ uploadingAvatar ? "上传中..." : "更换" }}</text>
+          <app-icon name="right" size="14" color="muted" />
+        </view>
+      </view>
+
+      <view class="profile-card">
+        <wd-cell-group border>
+          <wd-cell title="用户名" :value="userStore.userInfo?.username || '--'" />
+          <wd-cell title="所在年级" :value="userStore.userInfo?.gradeName || '--'" />
+          <wd-cell
+            title="当前修仙境界"
+            :value="userStore.userInfo?.realmName || '练气'"
+            label="境界由进阶考核或管理员调整，不可自行更改"
+          />
+          <wd-input
+            v-model="nickname"
+            label="昵称"
+            label-width="140rpx"
+            clearable
+            placeholder="请输入学生昵称"
+          />
+        </wd-cell-group>
+      </view>
+    </template>
 
     <template #footer>
+      <wd-skeleton
+        v-if="loading"
+        animation="gradient"
+        :row-col="[{ width: '100%', height: '42px', borderRadius: '10px' }]"
+      />
       <wd-button
+        v-else
         type="primary"
         block
         :loading="saving"
@@ -72,6 +109,7 @@ definePage({
 
 const userStore = useUserStore();
 const toast = useToast();
+const loading = ref(true);
 const saving = ref(false);
 const uploadingAvatar = ref(false);
 const nickname = ref("");
@@ -124,12 +162,17 @@ async function handleSave(): Promise<void> {
 }
 
 onLoad(async () => {
-  if (!ensureAuthenticated()) return;
+  if (!ensureAuthenticated()) {
+    loading.value = false;
+    return;
+  }
   try {
     const profile = await userStore.loadUserInfo(true);
     nickname.value = profile.nickname || "";
   } catch {
     nickname.value = userStore.userInfo?.nickname || "";
+  } finally {
+    loading.value = false;
   }
 });
 </script>
@@ -212,5 +255,9 @@ onLoad(async () => {
   background: var(--color-bg-card);
   border-radius: 20rpx;
   box-shadow: var(--shadow-sm);
+}
+
+.profile-sk-card {
+  padding: 26rpx 28rpx;
 }
 </style>

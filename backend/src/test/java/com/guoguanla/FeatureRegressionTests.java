@@ -1,7 +1,10 @@
 package com.guoguanla;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.guoguanla.module.progress.entity.UserEssayAnswer;
+import com.guoguanla.module.progress.mapper.UserEssayAnswerMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -39,6 +42,9 @@ class FeatureRegressionTests {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private UserEssayAnswerMapper essayAnswerMapper;
+
     private String loginAdmin() throws Exception {
         MvcResult res = mockMvc.perform(post("/api/admin/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -52,13 +58,37 @@ class FeatureRegressionTests {
     void adminQuestionSyncDynamicConvertPasswordResetAndEssayDrawingFlowShouldWork() throws Exception {
         String adminToken = loginAdmin();
 
-        // 1. Register a clean test student and verify admin password update
+        // 1. Register validation (gradeCode required), grade->realm mapping & clean test student
+        mockMvc.perform(post("/api/app/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "username", "feat_missing_grade",
+                                "password", "oldpass123",
+                                "nickname", "缺年级学生"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400));
+
+        mockMvc.perform(post("/api/app/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "username", "feat_h1_stu",
+                                "password", "oldpass123",
+                                "nickname", "高一修仙",
+                                "gradeCode", "h1"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.profile.gradeCode").value("h1"))
+                .andExpect(jsonPath("$.data.profile.realmCode").value("jiaying"));
+
         MvcResult regRes = mockMvc.perform(post("/api/app/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "username", "feat_stu_01",
                                 "password", "oldpass123",
-                                "nickname", "测试小修仙"
+                                "nickname", "测试小修仙",
+                                "gradeCode", "g7"
                         ))))
                 .andExpect(status().isOk())
                 .andReturn();
@@ -392,6 +422,34 @@ class FeatureRegressionTests {
                 .andExpect(jsonPath("$.data.records[0].answerText").value("重交新步骤：-3"))
                 .andExpect(jsonPath("$.data.records[0].teacherStatus").value(0))
                 .andExpect(jsonPath("$.data.records[0].teacherComment").value(""));
+
+        // 6.1 Permanent clear of my essay answers (only removes current user's DB rows)
+        UserEssayAnswer otherUserEssay = new UserEssayAnswer();
+        otherUserEssay.setSessionNo("QZ_OTHER_ESSAY_KEEP");
+        otherUserEssay.setItemIndex(0);
+        otherUserEssay.setUserId(999999L);
+        otherUserEssay.setGradeCode("g7");
+        otherUserEssay.setRealmCode("lianqi");
+        otherUserEssay.setStem("其他学生保留记录");
+        otherUserEssay.setTeacherStatus(0);
+        otherUserEssay.setTeacherComment("");
+        essayAnswerMapper.insert(otherUserEssay);
+
+        mockMvc.perform(delete("/api/app/user/essay-answers/clear")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        assertEquals(0L, essayAnswerMapper.selectCount(
+                new LambdaQueryWrapper<UserEssayAnswer>().eq(UserEssayAnswer::getUserId, studentId)
+        ));
+        assertEquals(1L, essayAnswerMapper.selectCount(
+                new LambdaQueryWrapper<UserEssayAnswer>().eq(UserEssayAnswer::getUserId, 999999L)
+        ));
+        mockMvc.perform(get("/api/app/user/essay-answers?pageNum=1&pageSize=10")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(0));
 
         // 7. Admin Video Series & Multi-Lesson flow + App Cultivate video APIs
         MockMultipartFile coverFile = new MockMultipartFile("file", "cover.png", "image/png", MINIMAL_PNG);
