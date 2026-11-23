@@ -30,29 +30,44 @@
 
 ```text
 guoguanla/
-├── AGENTS.md                   # AI 会话自动/必读总纲（本文件）
-├── README.md                   # 项目说明与快速导航
+├── AGENTS.md                         # AI 会话自动/必读总纲（本文件）
+├── Jenkinsfile                       # Jenkins 声明式 CI/CD 流水线（后端 + 管理后台 + 下载官网）
+├── README.md                         # 项目说明与快速导航
 ├── docs/
-│   ├── 01-产品原型文档.md       # 完整业务原型、页面交互、原版 51 章映射与升级点
-│   ├── 02-开发规范.md           # Java / UniApp / Admin / DB / Git 详细研发规范
-│   ├── 03-数据库与接口规划.md   # MySQL 表结构、RESTful API 与动态出题引擎设计
-│   └── 04-UI框架选型对比.md     # UniApp & Admin UI 组件库选型对比
-├── backend/                    # Spring Boot 3 Java 服务端
-├── frontend-uniapp/            # UniApp 学生端（微信小程序 / H5 / App）
-├── frontend-admin/             # Web 管理后台（用户信息、题库与关卡配置）
-└── scripts/                    # 题库迁移脚本（从原 JS 题库提取导出 SQL/JSON）
+│   ├── 01-产品原型文档.md             # 完整业务原型、页面交互、原版 51 章映射与升级点
+│   ├── 02-开发规范.md                 # Java / UniApp / Admin / DB / Git / Jenkins 详细研发规范
+│   ├── 03-数据库与接口规划.md         # MySQL 表结构、RESTful API 与动态出题引擎设计
+│   ├── 04-UI框架选型对比.md           # UniApp & Admin UI 组件库选型对比
+│   └── 05-迭代任务与发版规划.md       # 每次新会话必读的任务编号台账、开发规划与发版记录
+├── backend/                          # Spring Boot 3 Java 服务端
+├── frontend-uniapp/                  # UniApp 学生端（微信小程序 / H5 / App）
+├── frontend-admin/                   # Web 管理后台（用户信息、题库、视频、版本与境界配置）
+├── frontend-download/                # App 官方下载页（对接阿里云 OSS 与版本接口）
+└── scripts/                          # 题库迁移脚本与本地一键启动脚本 (dev-local.ps1)
 ```
 
 ---
 
-## 4. 新会话工作流（必做）
+## 4. 新会话强制工作流（每次必读必做）
 
-1. **先读文档再动手**：
-   - 做产品/界面/规则设计 → 读 `docs/01-产品原型文档.md`
-   - 写任何模块代码 → 读 `docs/02-开发规范.md`
-   - 涉及建表/改表/写接口/联调 → 读 `docs/03-数据库与接口规划.md`
-2. **先对齐再修改**：若需求涉及表结构或接口契约变更，先更新 `docs/03-数据库与接口规划.md` 再写代码，确保前后端与文档一致。
-3. **验证后再汇报**：后端修改必须跑通编译与相关单测/接口测试；前端修改必须通过类型检查（`vue-tsc` / `tsc`）或构建验证；严禁凭想象声称“已通过”。
+> ⚠️ **严格红线**：以下流程为每次新开会话或承接新需求时的**强制执行顺序**，未按流程建任务编号与独立分支前禁止直接修改业务代码；未得到明确授权不得绕过 PR/合并且直接部署生产。
+
+1. **先读规范与规划台账**：
+   - **每次新开会话必读**：`AGENTS.md`、`docs/02-开发规范.md`、`docs/05-迭代任务与发版规划.md`。
+   - 做产品/界面/规则设计 → 读 `docs/01-产品原型文档.md`。
+   - 涉及建表/改表/写接口/联调 → 读 `docs/03-数据库与接口规划.md`（若变更须先改文档再改代码）。
+2. **生成唯一任务编号并写入规划文档**：
+   - 在动手写代码前，先依据 `docs/05-迭代任务与发版规划.md` 的当日递增序号生成唯一任务编号，统一格式为 **`TASK-YYYYMMDD-NNN`**（例如 `TASK-20261122-001`）。
+   - 将该任务的编号、需求目标、改造范围与验收标准登记至 `docs/05-迭代任务与发版规划.md`。
+3. **以任务编号创建独立 Git 分支开发**：
+   - 先同步并基于最新 `main` 切出以**任务编号命名**的分支：`git checkout main && git pull origin main && git checkout -b TASK-YYYYMMDD-NNN`。
+   - **禁止直接提交到 `main` 分支**：所有开发与验证均在当前 `TASK-YYYYMMDD-NNN` 分支完成。
+4. **本地测试与启动联调（以本地运行验证为主）**：
+   - 后端改动必须跑通 `.\mvnw.cmd test`（或 `clean package`）；前端改动必须通过 `pnpm typecheck` / `pnpm type-check` 与构建校验。
+   - 测试**以本地环境为主**：改动完成后需帮助在本地启动对应前后端服务（可通过 `scripts/dev-local.ps1`，默认后端 `http://localhost:8080`、管理后台 `http://localhost:8848`、学生端 H5 `http://localhost:5174`）并自检端口可达，方便用户本地联调验收。
+5. **推送任务分支至远程仓库（由用户合并与 Jenkins 发布）**：
+   - 校验本地自测通过、敏感信息扫描无泄露后，将代码提交并推送到远程对应任务分支：`git push -u origin TASK-YYYYMMDD-NNN`。
+   - 完成后在回复中明确给出**任务编号 / 分支名称、本地可访问测试地址、本地验证结果**；随后由用户将 `TASK-YYYYMMDD-NNN` 合并入 `main`，并通过线上 **Jenkins (`http://47.107.94.90/jenkins/`)** 构建部署生产。
 
 ---
 
