@@ -133,6 +133,7 @@ import { getErrorMessage } from "@/utils/error";
 
 definePage({
   name: "chapter-map",
+  layout: "blank",
   style: {
     navigationStyle: "custom",
     navigationBarTitleText: "闯关地图",
