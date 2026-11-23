@@ -16,8 +16,30 @@
 
     <scroll-view scroll-y :show-scrollbar="false" class="cultivate-scroll">
       <view class="page-body">
-        <view v-if="loading && list.length === 0" class="loading-box">
-          <wd-loading />
+        <view v-if="loading && list.length === 0" class="series-list">
+          <view v-for="n in 3" :key="n" class="series-card">
+            <view class="series-card__cover-wrap series-card__cover-wrap--sk">
+              <wd-skeleton
+                animation="gradient"
+                :row-col="[{ type: 'rect', width: '100%', height: '165px', borderRadius: '0px' }]"
+              />
+            </view>
+            <view class="series-card__body">
+              <wd-skeleton
+                animation="gradient"
+                :row-col="[
+                  [
+                    { width: '68%', height: '18px' },
+                    { width: '18%', height: '18px', borderRadius: '6px' },
+                  ],
+                  [
+                    { width: '62%', height: '13px' },
+                    { width: '22%', height: '13px' },
+                  ],
+                ]"
+              />
+            </view>
+          </view>
         </view>
 
         <view v-else-if="list.length === 0" class="empty-box">
@@ -101,7 +123,7 @@ const userStore = useUserStore();
 const toast = useToast();
 
 const selectedRealm = ref("");
-const loading = ref(false);
+const loading = ref(true);
 const pageNum = ref(1);
 const pageSize = 12;
 const total = ref(0);
@@ -127,6 +149,7 @@ async function fetchSeries(reset = true): Promise<void> {
 
 function onRealmChange(payload: { name: string | number }): void {
   selectedRealm.value = String(payload.name);
+  list.value = [];
   void fetchSeries(true);
 }
 
@@ -172,12 +195,6 @@ onShow(() => {
   padding: 20rpx 24rpx 48rpx;
 }
 
-.loading-box {
-  display: flex;
-  justify-content: center;
-  padding: 96rpx 0;
-}
-
 .empty-box {
   display: flex;
   flex-direction: column;
@@ -217,6 +234,11 @@ onShow(() => {
   width: 100%;
   height: 330rpx;
   background: #0f172a;
+
+  &--sk {
+    overflow: hidden;
+    background: var(--color-fill-1);
+  }
 }
 
 .series-card__cover {

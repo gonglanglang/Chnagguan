@@ -325,7 +325,7 @@ onMounted(fetchAll);
           <div class="flex flex-wrap items-center gap-3">
             <el-switch v-model="basicForm.guestMode" class="shrink-0" />
             <span class="text-xs text-gray-500">
-              开启后，未登录学生可先体验「练气」关卡（进阶考核需登录后参加）
+              开启后，未登录学生可先游客试玩各境界关卡（进阶考核需登录后参加）
             </span>
           </div>
         </el-form-item>

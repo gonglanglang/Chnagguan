@@ -8,7 +8,13 @@
         :fixed="false"
         :placeholder="false"
       />
-      <view v-if="activeLesson?.videoUrl" class="player-wrap">
+      <view v-if="loading" class="player-wrap player-wrap--sk">
+        <wd-skeleton
+          animation="gradient"
+          :row-col="[{ type: 'rect', width: '100%', height: '210px', borderRadius: '0px' }]"
+        />
+      </view>
+      <view v-else-if="activeLesson?.videoUrl" class="player-wrap">
         <video
           v-if="userStore.isAuthenticated"
           id="courseVideoPlayer"
@@ -40,8 +46,46 @@
       </view>
     </template>
 
-    <view v-if="loading" class="state-box">
-      <wd-loading />
+    <view v-if="loading" class="detail-body">
+      <view class="series-card">
+        <wd-skeleton
+          animation="gradient"
+          :row-col="[
+            [{ width: '64%', height: '18px' }, { width: '18%', height: '18px', borderRadius: '6px' }],
+            { width: '92%', height: '14px' },
+            { width: '68%', height: '14px' },
+          ]"
+        />
+      </view>
+
+      <view class="section-card">
+        <wd-skeleton
+          animation="gradient"
+          :row-col="[
+            { width: '48%', height: '16px' },
+            { width: '95%', height: '14px' },
+            { width: '82%', height: '14px' },
+            { width: '100%', height: '42px', borderRadius: '8px' },
+          ]"
+        />
+      </view>
+
+      <view class="section-card">
+        <view class="lesson-list">
+          <view v-for="n in 4" :key="n" class="lesson-row">
+            <wd-skeleton
+              animation="gradient"
+              :row-col="[
+                [
+                  { type: 'rect', width: '48px', height: '29px', borderRadius: '5px', marginRight: '10px' },
+                  { width: '58%', height: '15px' },
+                  { width: '16%', height: '13px' },
+                ],
+              ]"
+            />
+          </view>
+        </view>
+      </view>
     </view>
 
     <view v-else-if="detail" class="detail-body">
@@ -350,6 +394,12 @@ onShow(() => {
 .player-wrap {
   width: 100%;
   background: #0f172a;
+
+  &--sk {
+    height: 420rpx;
+    overflow: hidden;
+    background: var(--color-fill-1);
+  }
 }
 
 .player-video {
@@ -406,12 +456,6 @@ onShow(() => {
 .player-gate__sub {
   font-size: 22rpx;
   color: rgba(255, 255, 255, 0.82);
-}
-
-.state-box {
-  display: flex;
-  justify-content: center;
-  padding: 120rpx 0;
 }
 
 .detail-body {

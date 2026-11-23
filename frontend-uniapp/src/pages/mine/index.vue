@@ -7,7 +7,64 @@
     </view>
 
     <scroll-view scroll-y :show-scrollbar="false" class="mine-scroll">
-      <view class="mine-content">
+      <view v-if="initialLoading" class="mine-content">
+        <view class="mine-sk-card">
+          <wd-skeleton
+            animation="gradient"
+            :row-col="[
+              [
+                { type: 'circle', width: '50px', height: '50px', marginRight: '10px' },
+                { width: '54%', height: '18px' },
+                { width: '20%', height: '24px', borderRadius: '8px' },
+              ],
+              { width: '62%', height: '12px' },
+              [
+                { width: '28%', height: '32px' },
+                { width: '28%', height: '32px' },
+                { width: '28%', height: '32px' },
+              ],
+            ]"
+          />
+        </view>
+
+        <view v-if="userStore.isAuthenticated" class="records-card">
+          <wd-skeleton
+            animation="gradient"
+            :row-col="[
+              [{ width: '36%', height: '16px' }, { width: '24%', height: '13px' }],
+              [{ width: '64%', height: '14px' }, { width: '16%', height: '14px' }],
+              [{ width: '58%', height: '14px' }, { width: '16%', height: '14px' }],
+            ]"
+          />
+        </view>
+
+        <view class="mine-sk-menu">
+          <wd-skeleton
+            animation="gradient"
+            :row-col="[
+              { width: '26%', height: '13px' },
+              [{ width: '48%', height: '16px' }, { width: '22%', height: '14px' }],
+              { width: '48%', height: '16px' },
+            ]"
+          />
+        </view>
+
+        <view class="mine-sk-menu">
+          <wd-skeleton
+            animation="gradient"
+            :row-col="[
+              { width: '26%', height: '13px' },
+              { width: '52%', height: '16px' },
+              [{ width: '46%', height: '16px' }, { width: '18%', height: '14px' }],
+              { width: '46%', height: '16px' },
+              [{ width: '40%', height: '16px' }, { width: '18%', height: '14px' }],
+              { width: '42%', height: '16px' },
+            ]"
+          />
+        </view>
+      </view>
+
+      <view v-else class="mine-content">
         <profile-card
           :is-logged-in="userStore.isAuthenticated"
           :user-info="userStore.userInfo"
@@ -79,6 +136,9 @@ const { isLoggingOut, requestLogout } = useLogout();
 const { usageText, loadUsage, clearCache } = useCacheCleaner();
 
 const chapterRecords = ref<ChapterCard[]>([]);
+const initialLoading = ref(true);
+const hasLoadedOnce = ref(false);
+const lastAuthState = ref(userStore.isAuthenticated);
 const passedChapters = computed(() => chapterRecords.value.filter((c) => c.passedCount > 0));
 const currentAppVersion = ref(import.meta.env.VITE_APP_VERSION || "1.0.0");
 
@@ -189,12 +249,18 @@ function handleMenuSelect(key: string): void {
 }
 
 async function syncMineData(): Promise<void> {
+  if (!hasLoadedOnce.value || lastAuthState.value !== userStore.isAuthenticated) {
+    initialLoading.value = true;
+  }
+  lastAuthState.value = userStore.isAuthenticated;
   void loadUsage();
   void getLocalAppVersion().then((info) => {
     currentAppVersion.value = info.version;
   });
   if (!userStore.isAuthenticated) {
     chapterRecords.value = [];
+    hasLoadedOnce.value = true;
+    initialLoading.value = false;
     return;
   }
   try {
@@ -202,6 +268,9 @@ async function syncMineData(): Promise<void> {
     chapterRecords.value = await AppUserAPI.getChapterRecords();
   } catch {
     // Silent fallback
+  } finally {
+    hasLoadedOnce.value = true;
+    initialLoading.value = false;
   }
 }
 
@@ -244,6 +313,21 @@ onShow(() => {
 
 .mine-content {
   padding: 20rpx 24rpx 48rpx;
+}
+
+.mine-sk-card {
+  padding: 28rpx;
+  background: var(--color-bg-card);
+  border-radius: 20rpx;
+  box-shadow: var(--shadow-sm);
+}
+
+.mine-sk-menu {
+  padding: 24rpx 28rpx;
+  margin-top: 20rpx;
+  background: var(--color-bg-card);
+  border-radius: 20rpx;
+  box-shadow: var(--shadow-sm);
 }
 
 .records-card {

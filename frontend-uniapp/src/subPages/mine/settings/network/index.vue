@@ -1,44 +1,83 @@
 <template>
   <app-page-shell title="网络检测">
-    <view class="pt-8rpx">
-      <text class="network__tip-text">
-        温馨提示：点击下方「开始测试」按钮，即可检测当前网络到接口服务的连接质量。
-      </text>
-    </view>
-
-    <view class="mt-16rpx">
-      <wd-button block variant="plain" :loading="isTesting" @click="startTest">开始测试</wd-button>
-    </view>
-
-    <view v-if="isTesting" class="network__loading">
-      <wd-loading color="var(--wot-color-theme)" />
-      <text class="network__loading-text">正在测试中...</text>
-    </view>
-
-    <view v-if="result" class="network__result">
-      <view class="result-card">
-        <view class="result-card__header">测试结果</view>
-        <view class="result-card__row">
-          <text class="result-card__label">接口服务</text>
-          <text
-            class="result-card__value"
-            :class="result.reachable ? 'color-success' : 'color-danger'"
-          >
-            {{ result.reachable ? "可访问" : "不可访问" }}
-          </text>
-        </view>
-        <view class="result-card__row">
-          <text class="result-card__label">响应耗时</text>
-          <text class="text-36rpx font-600" :class="statusColor">
-            {{ result.costMs === null ? "--" : `${result.costMs}ms` }}
-          </text>
-        </view>
-        <view class="result-card__row">
-          <text class="result-card__label">网络状态</text>
-          <text class="font-500" :class="statusColor">{{ statusText }}</text>
+    <template v-if="initialLoading">
+      <view class="pt-8rpx">
+        <wd-skeleton
+          animation="gradient"
+          :row-col="[{ width: '88%', height: '14px' }, { width: '54%', height: '14px' }]"
+        />
+      </view>
+      <view class="mt-16rpx">
+        <wd-skeleton
+          animation="gradient"
+          :row-col="[{ width: '100%', height: '42px', borderRadius: '10px' }]"
+        />
+      </view>
+      <view class="network__result">
+        <view class="result-card result-card--sk">
+          <wd-skeleton
+            animation="gradient"
+            :row-col="[
+              { width: '32%', height: '18px' },
+              [{ width: '32%', height: '16px' }, { width: '24%', height: '16px' }],
+              [{ width: '32%', height: '16px' }, { width: '28%', height: '20px' }],
+              [{ width: '32%', height: '16px' }, { width: '20%', height: '16px' }],
+            ]"
+          />
         </view>
       </view>
-    </view>
+    </template>
+
+    <template v-else>
+      <view class="pt-8rpx">
+        <text class="network__tip-text">
+          温馨提示：点击下方「开始测试」按钮，即可检测当前网络到接口服务的连接质量。
+        </text>
+      </view>
+
+      <view class="mt-16rpx">
+        <wd-button block variant="plain" :loading="isTesting" @click="startTest">开始测试</wd-button>
+      </view>
+
+      <view v-if="isTesting" class="network__result">
+        <view class="result-card result-card--sk">
+          <wd-skeleton
+            animation="gradient"
+            :row-col="[
+              { width: '32%', height: '18px' },
+              [{ width: '32%', height: '16px' }, { width: '24%', height: '16px' }],
+              [{ width: '32%', height: '16px' }, { width: '28%', height: '20px' }],
+              [{ width: '32%', height: '16px' }, { width: '20%', height: '16px' }],
+            ]"
+          />
+        </view>
+      </view>
+
+      <view v-else-if="result" class="network__result">
+        <view class="result-card">
+          <view class="result-card__header">测试结果</view>
+          <view class="result-card__row">
+            <text class="result-card__label">接口服务</text>
+            <text
+              class="result-card__value"
+              :class="result.reachable ? 'color-success' : 'color-danger'"
+            >
+              {{ result.reachable ? "可访问" : "不可访问" }}
+            </text>
+          </view>
+          <view class="result-card__row">
+            <text class="result-card__label">响应耗时</text>
+            <text class="text-36rpx font-600" :class="statusColor">
+              {{ result.costMs === null ? "--" : `${result.costMs}ms` }}
+            </text>
+          </view>
+          <view class="result-card__row">
+            <text class="result-card__label">网络状态</text>
+            <text class="font-500" :class="statusColor">{{ statusText }}</text>
+          </view>
+        </view>
+      </view>
+    </template>
   </app-page-shell>
 </template>
 
@@ -58,8 +97,19 @@ interface ProbeResult {
   costMs: number | null;
 }
 
+const initialLoading = ref(true);
 const result = ref<ProbeResult | null>(null);
 const isTesting = ref(false);
+
+onReady(() => {
+  initialLoading.value = false;
+});
+
+onMounted(() => {
+  setTimeout(() => {
+    initialLoading.value = false;
+  }, 180);
+});
 
 // 耗时分档：100ms 以内优秀，300ms 以内良好，500ms 以内一般，其余较差
 const statusText = computed(() => {
@@ -131,6 +181,10 @@ async function startTest() {
   border: 1rpx solid var(--color-border);
   border-radius: 16rpx;
 
+  &--sk {
+    padding: 24rpx;
+  }
+
   &__header {
     padding: 24rpx;
     font-size: 32rpx;
@@ -161,19 +215,6 @@ async function startTest() {
 .network__tip-text {
   font-size: 24rpx;
   color: var(--color-text-placeholder);
-}
-
-.network__loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 40rpx 0;
-}
-
-.network__loading-text {
-  margin-top: 16rpx;
-  font-size: 24rpx;
-  color: var(--color-text-secondary);
 }
 
 .network__result {

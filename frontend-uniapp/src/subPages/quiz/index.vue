@@ -17,10 +17,37 @@
       </app-navbar>
     </template>
 
-    <view v-if="loading" class="state-box">
-      <wd-loading />
-      <text class="state-box__text">正在抽取题目...</text>
-    </view>
+    <template v-if="loading">
+      <view class="question-card">
+        <wd-skeleton
+          animation="gradient"
+          :row-col="[
+            [
+              { width: '28%', height: '22px', borderRadius: '999px' },
+              { width: '24%', height: '18px', borderRadius: '6px' },
+              { width: '28%', height: '20px', borderRadius: '6px' },
+            ],
+            { width: '96%', height: '18px' },
+            { width: '86%', height: '18px' },
+            { width: '54%', height: '18px' },
+          ]"
+        />
+      </view>
+
+      <view class="options-list">
+        <view v-for="n in 4" :key="n" class="option-row">
+          <wd-skeleton
+            animation="gradient"
+            :row-col="[
+              [
+                { type: 'circle', width: '26px', height: '26px', marginRight: '10px' },
+                { width: '76%', height: '16px' },
+              ],
+            ]"
+          />
+        </view>
+      </view>
+    </template>
 
     <view v-else-if="loadError" class="state-box">
       <wd-empty icon="no-content" :tip="loadError" />
@@ -254,7 +281,12 @@
     </template>
 
     <template #footer>
-      <template v-if="startData && !submitResult && currentItem">
+      <wd-skeleton
+        v-if="loading"
+        animation="gradient"
+        :row-col="[{ width: '100%', height: '42px', borderRadius: '10px' }]"
+      />
+      <template v-else-if="startData && !submitResult && currentItem">
         <wd-button
           v-if="isCurrentEssay && !currentFeedback"
           type="primary"
@@ -366,9 +398,9 @@ const canGoNext = computed(() => Boolean(currentFeedback.value));
 
 const hasFooterBar = computed(() =>
   Boolean(
-    !loading.value &&
-      !loadError.value &&
-      ((startData.value && !submitResult.value && currentItem.value) || submitResult.value),
+    loading.value ||
+      (!loadError.value &&
+        ((startData.value && !submitResult.value && currentItem.value) || submitResult.value)),
   ),
 );
 

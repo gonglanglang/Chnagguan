@@ -1,55 +1,87 @@
 <template>
   <app-page-shell title="修仙境界体系">
-    <view class="summary-card">
-      <view class="summary-card__badge">
-        <app-icon name="realm-lotus" size="24" color="primary" />
+    <template v-if="initialLoading">
+      <view class="summary-card">
+        <wd-skeleton
+          animation="gradient"
+          :row-col="[
+            [
+              { type: 'rect', width: '40px', height: '40px', borderRadius: '10px', marginRight: '10px' },
+              { width: '68%', height: '18px' },
+            ],
+            { width: '82%', height: '13px' },
+          ]"
+        />
       </view>
-      <view class="summary-card__info">
-        <text class="summary-card__title">当前境界：{{ userStore.currentRealm.realmName }}</text>
-        <text class="summary-card__sub">
-          低境不可入高境，高境可压制境界重温低境题目
-        </text>
-      </view>
-    </view>
 
-    <view class="realm-list">
-      <view
-        v-for="item in userStore.realms"
-        :key="item.realmCode"
-        class="realm-card"
-        :class="{ 'realm-card--locked': item.isHigher }"
-      >
-        <view class="realm-card__head">
-          <view class="realm-card__title-wrap">
-            <view class="realm-card__order" :class="item.unlocked ? 'realm-card__order--open' : ''">
-              <app-icon v-if="item.isCurrent" name="check" size="15" color="#ffffff" />
-              <text v-else>{{ item.realmOrder }}</text>
+      <view class="realm-list">
+        <view v-for="n in 6" :key="n" class="realm-card">
+          <wd-skeleton
+            animation="gradient"
+            :row-col="[
+              [
+                { type: 'rect', width: '28px', height: '28px', borderRadius: '7px', marginRight: '10px' },
+                { width: '42%', height: '16px' },
+                { width: '24%', height: '20px', borderRadius: '6px' },
+              ],
+              { width: '88%', height: '13px' },
+              [
+                { width: '56%', height: '12px' },
+                { width: '28%', height: '12px' },
+              ],
+            ]"
+          />
+        </view>
+      </view>
+    </template>
+
+    <template v-else>
+      <view class="summary-card">
+        <view class="summary-card__badge">
+          <app-icon name="realm-lotus" size="24" color="primary" />
+        </view>
+        <view class="summary-card__info">
+          <text class="summary-card__title">当前境界：{{ userStore.currentRealm.realmName }}</text>
+          <text class="summary-card__sub">
+            全境界自由学习，完成本境要求后可参加进阶考核突破
+          </text>
+        </view>
+      </view>
+
+      <view class="realm-list">
+        <view v-for="item in userStore.realms" :key="item.realmCode" class="realm-card">
+          <view class="realm-card__head">
+            <view class="realm-card__title-wrap">
+              <view class="realm-card__order realm-card__order--open">
+                <app-icon v-if="item.isCurrent" name="check" size="15" color="#ffffff" />
+                <text v-else>{{ item.realmOrder }}</text>
+              </view>
+              <view>
+                <text class="realm-card__name">{{ item.realmName }}</text>
+                <text class="realm-card__diff">{{ item.difficultyLabel }}</text>
+              </view>
             </view>
-            <view>
-              <text class="realm-card__name">{{ item.realmName }}</text>
-              <text class="realm-card__diff">{{ item.difficultyLabel }}</text>
-            </view>
+
+            <wd-tag v-if="item.isCurrent" type="primary" size="small">当前境界</wd-tag>
+            <wd-tag v-else-if="item.isLower" type="success" variant="light" size="small">
+              已突破 · 可压制
+            </wd-tag>
+            <wd-tag v-else type="info" variant="light" size="small">可跨级学习</wd-tag>
           </view>
 
-          <wd-tag v-if="item.isCurrent" type="primary" size="small">当前境界</wd-tag>
-          <wd-tag v-else-if="item.isLower" type="success" variant="light" size="small">
-            已突破 · 可压制
-          </wd-tag>
-          <wd-tag v-else variant="light" size="small">未解锁</wd-tag>
-        </view>
+          <text v-if="item.description" class="realm-card__desc">{{ item.description }}</text>
 
-        <text v-if="item.description" class="realm-card__desc">{{ item.description }}</text>
-
-        <view v-if="item.realmOrder < 6" class="realm-card__rule">
-          <text>
-            进阶考核：随机抽取 {{ item.examQuestionCount }} 题 · {{ item.examPassScore }} 分及格
-          </text>
-          <text>
-            {{ item.unlockGates > 0 ? `过本境 ${item.unlockGates} 关解锁` : "本境全通后解锁" }}
-          </text>
+          <view v-if="item.realmOrder < 6" class="realm-card__rule">
+            <text>
+              进阶考核：随机抽取 {{ item.examQuestionCount }} 题 · {{ item.examPassScore }} 分及格
+            </text>
+            <text>
+              {{ item.unlockGates > 0 ? `过本境 ${item.unlockGates} 关解锁` : "本境全通后解锁" }}
+            </text>
+          </view>
         </view>
       </view>
-    </view>
+    </template>
   </app-page-shell>
 </template>
 
@@ -67,9 +99,19 @@ definePage({
 });
 
 const userStore = useUserStore();
+const initialLoading = ref(!userStore.homeSummary);
 
-onShow(() => {
-  void userStore.loadHomeSummary(true);
+onShow(async () => {
+  if (!userStore.homeSummary) {
+    initialLoading.value = true;
+  }
+  try {
+    await userStore.loadHomeSummary(true);
+  } catch {
+    // Keep fallback realms
+  } finally {
+    initialLoading.value = false;
+  }
 });
 </script>
 
@@ -124,10 +166,6 @@ onShow(() => {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
   border-radius: 18rpx;
-
-  &--locked {
-    opacity: 0.68;
-  }
 }
 
 .realm-card__head {

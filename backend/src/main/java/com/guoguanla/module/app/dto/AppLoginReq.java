@@ -30,8 +30,9 @@ public class AppLoginReq {
         @NotBlank(message = "昵称不能为空")
         private String nickname;
 
-        private String gradeCode = "g7";
-        private String realmCode = "lianqi";
+        @NotBlank(message = "请选择所在年级")
+        private String gradeCode;
+        private String realmCode;
         private List<Long> guestPassedGateIds;
     }
 

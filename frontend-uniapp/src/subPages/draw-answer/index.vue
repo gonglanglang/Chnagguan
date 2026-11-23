@@ -99,7 +99,17 @@
             :style="{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }"
             :disable-scroll="true"
           />
-          <view v-if="!hasDrawn && !handMode" class="canvas-placeholder">
+          <view v-if="canvasWidth === 0 || canvasHeight === 0" class="canvas-skeleton">
+            <wd-skeleton
+              animation="gradient"
+              :row-col="[
+                { width: '44%', height: '16px' },
+                { width: '78%', height: '14px' },
+                { width: '62%', height: '14px' },
+              ]"
+            />
+          </view>
+          <view v-else-if="!hasDrawn && !handMode" class="canvas-placeholder">
             <text class="canvas-placeholder__text">
               无限纯白画板 · 写至边缘自动扩展 · 双指缩放拖动
             </text>
@@ -1225,6 +1235,17 @@ onUnload(() => {
   width: 100%;
   height: 100%;
   touch-action: none;
+}
+
+.canvas-skeleton {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 28px 48px;
+  pointer-events: none;
+  background: #ffffff;
 }
 
 .canvas-placeholder {

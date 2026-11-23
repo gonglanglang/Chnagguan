@@ -102,12 +102,6 @@ public class AppQuizService {
         AppUser user = userId != null ? userMapper.selectById(userId) : null;
         EduRealm userRealm = realmHelper.resolveUserRealm(user);
         EduRealm targetRealm = realmHelper.findByGradeCode(chapter.getGradeCode());
-        if (targetRealm != null && targetRealm.getRealmOrder() > userRealm.getRealmOrder()) {
-            throw new BizException(
-                    ErrorCode.REALM_LOCKED,
-                    "境界不足：当前为「" + userRealm.getRealmName() + "」，需进阶至「" + targetRealm.getRealmName() + "」方可挑战"
-            );
-        }
         boolean suppressedMode = targetRealm != null && targetRealm.getRealmOrder() < userRealm.getRealmOrder();
 
         Set<Long> guestPassed = req.getGuestPassedGateIds() == null
@@ -453,6 +447,15 @@ public class AppQuizService {
                 })
                 .toList();
         return PageResult.of(records, page.getTotal(), p, s);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void clearMyEssayAnswers() {
+        Long userId = StpAppUtil.getLoginIdAsLong();
+        essayAnswerMapper.delete(
+                new LambdaQueryWrapper<UserEssayAnswer>()
+                        .eq(UserEssayAnswer::getUserId, userId)
+        );
     }
 
     private record EvalOutcome(

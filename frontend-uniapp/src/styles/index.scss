@@ -111,3 +111,12 @@ uni-tabbar,
 .color-text-placeholder {
   color: var(--color-text-placeholder);
 }
+
+// 消除 @wot-ui/ui 骨架屏默认 2s 动画延迟，确保进入加载态即刻显示扫光反馈
+.wd-skeleton--animation-gradient::after {
+  animation-delay: 0s !important;
+}
+
+.wd-skeleton--animation-flashed {
+  animation-delay: 0s !important;
+}

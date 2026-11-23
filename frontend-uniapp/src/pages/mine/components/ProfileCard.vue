@@ -19,7 +19,7 @@
           <text class="profile-card__sub">
             {{
               isLoggedIn
-                ? `${userInfo?.realmName || "练气"} · ${userInfo?.difficultyLabel || ""} · @${userInfo?.username}`
+                ? `${userInfo?.gradeName ? `${userInfo.gradeName} · ` : ""}${userInfo?.realmName || "练气"} · ${userInfo?.difficultyLabel || ""} · @${userInfo?.username}`
                 : "点击登录或注册，同步修仙境界与过关记录"
             }}
           </text>
@@ -75,7 +75,7 @@ const avatarText = computed(() => {
 });
 
 const nextStatusText = computed(() => {
-  if (!props.isLoggedIn || !props.userInfo) return "练气试玩";
+  if (!props.isLoggedIn || !props.userInfo) return "游客试玩";
   if (!props.userInfo.nextRealmName) return "已满境";
   if (props.userInfo.examEligible) return "可进阶";
   return `差 ${props.userInfo.examRemainingGates ?? 0} 关`;

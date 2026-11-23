@@ -113,6 +113,13 @@ public class AppHomeController {
         return Result.ok(quizService.listMyEssayAnswers(pageNum, pageSize, ServletUrlHelper.resolveBaseOrigin(request)));
     }
 
+    @Operation(summary = "清空本人解答题画板作答记录（数据库永久删除）")
+    @DeleteMapping("/user/essay-answers/clear")
+    public Result<Void> clearMyEssayAnswers() {
+        quizService.clearMyEssayAnswers();
+        return Result.ok();
+    }
+
     private Set<Long> parseIds(String csv) {
         if (csv == null || csv.isBlank()) {
             return Set.of();

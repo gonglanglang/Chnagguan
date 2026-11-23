@@ -24,8 +24,25 @@
     >
       <view class="page-body">
       <template v-if="!selectedChapter">
-        <!-- 六大境界 3x2 网格切换（高境可压制至低境，低境锁定） -->
-        <view class="realm-box">
+        <!-- 六大境界 3x2 网格切换（全境界开放自由学习，高境可压制低境，低境可跨级研习） -->
+        <view v-if="showSummarySkeleton" class="realm-box">
+          <view class="realm-box__head">
+            <wd-skeleton animation="gradient" :row-col="[[{ width: '30%', height: '16px' }, { width: '22%', height: '14px' }]]" />
+          </view>
+          <view class="realm-grid">
+            <view v-for="n in 6" :key="n" class="realm-cell">
+              <wd-skeleton
+                animation="gradient"
+                :row-col="[
+                  { width: '62%', height: '14px' },
+                  { width: '78%', height: '11px' },
+                ]"
+              />
+            </view>
+          </view>
+        </view>
+
+        <view v-else class="realm-box">
           <view class="realm-box__head">
             <text class="realm-box__title">修炼境界</text>
             <view class="realm-box__actions">
@@ -49,20 +66,14 @@
               class="realm-cell"
               :class="{
                 'realm-cell--active': viewingRealmCode === r.realmCode,
-                'realm-cell--locked': r.isHigher,
               }"
               @click="selectRealmTab(r)"
             >
               <view class="realm-cell__row">
                 <text class="realm-cell__name">{{ r.realmName }}</text>
-                <app-icon
-                  v-if="r.isHigher"
-                  name="lock"
-                  size="13"
-                  color="muted"
-                />
-                <text v-else-if="r.isCurrent" class="realm-cell__mark">本境</text>
-                <text v-else class="realm-cell__mark">可压</text>
+                <text v-if="r.isCurrent" class="realm-cell__mark">本境</text>
+                <text v-else-if="r.isLower" class="realm-cell__mark">可压</text>
+                <text v-else class="realm-cell__mark">高境</text>
               </view>
               <text class="realm-cell__sub">{{ shortDiff(r.difficultyLabel) }}</text>
             </view>
@@ -74,9 +85,19 @@
             </text>
             <text class="suppress-banner__back" @click="resetToCurrentRealm">回到本境</text>
           </view>
+
+          <view v-else-if="isHigherViewing" class="cross-banner">
+            <text class="cross-banner__text">
+              跨级研习中：当前以「{{ currentRealm.realmName }}」修为挑战「{{ viewingRealm?.realmName }}」内容
+            </text>
+            <text class="cross-banner__back" @click="resetToCurrentRealm">回到本境</text>
+          </view>
         </view>
 
-        <view v-if="userStore.appNotice" class="notice-strip">
+        <view v-if="showSummarySkeleton" class="notice-strip">
+          <wd-skeleton animation="gradient" :row-col="[{ width: '100%', height: '14px' }]" />
+        </view>
+        <view v-else-if="userStore.appNotice" class="notice-strip">
           <app-icon name="notice" size="15" color="primary" />
           <text class="notice-strip__text">{{ userStore.appNotice }}</text>
         </view>
@@ -87,8 +108,20 @@
           <text class="section-sub">共 {{ chapters.length }} 章</text>
         </view>
 
-        <view v-if="loadingChapters" class="loading-box">
-          <wd-loading />
+        <view v-if="showChapterSkeleton" class="chapter-list">
+          <view v-for="n in 4" :key="n" class="chapter-card">
+            <wd-skeleton
+              animation="gradient"
+              :row-col="[
+                [
+                  { type: 'rect', width: '28px', height: '28px', borderRadius: '7px', marginRight: '10px' },
+                  { width: '58%', height: '16px' },
+                  { width: '16%', height: '13px' },
+                ],
+                { width: '100%', height: '6px', borderRadius: '999px' },
+              ]"
+            />
+          </view>
         </view>
 
         <wd-empty
@@ -150,8 +183,20 @@
           </text>
         </view>
 
-        <view v-if="loadingGates" class="loading-box">
-          <wd-loading />
+        <view v-if="loadingGates && gates.length === 0" class="gate-list">
+          <view v-for="n in 4" :key="n" class="gate-card">
+            <wd-skeleton
+              animation="gradient"
+              :row-col="[
+                [
+                  { type: 'rect', width: '33px', height: '33px', borderRadius: '8px', marginRight: '10px' },
+                  { width: '50%', height: '16px' },
+                  { width: '56px', height: '28px', borderRadius: '8px' },
+                ],
+                { width: '48%', height: '12px' },
+              ]"
+            />
+          </view>
         </view>
 
         <wd-empty
@@ -245,10 +290,13 @@ const userStore = useUserStore();
 const toast = useToast();
 
 const viewingRealmCode = ref<string>("lianqi");
-const manualSuppress = ref(false);
+const manualRealmSelected = ref(false);
+const lastKnownUserRealmCode = ref<string>("lianqi");
+const lastLoadedChaptersRealm = ref<string>("");
 const selectedChapter = ref<ChapterCard | null>(null);
 const chapters = ref<ChapterCard[]>([]);
 const gates = ref<GateCard[]>([]);
+const loadingSummary = ref(!userStore.homeSummary);
 const loadingChapters = ref(false);
 const loadingGates = ref(false);
 const currentScrollY = ref(0);
@@ -276,6 +324,18 @@ const isSuppressedViewing = computed(() => {
   return (viewingRealm.value?.realmOrder ?? 1) < (currentRealm.value?.realmOrder ?? 1);
 });
 
+const isHigherViewing = computed(() => {
+  return (viewingRealm.value?.realmOrder ?? 1) > (currentRealm.value?.realmOrder ?? 1);
+});
+
+const showSummarySkeleton = computed(() => loadingSummary.value && !userStore.homeSummary);
+
+const showChapterSkeleton = computed(
+  () =>
+    loadingChapters.value &&
+    (chapters.value.length === 0 || lastLoadedChaptersRealm.value !== viewingRealmCode.value),
+);
+
 const navTitle = computed(() => {
   if (selectedChapter.value) return selectedChapter.value.name;
   return "过关啦";
@@ -301,7 +361,9 @@ function activeGuestIds(): number[] | undefined {
 async function fetchChapters(realmCode: string): Promise<void> {
   loadingChapters.value = true;
   try {
-    chapters.value = await AppBankAPI.getChaptersByRealm(realmCode, activeGuestIds());
+    const res = await AppBankAPI.getChaptersByRealm(realmCode, activeGuestIds());
+    chapters.value = res;
+    lastLoadedChaptersRealm.value = realmCode;
   } catch (err) {
     toast.error(getErrorMessage(err, "加载章节失败"));
   } finally {
@@ -321,17 +383,22 @@ async function fetchGates(chapterId: number): Promise<void> {
 }
 
 async function refreshPage(): Promise<void> {
+  if (!userStore.homeSummary) {
+    loadingSummary.value = true;
+  }
   try {
     await userStore.loadHomeSummary(true);
   } catch {
     // Keep cached summary
+  } finally {
+    loadingSummary.value = false;
   }
   const active = currentRealm.value.realmCode;
-  const viewingOrder = viewingRealm.value?.realmOrder ?? 1;
-  if (!manualSuppress.value || viewingOrder > currentRealm.value.realmOrder) {
+  if (!manualRealmSelected.value || lastKnownUserRealmCode.value !== active) {
     viewingRealmCode.value = active;
-    manualSuppress.value = false;
+    manualRealmSelected.value = false;
   }
+  lastKnownUserRealmCode.value = active;
   if (selectedChapter.value) {
     await fetchGates(selectedChapter.value.id);
   } else {
@@ -340,27 +407,20 @@ async function refreshPage(): Promise<void> {
 }
 
 function selectRealmTab(realm: RealmItem): void {
-  if (realm.isHigher) {
-    toast.info(`境界不足，需先进阶至「${realm.realmName}」后方可挑战`);
-    return;
-  }
   viewingRealmCode.value = realm.realmCode;
-  manualSuppress.value = realm.realmOrder < currentRealm.value.realmOrder;
+  manualRealmSelected.value = realm.realmCode !== currentRealm.value.realmCode;
   void fetchChapters(realm.realmCode);
 }
 
 function resetToCurrentRealm(): void {
-  manualSuppress.value = false;
+  manualRealmSelected.value = false;
   viewingRealmCode.value = currentRealm.value.realmCode;
   void fetchChapters(viewingRealmCode.value);
 }
 
 async function enterChapter(chapter: ChapterCard): Promise<void> {
-  if (chapter.lockedByRealm) {
-    toast.info("当前境界不足，请先完成当前境界进阶考核");
-    return;
-  }
   selectedChapter.value = chapter;
+  gates.value = [];
   resetScroll();
   await fetchGates(chapter.id);
 }
@@ -372,10 +432,6 @@ function exitChapter(): void {
 }
 
 function startGateQuiz(gate: GateCard): void {
-  if (gate.lockedByRealm) {
-    toast.info("境界不足，请先通过当前境界进阶考核");
-    return;
-  }
   if (gate.empty) {
     toast.info("该关卡题目整理中，敬请期待");
     return;
@@ -502,10 +558,6 @@ onShow(() => {
       color: var(--color-primary);
     }
   }
-
-  &--locked {
-    opacity: 0.6;
-  }
 }
 
 .realm-cell__row {
@@ -554,6 +606,30 @@ onShow(() => {
   color: var(--color-primary);
 }
 
+.cross-banner {
+  display: flex;
+  gap: 12rpx;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14rpx 18rpx;
+  margin-top: 16rpx;
+  background: var(--color-primary-soft);
+  border-radius: 12rpx;
+}
+
+.cross-banner__text {
+  flex: 1;
+  font-size: 22rpx;
+  color: var(--color-primary);
+}
+
+.cross-banner__back {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
 .notice-strip {
   display: flex;
   gap: 12rpx;
@@ -588,12 +664,6 @@ onShow(() => {
 .section-sub {
   font-size: 23rpx;
   color: var(--color-text-muted);
-}
-
-.loading-box {
-  display: flex;
-  justify-content: center;
-  padding: 80rpx 0;
 }
 
 .chapter-list {

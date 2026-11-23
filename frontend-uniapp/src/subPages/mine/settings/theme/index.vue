@@ -1,5 +1,57 @@
 <template>
   <app-page-shell title="主题设置">
+    <template v-if="initialLoading">
+      <view class="theme-sk-card">
+        <wd-skeleton
+          animation="gradient"
+          :row-col="[
+            { width: '28%', height: '14px' },
+            [{ width: '32%', height: '16px' }, { width: '48px', height: '26px', borderRadius: '999px' }],
+          ]"
+        />
+      </view>
+
+      <view class="theme-sk-card mt-24rpx">
+        <wd-skeleton
+          animation="gradient"
+          :row-col="[
+            { width: '28%', height: '14px' },
+            [
+              { width: '32%', height: '16px' },
+              { type: 'circle', width: '24px', height: '24px' },
+              { type: 'circle', width: '24px', height: '24px' },
+              { type: 'circle', width: '24px', height: '24px' },
+              { type: 'circle', width: '24px', height: '24px' },
+            ],
+            [{ width: '32%', height: '16px' }, { width: '30%', height: '16px' }],
+            [{ width: '32%', height: '16px' }, { width: '16%', height: '16px' }],
+          ]"
+        />
+      </view>
+
+      <view class="theme-sk-card mt-24rpx">
+        <wd-skeleton
+          animation="gradient"
+          :row-col="[
+            { width: '28%', height: '14px' },
+            [
+              { width: '28%', height: '30px', borderRadius: '8px' },
+              { width: '26%', height: '18px' },
+              { width: '20%', height: '24px', borderRadius: '6px' },
+            ],
+          ]"
+        />
+      </view>
+
+      <view class="mt-32rpx">
+        <wd-skeleton
+          animation="gradient"
+          :row-col="[{ width: '100%', height: '44px', borderRadius: '10px' }]"
+        />
+      </view>
+    </template>
+
+    <template v-else>
     <!-- 暗黑模式设置 -->
     <wd-cell-group title="外观模式" border>
       <wd-cell title="暗黑模式" :value="isDark ? '已开启' : '已关闭'">
@@ -114,6 +166,7 @@
         </view>
       </view>
     </wd-popup>
+    </template>
   </app-page-shell>
 </template>
 
@@ -135,6 +188,17 @@ const { isDark, themeColorOptions, toggleThemeMode, setThemeColor, selectedTheme
 
 const toast = useToast();
 const { confirm } = useDialog();
+const initialLoading = ref(true);
+
+onReady(() => {
+  initialLoading.value = false;
+});
+
+onMounted(() => {
+  setTimeout(() => {
+    initialLoading.value = false;
+  }, 180);
+});
 
 // 自定义颜色输入
 const customColor = ref("");
@@ -201,6 +265,12 @@ onShow(() => {
 </script>
 
 <style lang="scss" scoped>
+.theme-sk-card {
+  padding: 24rpx 28rpx;
+  background: var(--color-bg-card);
+  border-radius: 16rpx;
+}
+
 .color-option {
   display: flex;
   align-items: center;
