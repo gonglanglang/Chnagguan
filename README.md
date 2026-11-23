@@ -12,6 +12,7 @@
 | [docs/03-数据库与接口规划.md](./docs/03-数据库与接口规划.md) | MySQL 表结构设计、API 契约与动态出题引擎方案 |
 | [docs/04-UI框架选型对比.md](./docs/04-UI框架选型对比.md) | UniApp 与管理后台 UI 框架选型对比与最终确认记录 |
 | `backend/` | Java 后端项目目录（Spring Boot 3 + MyBatis-Plus） |
+| `frontend-flutter/` | **Flutter + WelkUI 学生端 App 目录**（Flutter 3.50+ / Dart 3.14 / `welkui_flutter`） |
 | `frontend-uniapp/` | UniApp 学生端目录（`vue-uniapp-template` + `@wot-ui/ui` v2 + Vue 3 + TS） |
 | `frontend-admin/` | Web 管理后台目录（`pure-admin-thin` + Vue 3 + TS + Element Plus） |
 | `scripts/` | 题库迁移与运维辅助脚本目录 |

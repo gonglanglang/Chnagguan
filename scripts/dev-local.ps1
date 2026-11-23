@@ -1,7 +1,7 @@
 ﻿param(
   [ValidateSet("start", "stop", "status")]
   [string]$Action = "start",
-  [ValidateSet("all", "backend", "admin", "uniapp")]
+  [ValidateSet("all", "backend", "admin", "uniapp", "flutter")]
   [string]$Target = "all"
 )
 
@@ -37,6 +37,15 @@ $Services = @(
     WorkDir = Join-Path $RepoRoot "frontend-uniapp"
     Cmd = "pnpm.cmd"
     Args = @("dev:h5")
+  },
+  @{
+    Key = "flutter"
+    Name = "学生端 App 预览 (Flutter + WelkUI)"
+    Port = 5175
+    Url = "http://127.0.0.1:5175/"
+    WorkDir = $RepoRoot
+    Cmd = "node.exe"
+    Args = @("scripts/serve-flutter-web.mjs")
   }
 )
 
@@ -86,15 +95,19 @@ function Show-Status() {
   }
 }
 
-function Ensure-JavaHome() {
+function Ensure-ToolPaths() {
   $jdk21 = "C:\Program Files\Java\jdk-21"
   if (Test-Path (Join-Path $jdk21 "bin\java.exe")) {
     $env:JAVA_HOME = $jdk21
     $env:Path = (Join-Path $jdk21 "bin") + ";" + $env:Path
   }
+  $flutterBin = "D:\flutter\bin"
+  if ((Test-Path (Join-Path $flutterBin "flutter.bat")) -and ($env:Path -notlike "*$flutterBin*")) {
+    $env:Path = "$flutterBin;" + $env:Path
+  }
 }
 
-$Selected = if ($Target -eq "all") { $Services } else { $Services | Where-Object { $_.Key -eq $Target } }
+$Selected = if ($Target -eq "all") { $Services | Where-Object { $_.Key -ne "flutter" } } else { $Services | Where-Object { $_.Key -eq $Target } }
 
 if ($Action -eq "status") {
   Show-Status
@@ -122,7 +135,7 @@ if ($Action -eq "stop") {
 }
 
 # Action = start
-Ensure-JavaHome
+Ensure-ToolPaths
 New-Item -ItemType Directory -Path $StateDir -Force | Out-Null
 $savedPids = Load-SavedPids
 
@@ -131,6 +144,19 @@ foreach ($svc in $Selected) {
     $localCfg = Join-Path $svc.WorkDir "application-local.yml"
     if (-not (Test-Path $localCfg)) {
       Write-Warning "缺少 $localCfg，若本机 MySQL 有密码请从 src\main\resources\application-local.yml.example 复制配置。"
+    }
+  }
+
+  if ($svc.Key -eq "flutter") {
+    $webIndex = Join-Path $RepoRoot "frontend-flutter\build\web\index.html"
+    if (-not (Test-Path $webIndex)) {
+      Write-Host "[BUILD] 首次启动自动构建 frontend-flutter Web 预览包..."
+      Push-Location (Join-Path $RepoRoot "frontend-flutter")
+      try {
+        & flutter.bat build web --dart-define=API_BASE_URL=http://localhost:8080/api
+      } finally {
+        Pop-Location
+      }
     }
   }
 

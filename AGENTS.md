@@ -18,8 +18,8 @@
 | 模块 | 技术选型 | 状态 |
 |---|---|---|
 | **Java 后端** (`backend/`) | Spring Boot 3.3.5 (JDK 17+ / 本机 JDK 21) + MyBatis-Plus + MySQL 8.0 + Sa-Token JWT + Rhino 沙箱 + Knife4j | **已初始化并可运行** |
-| **学生端** (`frontend-uniapp/`) | 基于 **`vue-uniapp-template` (`youlai-app`)**（UniApp + Vue 3 + TypeScript + Vite + Pinia + UnoCSS）改造 | **已运行并可构建** |
-| **学生端 UI 框架** | **`@wot-ui/ui`（Wot Design Uni v2）**，极简 `#F6F7F9` 画布 + `#0284C7` 天青蓝默认主色 | **已锁定确认** |
+| **学生端 App（新版）** (`frontend-flutter/`) | **Flutter 3.50+ (Dart 3.14) + `welkui_flutter` (WelkUI)** + Provider + Dio（全量 15 页、手写画板、视频课堂、热更新） | **已重构并可运行/构建** |
+| **学生端（原 UniApp）** (`frontend-uniapp/`) | 基于 **`vue-uniapp-template` (`youlai-app`)** + `@wot-ui/ui`（保留用于微信小程序与历史对照） | **已运行并可构建** |
 | **管理后台** (`frontend-admin/`) | 基于开源 **`pure-admin-thin` v6.2.0**（Vue 3 + TS + Element Plus）改造精简（4 个通俗核心模块） | **已运行并可构建** |
 
 > ✅ **境界规则说明**：全境界题库开放自由学习（不限制低境界学习高境界内容）；同时保留高境界压制境界重温低境界、进阶考核晋升以及后台调整学生境界与进阶配置能力。
@@ -41,7 +41,8 @@ guoguanla/
 │   ├── 04-UI框架选型对比.md           # UniApp & Admin UI 组件库选型对比
 │   └── 05-迭代任务与发版规划.md       # 每次新会话必读的任务编号台账、开发规划与发版记录
 ├── backend/                          # Spring Boot 3 Java 服务端
-├── frontend-uniapp/                  # UniApp 学生端（微信小程序 / H5 / App）
+├── frontend-flutter/                 # Flutter + WelkUI 学生端 App（Android / iOS / Web 预览）
+├── frontend-uniapp/                  # UniApp 学生端（微信小程序 / H5 / 历史 App 对照）
 ├── frontend-admin/                   # Web 管理后台（用户信息、题库、视频、版本与境界配置）
 ├── frontend-download/                # App 官方下载页（对接阿里云 OSS 与版本接口）
 └── scripts/                          # 题库迁移脚本与本地一键启动脚本 (dev-local.ps1)

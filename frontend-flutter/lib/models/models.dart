@@ -1,0 +1,1201 @@
+int _asInt(dynamic v, [int fallback = 0]) {
+  if (v == null) return fallback;
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  return int.tryParse(v.toString()) ?? fallback;
+}
+
+int? _asNullableInt(dynamic v) {
+  if (v == null) return null;
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  return int.tryParse(v.toString());
+}
+
+bool _asBool(dynamic v, [bool fallback = false]) {
+  if (v == null) return fallback;
+  if (v is bool) return v;
+  if (v is num) return v != 0;
+  final s = v.toString().toLowerCase();
+  if (s == 'true' || s == '1') return true;
+  if (s == 'false' || s == '0') return false;
+  return fallback;
+}
+
+String _asString(dynamic v, [String fallback = '']) {
+  if (v == null) return fallback;
+  return v.toString();
+}
+
+String? _asNullableString(dynamic v) {
+  if (v == null) return null;
+  return v.toString();
+}
+
+List<String> _asStringList(dynamic v) {
+  if (v is List) {
+    return v.map((e) => e?.toString() ?? '').toList();
+  }
+  return const [];
+}
+
+class PageResult<T> {
+  const PageResult({
+    required this.total,
+    required this.pageNum,
+    required this.pageSize,
+    required this.records,
+  });
+
+  final int total;
+  final int pageNum;
+  final int pageSize;
+  final List<T> records;
+
+  factory PageResult.fromJson(
+    Map<String, dynamic> json,
+    T Function(Map<String, dynamic>) itemParser,
+  ) {
+    final rawList = json['records'] as List<dynamic>? ?? const [];
+    return PageResult<T>(
+      total: _asInt(json['total']),
+      pageNum: _asInt(json['pageNum'], 1),
+      pageSize: _asInt(json['pageSize'], 10),
+      records: rawList
+          .whereType<Map<String, dynamic>>()
+          .map(itemParser)
+          .toList(),
+    );
+  }
+}
+
+class LevelProgress {
+  const LevelProgress({
+    required this.levelId,
+    required this.icon,
+    required this.levelName,
+    required this.quote,
+    required this.minGates,
+    this.nextMinGates,
+    this.nextIcon,
+    this.nextLevelName,
+  });
+
+  final int levelId;
+  final String icon;
+  final String levelName;
+  final String quote;
+  final int minGates;
+  final int? nextMinGates;
+  final String? nextIcon;
+  final String? nextLevelName;
+
+  factory LevelProgress.fromJson(Map<String, dynamic> json) {
+    return LevelProgress(
+      levelId: _asInt(json['levelId']),
+      icon: _asString(json['icon']),
+      levelName: _asString(json['levelName']),
+      quote: _asString(json['quote']),
+      minGates: _asInt(json['minGates']),
+      nextMinGates: _asNullableInt(json['nextMinGates']),
+      nextIcon: _asNullableString(json['nextIcon']),
+      nextLevelName: _asNullableString(json['nextLevelName']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'levelId': levelId,
+        'icon': icon,
+        'levelName': levelName,
+        'quote': quote,
+        'minGates': minGates,
+        'nextMinGates': nextMinGates,
+        'nextIcon': nextIcon,
+        'nextLevelName': nextLevelName,
+      };
+}
+
+class RealmItem {
+  const RealmItem({
+    required this.realmCode,
+    required this.realmName,
+    required this.realmOrder,
+    required this.gradeCode,
+    required this.difficultyLabel,
+    required this.description,
+    required this.unlockGates,
+    required this.examQuestionCount,
+    required this.examPassScore,
+    required this.chapterCount,
+    required this.gateCount,
+    required this.passedGateCount,
+    required this.unlocked,
+    required this.isCurrent,
+    required this.isLower,
+    required this.isHigher,
+    required this.examEligible,
+    required this.examRemainingGates,
+  });
+
+  final String realmCode;
+  final String realmName;
+  final int realmOrder;
+  final String gradeCode;
+  final String difficultyLabel;
+  final String description;
+  final int unlockGates;
+  final int examQuestionCount;
+  final int examPassScore;
+  final int chapterCount;
+  final int gateCount;
+  final int passedGateCount;
+  final bool unlocked;
+  final bool isCurrent;
+  final bool isLower;
+  final bool isHigher;
+  final bool examEligible;
+  final int examRemainingGates;
+
+  factory RealmItem.fromJson(Map<String, dynamic> json) {
+    return RealmItem(
+      realmCode: _asString(json['realmCode'], 'lianqi'),
+      realmName: _asString(json['realmName'], '练气'),
+      realmOrder: _asInt(json['realmOrder'], 1),
+      gradeCode: _asString(json['gradeCode'], 'g7'),
+      difficultyLabel: _asString(json['difficultyLabel']),
+      description: _asString(json['description']),
+      unlockGates: _asInt(json['unlockGates']),
+      examQuestionCount: _asInt(json['examQuestionCount'], 5),
+      examPassScore: _asInt(json['examPassScore'], 60),
+      chapterCount: _asInt(json['chapterCount']),
+      gateCount: _asInt(json['gateCount']),
+      passedGateCount: _asInt(json['passedGateCount']),
+      unlocked: _asBool(json['unlocked'], true),
+      isCurrent: _asBool(json['isCurrent']),
+      isLower: _asBool(json['isLower']),
+      isHigher: _asBool(json['isHigher']),
+      examEligible: _asBool(json['examEligible']),
+      examRemainingGates: _asInt(json['examRemainingGates']),
+    );
+  }
+
+  static const List<RealmItem> defaults = <RealmItem>[
+    RealmItem(
+      realmCode: 'lianqi',
+      realmName: '练气',
+      realmOrder: 1,
+      gradeCode: 'g7',
+      difficultyLabel: '难度一 · 基础',
+      description: '初一数学基础修炼',
+      unlockGates: 0,
+      examQuestionCount: 5,
+      examPassScore: 60,
+      chapterCount: 10,
+      gateCount: 40,
+      passedGateCount: 0,
+      unlocked: true,
+      isCurrent: true,
+      isLower: false,
+      isHigher: false,
+      examEligible: false,
+      examRemainingGates: 40,
+    ),
+    RealmItem(
+      realmCode: 'zhuji',
+      realmName: '筑基',
+      realmOrder: 2,
+      gradeCode: 'g8',
+      difficultyLabel: '难度二 · 入门',
+      description: '初二数学核心夯实',
+      unlockGates: 0,
+      examQuestionCount: 5,
+      examPassScore: 60,
+      chapterCount: 10,
+      gateCount: 40,
+      passedGateCount: 0,
+      unlocked: true,
+      isCurrent: false,
+      isLower: false,
+      isHigher: true,
+      examEligible: false,
+      examRemainingGates: 40,
+    ),
+    RealmItem(
+      realmCode: 'jiedan',
+      realmName: '结丹',
+      realmOrder: 3,
+      gradeCode: 'g9',
+      difficultyLabel: '难度三 · 提升',
+      description: '初三数学综合进阶',
+      unlockGates: 0,
+      examQuestionCount: 6,
+      examPassScore: 70,
+      chapterCount: 9,
+      gateCount: 36,
+      passedGateCount: 0,
+      unlocked: true,
+      isCurrent: false,
+      isLower: false,
+      isHigher: true,
+      examEligible: false,
+      examRemainingGates: 36,
+    ),
+    RealmItem(
+      realmCode: 'jiaying',
+      realmName: '假婴',
+      realmOrder: 4,
+      gradeCode: 'h1',
+      difficultyLabel: '难度四 · 强化',
+      description: '高一数学思维强化',
+      unlockGates: 0,
+      examQuestionCount: 6,
+      examPassScore: 70,
+      chapterCount: 10,
+      gateCount: 40,
+      passedGateCount: 0,
+      unlocked: true,
+      isCurrent: false,
+      isLower: false,
+      isHigher: true,
+      examEligible: false,
+      examRemainingGates: 40,
+    ),
+    RealmItem(
+      realmCode: 'yuanying',
+      realmName: '元婴',
+      realmOrder: 5,
+      gradeCode: 'h2',
+      difficultyLabel: '难度五 · 高阶',
+      description: '高二数学高阶突破',
+      unlockGates: 0,
+      examQuestionCount: 8,
+      examPassScore: 75,
+      chapterCount: 8,
+      gateCount: 32,
+      passedGateCount: 0,
+      unlocked: true,
+      isCurrent: false,
+      isLower: false,
+      isHigher: true,
+      examEligible: false,
+      examRemainingGates: 32,
+    ),
+    RealmItem(
+      realmCode: 'huashen',
+      realmName: '化神',
+      realmOrder: 6,
+      gradeCode: 'h3',
+      difficultyLabel: '难度六 · 巅峰',
+      description: '高三综合专题冲刺',
+      unlockGates: 0,
+      examQuestionCount: 8,
+      examPassScore: 80,
+      chapterCount: 4,
+      gateCount: 16,
+      passedGateCount: 0,
+      unlocked: true,
+      isCurrent: false,
+      isLower: false,
+      isHigher: true,
+      examEligible: false,
+      examRemainingGates: 16,
+    ),
+  ];
+}
+
+class AppUserProfile {
+  const AppUserProfile({
+    required this.id,
+    required this.username,
+    required this.nickname,
+    required this.avatarUrl,
+    required this.gradeCode,
+    required this.gradeName,
+    required this.realmCode,
+    required this.realmName,
+    required this.realmOrder,
+    required this.difficultyLabel,
+    this.nextRealmCode,
+    this.nextRealmName,
+    required this.realmPassedGates,
+    required this.realmTotalGates,
+    required this.examUnlockGates,
+    required this.examRemainingGates,
+    required this.examEligible,
+    required this.examQuestionCount,
+    required this.examPassScore,
+    required this.passedGateCount,
+    this.level,
+  });
+
+  final int id;
+  final String username;
+  final String nickname;
+  final String avatarUrl;
+  final String gradeCode;
+  final String gradeName;
+  final String realmCode;
+  final String realmName;
+  final int realmOrder;
+  final String difficultyLabel;
+  final String? nextRealmCode;
+  final String? nextRealmName;
+  final int realmPassedGates;
+  final int realmTotalGates;
+  final int examUnlockGates;
+  final int examRemainingGates;
+  final bool examEligible;
+  final int examQuestionCount;
+  final int examPassScore;
+  final int passedGateCount;
+  final LevelProgress? level;
+
+  factory AppUserProfile.fromJson(Map<String, dynamic> json) {
+    return AppUserProfile(
+      id: _asInt(json['id']),
+      username: _asString(json['username']),
+      nickname: _asString(json['nickname']),
+      avatarUrl: _asString(json['avatarUrl']),
+      gradeCode: _asString(json['gradeCode'], 'g7'),
+      gradeName: _asString(json['gradeName']),
+      realmCode: _asString(json['realmCode'], 'lianqi'),
+      realmName: _asString(json['realmName'], '练气'),
+      realmOrder: _asInt(json['realmOrder'], 1),
+      difficultyLabel: _asString(json['difficultyLabel']),
+      nextRealmCode: _asNullableString(json['nextRealmCode']),
+      nextRealmName: _asNullableString(json['nextRealmName']),
+      realmPassedGates: _asInt(json['realmPassedGates']),
+      realmTotalGates: _asInt(json['realmTotalGates']),
+      examUnlockGates: _asInt(json['examUnlockGates']),
+      examRemainingGates: _asInt(json['examRemainingGates']),
+      examEligible: _asBool(json['examEligible']),
+      examQuestionCount: _asInt(json['examQuestionCount'], 5),
+      examPassScore: _asInt(json['examPassScore'], 60),
+      passedGateCount: _asInt(json['passedGateCount']),
+      level: json['level'] is Map<String, dynamic>
+          ? LevelProgress.fromJson(json['level'] as Map<String, dynamic>)
+          : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'username': username,
+        'nickname': nickname,
+        'avatarUrl': avatarUrl,
+        'gradeCode': gradeCode,
+        'gradeName': gradeName,
+        'realmCode': realmCode,
+        'realmName': realmName,
+        'realmOrder': realmOrder,
+        'difficultyLabel': difficultyLabel,
+        'nextRealmCode': nextRealmCode,
+        'nextRealmName': nextRealmName,
+        'realmPassedGates': realmPassedGates,
+        'realmTotalGates': realmTotalGates,
+        'examUnlockGates': examUnlockGates,
+        'examRemainingGates': examRemainingGates,
+        'examEligible': examEligible,
+        'examQuestionCount': examQuestionCount,
+        'examPassScore': examPassScore,
+        'passedGateCount': passedGateCount,
+        'level': level?.toJson(),
+      };
+}
+
+class AuthResult {
+  const AuthResult({required this.token, required this.profile});
+
+  final String token;
+  final AppUserProfile profile;
+
+  factory AuthResult.fromJson(Map<String, dynamic> json) {
+    return AuthResult(
+      token: _asString(json['token']),
+      profile: AppUserProfile.fromJson(
+        (json['profile'] as Map<String, dynamic>?) ?? const {},
+      ),
+    );
+  }
+}
+
+class GradeItem {
+  const GradeItem({
+    required this.gradeCode,
+    required this.gradeName,
+    required this.icon,
+    required this.chapterCount,
+  });
+
+  final String gradeCode;
+  final String gradeName;
+  final String icon;
+  final int chapterCount;
+
+  factory GradeItem.fromJson(Map<String, dynamic> json) {
+    return GradeItem(
+      gradeCode: _asString(json['gradeCode']),
+      gradeName: _asString(json['gradeName']),
+      icon: _asString(json['icon']),
+      chapterCount: _asInt(json['chapterCount']),
+    );
+  }
+
+  static const List<GradeItem> fallbacks = <GradeItem>[
+    GradeItem(gradeCode: 'g7', gradeName: '初一', icon: '🌱', chapterCount: 10),
+    GradeItem(gradeCode: 'g8', gradeName: '初二', icon: '🌿', chapterCount: 10),
+    GradeItem(gradeCode: 'g9', gradeName: '初三', icon: '🌳', chapterCount: 9),
+    GradeItem(gradeCode: 'h1', gradeName: '高一', icon: '🍃', chapterCount: 10),
+    GradeItem(gradeCode: 'h2', gradeName: '高二', icon: '🌲', chapterCount: 8),
+    GradeItem(gradeCode: 'h3', gradeName: '高三', icon: '🎯', chapterCount: 4),
+  ];
+}
+
+class HomeSummary {
+  const HomeSummary({
+    required this.guestModeEnabled,
+    required this.appNotice,
+    this.profile,
+    required this.grades,
+    required this.realms,
+  });
+
+  final bool guestModeEnabled;
+  final String appNotice;
+  final AppUserProfile? profile;
+  final List<GradeItem> grades;
+  final List<RealmItem> realms;
+
+  factory HomeSummary.fromJson(Map<String, dynamic> json) {
+    final gradesRaw = json['grades'] as List<dynamic>? ?? const [];
+    final realmsRaw = json['realms'] as List<dynamic>? ?? const [];
+    return HomeSummary(
+      guestModeEnabled: _asBool(json['guestModeEnabled'], true),
+      appNotice: _asString(json['appNotice']),
+      profile: json['profile'] is Map<String, dynamic>
+          ? AppUserProfile.fromJson(json['profile'] as Map<String, dynamic>)
+          : null,
+      grades: gradesRaw
+          .whereType<Map<String, dynamic>>()
+          .map(GradeItem.fromJson)
+          .toList(),
+      realms: realmsRaw
+          .whereType<Map<String, dynamic>>()
+          .map(RealmItem.fromJson)
+          .toList(),
+    );
+  }
+}
+
+class ChapterCard {
+  const ChapterCard({
+    required this.id,
+    required this.chapterCode,
+    required this.gradeCode,
+    required this.realmCode,
+    required this.realmName,
+    required this.realmOrder,
+    required this.name,
+    required this.description,
+    required this.isCustom,
+    required this.passedCount,
+    required this.totalGates,
+    required this.lockedByRealm,
+    required this.suppressed,
+  });
+
+  final int id;
+  final String chapterCode;
+  final String gradeCode;
+  final String realmCode;
+  final String realmName;
+  final int realmOrder;
+  final String name;
+  final String description;
+  final int isCustom;
+  final int passedCount;
+  final int totalGates;
+  final bool lockedByRealm;
+  final bool suppressed;
+
+  factory ChapterCard.fromJson(Map<String, dynamic> json) {
+    return ChapterCard(
+      id: _asInt(json['id']),
+      chapterCode: _asString(json['chapterCode']),
+      gradeCode: _asString(json['gradeCode']),
+      realmCode: _asString(json['realmCode']),
+      realmName: _asString(json['realmName']),
+      realmOrder: _asInt(json['realmOrder'], 1),
+      name: _asString(json['name']),
+      description: _asString(json['description']),
+      isCustom: _asInt(json['isCustom']),
+      passedCount: _asInt(json['passedCount']),
+      totalGates: _asInt(json['totalGates'], 4),
+      lockedByRealm: _asBool(json['lockedByRealm']),
+      suppressed: _asBool(json['suppressed']),
+    );
+  }
+}
+
+class GateCard {
+  const GateCard({
+    required this.id,
+    required this.chapterId,
+    required this.gateIndex,
+    required this.gateName,
+    required this.star,
+    required this.questionCount,
+    required this.passCount,
+    required this.passed,
+    required this.locked,
+    required this.lockedByRealm,
+    required this.suppressed,
+    required this.empty,
+  });
+
+  final int id;
+  final int chapterId;
+  final int gateIndex;
+  final String gateName;
+  final int star;
+  final int questionCount;
+  final int passCount;
+  final bool passed;
+  final bool locked;
+  final bool lockedByRealm;
+  final bool suppressed;
+  final bool empty;
+
+  factory GateCard.fromJson(Map<String, dynamic> json) {
+    return GateCard(
+      id: _asInt(json['id']),
+      chapterId: _asInt(json['chapterId']),
+      gateIndex: _asInt(json['gateIndex']),
+      gateName: _asString(json['gateName']),
+      star: _asInt(json['star'], 1),
+      questionCount: _asInt(json['questionCount']),
+      passCount: _asInt(json['passCount']),
+      passed: _asBool(json['passed']),
+      locked: _asBool(json['locked']),
+      lockedByRealm: _asBool(json['lockedByRealm']),
+      suppressed: _asBool(json['suppressed']),
+      empty: _asBool(json['empty']),
+    );
+  }
+}
+
+class ClientQuestionItem {
+  const ClientQuestionItem({
+    required this.itemIndex,
+    required this.questionFormat,
+    required this.stem,
+    required this.options,
+  });
+
+  final int itemIndex;
+  final String questionFormat;
+  final String stem;
+  final List<String> options;
+
+  bool get isEssay => questionFormat == 'ESSAY';
+
+  factory ClientQuestionItem.fromJson(Map<String, dynamic> json) {
+    return ClientQuestionItem(
+      itemIndex: _asInt(json['itemIndex']),
+      questionFormat: _asString(json['questionFormat'], 'SINGLE_CHOICE'),
+      stem: _asString(json['stem']),
+      options: _asStringList(json['options']),
+    );
+  }
+}
+
+class QuizStartResult {
+  const QuizStartResult({
+    required this.sessionNo,
+    required this.mode,
+    this.realmCode,
+    this.realmName,
+    this.realmOrder,
+    required this.suppressedMode,
+    this.passScore,
+    this.chapterId,
+    required this.chapterName,
+    this.gateId,
+    required this.gateName,
+    this.star,
+    required this.passCount,
+    required this.totalCount,
+    required this.guestMode,
+    required this.items,
+  });
+
+  final String sessionNo;
+  final String mode;
+  final String? realmCode;
+  final String? realmName;
+  final int? realmOrder;
+  final bool suppressedMode;
+  final int? passScore;
+  final int? chapterId;
+  final String chapterName;
+  final int? gateId;
+  final String gateName;
+  final int? star;
+  final int passCount;
+  final int totalCount;
+  final bool guestMode;
+  final List<ClientQuestionItem> items;
+
+  factory QuizStartResult.fromJson(Map<String, dynamic> json) {
+    final itemsRaw = json['items'] as List<dynamic>? ?? const [];
+    return QuizStartResult(
+      sessionNo: _asString(json['sessionNo']),
+      mode: _asString(json['mode'], 'GATE'),
+      realmCode: _asNullableString(json['realmCode']),
+      realmName: _asNullableString(json['realmName']),
+      realmOrder: _asNullableInt(json['realmOrder']),
+      suppressedMode: _asBool(json['suppressedMode']),
+      passScore: _asNullableInt(json['passScore']),
+      chapterId: _asNullableInt(json['chapterId']),
+      chapterName: _asString(json['chapterName']),
+      gateId: _asNullableInt(json['gateId']),
+      gateName: _asString(json['gateName']),
+      star: _asNullableInt(json['star']),
+      passCount: _asInt(json['passCount']),
+      totalCount: _asInt(json['totalCount']),
+      guestMode: _asBool(json['guestMode']),
+      items: itemsRaw
+          .whereType<Map<String, dynamic>>()
+          .map(ClientQuestionItem.fromJson)
+          .toList(),
+    );
+  }
+}
+
+class CheckItemResult {
+  const CheckItemResult({
+    required this.itemIndex,
+    this.questionFormat,
+    required this.correct,
+    required this.correctIndex,
+    this.referenceAnswer,
+    this.answerText,
+    this.answerImageUrl,
+    this.selfCorrect,
+    required this.pendingReview,
+    required this.analysis,
+  });
+
+  final int itemIndex;
+  final String? questionFormat;
+  final bool correct;
+  final int correctIndex;
+  final String? referenceAnswer;
+  final String? answerText;
+  final String? answerImageUrl;
+  final bool? selfCorrect;
+  final bool pendingReview;
+  final String analysis;
+
+  factory CheckItemResult.fromJson(Map<String, dynamic> json) {
+    return CheckItemResult(
+      itemIndex: _asInt(json['itemIndex']),
+      questionFormat: _asNullableString(json['questionFormat']),
+      correct: _asBool(json['correct']),
+      correctIndex: _asInt(json['correctIndex'], -1),
+      referenceAnswer: _asNullableString(json['referenceAnswer']),
+      answerText: _asNullableString(json['answerText']),
+      answerImageUrl: _asNullableString(json['answerImageUrl']),
+      selfCorrect: json['selfCorrect'] is bool
+          ? json['selfCorrect'] as bool
+          : null,
+      pendingReview: _asBool(json['pendingReview']),
+      analysis: _asString(json['analysis']),
+    );
+  }
+}
+
+class UploadAnswerImageResult {
+  const UploadAnswerImageResult({
+    required this.objectKey,
+    required this.previewUrl,
+    required this.storageType,
+  });
+
+  final String objectKey;
+  final String previewUrl;
+  final String storageType;
+
+  factory UploadAnswerImageResult.fromJson(Map<String, dynamic> json) {
+    return UploadAnswerImageResult(
+      objectKey: _asString(json['objectKey']),
+      previewUrl: _asString(json['previewUrl']),
+      storageType: _asString(json['storageType']),
+    );
+  }
+}
+
+class EssayAnswerRecord {
+  const EssayAnswerRecord({
+    required this.id,
+    required this.sessionNo,
+    required this.itemIndex,
+    this.realmCode,
+    required this.realmName,
+    required this.chapterName,
+    this.gateId,
+    required this.gateName,
+    required this.stem,
+    required this.referenceAnswer,
+    required this.answerText,
+    required this.answerImageUrl,
+    this.selfCorrect,
+    required this.teacherStatus,
+    required this.teacherComment,
+    this.teacherImageUrl,
+    required this.createdAt,
+    this.reviewedAt,
+  });
+
+  final int id;
+  final String sessionNo;
+  final int itemIndex;
+  final String? realmCode;
+  final String realmName;
+  final String chapterName;
+  final int? gateId;
+  final String gateName;
+  final String stem;
+  final String referenceAnswer;
+  final String answerText;
+  final String answerImageUrl;
+  final int? selfCorrect;
+  final int teacherStatus;
+  final String teacherComment;
+  final String? teacherImageUrl;
+  final String createdAt;
+  final String? reviewedAt;
+
+  factory EssayAnswerRecord.fromJson(Map<String, dynamic> json) {
+    return EssayAnswerRecord(
+      id: _asInt(json['id']),
+      sessionNo: _asString(json['sessionNo']),
+      itemIndex: _asInt(json['itemIndex']),
+      realmCode: _asNullableString(json['realmCode']),
+      realmName: _asString(json['realmName']),
+      chapterName: _asString(json['chapterName']),
+      gateId: _asNullableInt(json['gateId']),
+      gateName: _asString(json['gateName']),
+      stem: _asString(json['stem']),
+      referenceAnswer: _asString(json['referenceAnswer']),
+      answerText: _asString(json['answerText']),
+      answerImageUrl: _asString(json['answerImageUrl']),
+      selfCorrect: _asNullableInt(json['selfCorrect']),
+      teacherStatus: _asInt(json['teacherStatus']),
+      teacherComment: _asString(json['teacherComment']),
+      teacherImageUrl: _asNullableString(json['teacherImageUrl']),
+      createdAt: _asString(json['createdAt']),
+      reviewedAt: _asNullableString(json['reviewedAt']),
+    );
+  }
+}
+
+class VideoSeriesItem {
+  const VideoSeriesItem({
+    required this.id,
+    required this.title,
+    required this.coverImageKey,
+    required this.coverImageUrl,
+    required this.intro,
+    required this.realmCode,
+    required this.realmName,
+    required this.sortOrder,
+    required this.enabled,
+    required this.lessonCount,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final int id;
+  final String title;
+  final String coverImageKey;
+  final String coverImageUrl;
+  final String intro;
+  final String realmCode;
+  final String realmName;
+  final int sortOrder;
+  final int enabled;
+  final int lessonCount;
+  final String createdAt;
+  final String updatedAt;
+
+  factory VideoSeriesItem.fromJson(Map<String, dynamic> json) {
+    return VideoSeriesItem(
+      id: _asInt(json['id']),
+      title: _asString(json['title']),
+      coverImageKey: _asString(json['coverImageKey']),
+      coverImageUrl: _asString(json['coverImageUrl']),
+      intro: _asString(json['intro']),
+      realmCode: _asString(json['realmCode']),
+      realmName: _asString(json['realmName']),
+      sortOrder: _asInt(json['sortOrder']),
+      enabled: _asInt(json['enabled'], 1),
+      lessonCount: _asInt(json['lessonCount']),
+      createdAt: _asString(json['createdAt']),
+      updatedAt: _asString(json['updatedAt']),
+    );
+  }
+}
+
+class NoteAttachmentItem {
+  const NoteAttachmentItem({
+    required this.name,
+    required this.objectKey,
+    required this.url,
+    required this.size,
+    required this.contentType,
+  });
+
+  final String name;
+  final String objectKey;
+  final String url;
+  final int size;
+  final String contentType;
+
+  bool get isImage {
+    final ct = contentType.toLowerCase();
+    final lower = name.toLowerCase();
+    return ct.startsWith('image/') ||
+        lower.endsWith('.png') ||
+        lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.webp') ||
+        lower.endsWith('.gif');
+  }
+
+  factory NoteAttachmentItem.fromJson(Map<String, dynamic> json) {
+    return NoteAttachmentItem(
+      name: _asString(json['name']),
+      objectKey: _asString(json['objectKey']),
+      url: _asString(json['url']),
+      size: _asInt(json['size']),
+      contentType: _asString(json['contentType']),
+    );
+  }
+}
+
+class VideoLessonItem {
+  const VideoLessonItem({
+    required this.id,
+    required this.seriesId,
+    required this.title,
+    this.coverImageKey,
+    this.coverImageUrl,
+    required this.videoKey,
+    required this.videoUrl,
+    required this.durationSec,
+    required this.classNotes,
+    required this.notesAttachments,
+    required this.sortOrder,
+    required this.enabled,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final int id;
+  final int seriesId;
+  final String title;
+  final String? coverImageKey;
+  final String? coverImageUrl;
+  final String videoKey;
+  final String videoUrl;
+  final int durationSec;
+  final String classNotes;
+  final List<NoteAttachmentItem> notesAttachments;
+  final int sortOrder;
+  final int enabled;
+  final String createdAt;
+  final String updatedAt;
+
+  bool get hasNotes =>
+      classNotes.trim().isNotEmpty || notesAttachments.isNotEmpty;
+
+  factory VideoLessonItem.fromJson(Map<String, dynamic> json) {
+    final attRaw = json['notesAttachments'] as List<dynamic>? ?? const [];
+    return VideoLessonItem(
+      id: _asInt(json['id']),
+      seriesId: _asInt(json['seriesId']),
+      title: _asString(json['title']),
+      coverImageKey: _asNullableString(json['coverImageKey']),
+      coverImageUrl: _asNullableString(json['coverImageUrl']),
+      videoKey: _asString(json['videoKey']),
+      videoUrl: _asString(json['videoUrl']),
+      durationSec: _asInt(json['durationSec']),
+      classNotes: _asString(json['classNotes']),
+      notesAttachments: attRaw
+          .whereType<Map<String, dynamic>>()
+          .map(NoteAttachmentItem.fromJson)
+          .toList(),
+      sortOrder: _asInt(json['sortOrder']),
+      enabled: _asInt(json['enabled'], 1),
+      createdAt: _asString(json['createdAt']),
+      updatedAt: _asString(json['updatedAt']),
+    );
+  }
+}
+
+class VideoSeriesDetail {
+  const VideoSeriesDetail({required this.series, required this.lessons});
+
+  final VideoSeriesItem series;
+  final List<VideoLessonItem> lessons;
+
+  factory VideoSeriesDetail.fromJson(Map<String, dynamic> json) {
+    final lessonsRaw = json['lessons'] as List<dynamic>? ?? const [];
+    return VideoSeriesDetail(
+      series: VideoSeriesItem.fromJson(
+        (json['series'] as Map<String, dynamic>?) ?? const {},
+      ),
+      lessons: lessonsRaw
+          .whereType<Map<String, dynamic>>()
+          .map(VideoLessonItem.fromJson)
+          .toList(),
+    );
+  }
+}
+
+class WrongReviewItem {
+  const WrongReviewItem({
+    required this.stem,
+    this.questionFormat,
+    required this.correctAnswer,
+    required this.analysis,
+  });
+
+  final String stem;
+  final String? questionFormat;
+  final String correctAnswer;
+  final String analysis;
+
+  factory WrongReviewItem.fromJson(Map<String, dynamic> json) {
+    return WrongReviewItem(
+      stem: _asString(json['stem']),
+      questionFormat: _asNullableString(json['questionFormat']),
+      correctAnswer: _asString(json['correctAnswer']),
+      analysis: _asString(json['analysis']),
+    );
+  }
+}
+
+class SubmitResult {
+  const SubmitResult({
+    required this.sessionNo,
+    required this.mode,
+    required this.totalCount,
+    required this.correctCount,
+    this.pendingReviewCount,
+    this.score,
+    this.passScore,
+    required this.passCount,
+    required this.passed,
+    required this.newlyPassed,
+    required this.totalPassedGates,
+    this.promotedLevel,
+    this.promotedRealm,
+    required this.wrongItems,
+    required this.masteredCount,
+  });
+
+  final String sessionNo;
+  final String mode;
+  final int totalCount;
+  final int correctCount;
+  final int? pendingReviewCount;
+  final int? score;
+  final int? passScore;
+  final int passCount;
+  final bool passed;
+  final bool newlyPassed;
+  final int totalPassedGates;
+  final LevelProgress? promotedLevel;
+  final RealmItem? promotedRealm;
+  final List<WrongReviewItem> wrongItems;
+  final int masteredCount;
+
+  factory SubmitResult.fromJson(Map<String, dynamic> json) {
+    final wrongsRaw = json['wrongItems'] as List<dynamic>? ?? const [];
+    return SubmitResult(
+      sessionNo: _asString(json['sessionNo']),
+      mode: _asString(json['mode'], 'GATE'),
+      totalCount: _asInt(json['totalCount']),
+      correctCount: _asInt(json['correctCount']),
+      pendingReviewCount: _asNullableInt(json['pendingReviewCount']),
+      score: _asNullableInt(json['score']),
+      passScore: _asNullableInt(json['passScore']),
+      passCount: _asInt(json['passCount']),
+      passed: _asBool(json['passed']),
+      newlyPassed: _asBool(json['newlyPassed']),
+      totalPassedGates: _asInt(json['totalPassedGates']),
+      promotedLevel: json['promotedLevel'] is Map<String, dynamic>
+          ? LevelProgress.fromJson(json['promotedLevel'] as Map<String, dynamic>)
+          : null,
+      promotedRealm: json['promotedRealm'] is Map<String, dynamic>
+          ? RealmItem.fromJson(json['promotedRealm'] as Map<String, dynamic>)
+          : null,
+      wrongItems: wrongsRaw
+          .whereType<Map<String, dynamic>>()
+          .map(WrongReviewItem.fromJson)
+          .toList(),
+      masteredCount: _asInt(json['masteredCount']),
+    );
+  }
+}
+
+class WrongQuestionItem {
+  const WrongQuestionItem({
+    required this.id,
+    required this.gradeCode,
+    required this.realmCode,
+    required this.realmName,
+    this.chapterId,
+    required this.chapterName,
+    required this.gateName,
+    this.questionFormat,
+    required this.stem,
+    required this.options,
+    required this.answerIndex,
+    this.referenceAnswer,
+    this.lastAnswerImageUrl,
+    required this.analysis,
+    required this.wrongCount,
+    required this.lastWrongAt,
+  });
+
+  final int id;
+  final String gradeCode;
+  final String realmCode;
+  final String realmName;
+  final int? chapterId;
+  final String chapterName;
+  final String gateName;
+  final String? questionFormat;
+  final String stem;
+  final List<String> options;
+  final int answerIndex;
+  final String? referenceAnswer;
+  final String? lastAnswerImageUrl;
+  final String analysis;
+  final int wrongCount;
+  final String lastWrongAt;
+
+  String formattedCorrectAnswer() {
+    if (questionFormat == 'ESSAY') {
+      return (referenceAnswer != null && referenceAnswer!.isNotEmpty)
+          ? referenceAnswer!
+          : '详见解析';
+    }
+    const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
+    final letter =
+        answerIndex >= 0 && answerIndex < letters.length
+            ? letters[answerIndex]
+            : '${answerIndex + 1}';
+    final text =
+        answerIndex >= 0 && answerIndex < options.length
+            ? options[answerIndex]
+            : '';
+    return text.isNotEmpty ? '$letter. $text' : letter;
+  }
+
+  factory WrongQuestionItem.fromJson(Map<String, dynamic> json) {
+    return WrongQuestionItem(
+      id: _asInt(json['id']),
+      gradeCode: _asString(json['gradeCode']),
+      realmCode: _asString(json['realmCode']),
+      realmName: _asString(json['realmName']),
+      chapterId: _asNullableInt(json['chapterId']),
+      chapterName: _asString(json['chapterName']),
+      gateName: _asString(json['gateName']),
+      questionFormat: _asNullableString(json['questionFormat']),
+      stem: _asString(json['stem']),
+      options: _asStringList(json['options']),
+      answerIndex: _asInt(json['answerIndex']),
+      referenceAnswer: _asNullableString(json['referenceAnswer']),
+      lastAnswerImageUrl: _asNullableString(json['lastAnswerImageUrl']),
+      analysis: _asString(json['analysis']),
+      wrongCount: _asInt(json['wrongCount'], 1),
+      lastWrongAt: _asString(json['lastWrongAt']),
+    );
+  }
+}
+
+class AnswerSubmitPayload {
+  const AnswerSubmitPayload({
+    required this.itemIndex,
+    this.selectedIndex,
+    this.answerText,
+    this.answerImageKey,
+    this.selfCorrect,
+  });
+
+  final int itemIndex;
+  final int? selectedIndex;
+  final String? answerText;
+  final String? answerImageKey;
+  final bool? selfCorrect;
+
+  Map<String, dynamic> toJson() {
+    final map = <String, dynamic>{'itemIndex': itemIndex};
+    if (selectedIndex != null) map['selectedIndex'] = selectedIndex;
+    if (answerText != null) map['answerText'] = answerText;
+    if (answerImageKey != null) map['answerImageKey'] = answerImageKey;
+    if (selfCorrect != null) map['selfCorrect'] = selfCorrect;
+    return map;
+  }
+}
+
+class AppVersionInfo {
+  const AppVersionInfo({
+    required this.currentVersion,
+    required this.latestVersion,
+    required this.latestVersionCode,
+    required this.hasUpdate,
+    required this.forceUpdate,
+    required this.releaseNotes,
+    required this.downloadUrl,
+    required this.githubReleaseUrl,
+    required this.githubRepo,
+    required this.githubReachable,
+    required this.publishedAt,
+    required this.source,
+  });
+
+  final String currentVersion;
+  final String latestVersion;
+  final int latestVersionCode;
+  final bool hasUpdate;
+  final bool forceUpdate;
+  final String releaseNotes;
+  final String downloadUrl;
+  final String githubReleaseUrl;
+  final String githubRepo;
+  final bool githubReachable;
+  final String publishedAt;
+  final String source;
+
+  factory AppVersionInfo.fromJson(Map<String, dynamic> json) {
+    return AppVersionInfo(
+      currentVersion: _asString(json['currentVersion']),
+      latestVersion: _asString(json['latestVersion']),
+      latestVersionCode: _asInt(json['latestVersionCode']),
+      hasUpdate: _asBool(json['hasUpdate']),
+      forceUpdate: _asBool(json['forceUpdate']),
+      releaseNotes: _asString(json['releaseNotes']),
+      downloadUrl: _asString(json['downloadUrl']),
+      githubReleaseUrl: _asString(json['githubReleaseUrl']),
+      githubRepo: _asString(json['githubRepo']),
+      githubReachable: _asBool(json['githubReachable']),
+      publishedAt: _asString(json['publishedAt']),
+      source: _asString(json['source']),
+    );
+  }
+}
