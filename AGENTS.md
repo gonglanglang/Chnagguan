@@ -24,6 +24,7 @@
 
 > ✅ **境界规则说明**：全境界题库开放自由学习（不限制低境界学习高境界内容）；同时保留高境界压制境界重温低境界、进阶考核晋升以及后台调整学生境界与进阶配置能力。
 > ✅ **UniApp 骨架屏维护红线**：`frontend-uniapp/` 全部页面均已接入结构化骨架屏（`<wd-skeleton>`），今后任何页面样式或布局结构更新时，必须同步更新对应页面的骨架屏（详见 `docs/02-开发规范.md` 4.3 节）。
+> ✅ **客户端全局缓存对象红线（强制）**：所有客户端本地持久化缓存必须统一登记并接入**全局缓存对象**（Flutter 端为 `frontend-flutter/lib/core/cache/global_cache.dart` 中的 `GlobalCache` / `globalCache` 单例），严禁在业务页面或 Provider 中私自散落调用 `SharedPreferences` / `uni.setStorageSync` / `localStorage` 读写未登记键名；每次新增缓存必须先在全局缓存注册表中声明键名、中文说明与升级/清理保留策略（详见 `docs/02-开发规范.md` 4.4 节）。
 
 ---
 

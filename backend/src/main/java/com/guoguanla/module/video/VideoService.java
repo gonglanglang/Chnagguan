@@ -76,18 +76,34 @@ public class VideoService {
 
         List<Long> seriesIds = page.getRecords().stream().map(EduVideoSeries::getId).toList();
         LambdaQueryWrapper<EduVideoLesson> lessonWrapper = new LambdaQueryWrapper<EduVideoLesson>()
-                .in(EduVideoLesson::getSeriesId, seriesIds);
+                .in(EduVideoLesson::getSeriesId, seriesIds)
+                .orderByAsc(EduVideoLesson::getSortOrder)
+                .orderByAsc(EduVideoLesson::getId);
         if (enabledOnly) {
             lessonWrapper.eq(EduVideoLesson::getEnabled, 1);
         }
-        Map<Long, Long> countMap = lessonMapper.selectList(lessonWrapper).stream()
+        List<EduVideoLesson> seriesLessons = lessonMapper.selectList(lessonWrapper);
+        Map<Long, Long> countMap = seriesLessons.stream()
                 .collect(Collectors.groupingBy(EduVideoLesson::getSeriesId, Collectors.counting()));
+        Map<Long, String> fallbackCoverMap = seriesLessons.stream()
+                .filter(l -> l.getCoverImageKey() != null && !l.getCoverImageKey().isBlank())
+                .collect(Collectors.toMap(
+                        EduVideoLesson::getSeriesId,
+                        EduVideoLesson::getCoverImageKey,
+                        (first, second) -> first
+                ));
 
         Map<String, String> realmNameMap = realmHelper.listAllRealmsForAdmin().stream()
                 .collect(Collectors.toMap(EduRealm::getRealmCode, EduRealm::getRealmName, (a, b) -> a));
 
         List<VideoVO.SeriesVO> records = page.getRecords().stream()
-                .map(item -> toSeriesVO(item, realmNameMap, countMap.getOrDefault(item.getId(), 0L), baseOrigin))
+                .map(item -> toSeriesVO(
+                        item,
+                        realmNameMap,
+                        countMap.getOrDefault(item.getId(), 0L),
+                        fallbackCoverMap.getOrDefault(item.getId(), ""),
+                        baseOrigin
+                ))
                 .toList();
         return PageResult.of(records, page.getTotal(), p, s);
     }
@@ -107,9 +123,15 @@ public class VideoService {
         }
         List<EduVideoLesson> lessons = lessonMapper.selectList(lw);
 
+        String fallbackCover = lessons.stream()
+                .map(EduVideoLesson::getCoverImageKey)
+                .filter(k -> k != null && !k.isBlank())
+                .findFirst()
+                .orElse("");
+
         Map<String, String> realmNameMap = realmHelper.listAllRealmsForAdmin().stream()
                 .collect(Collectors.toMap(EduRealm::getRealmCode, EduRealm::getRealmName, (a, b) -> a));
-        VideoVO.SeriesVO seriesVO = toSeriesVO(series, realmNameMap, lessons.size(), baseOrigin);
+        VideoVO.SeriesVO seriesVO = toSeriesVO(series, realmNameMap, lessons.size(), fallbackCover, baseOrigin);
         List<VideoVO.LessonVO> lessonVOs = lessons.stream()
                 .map(l -> toLessonVO(l, baseOrigin))
                 .toList();
@@ -164,6 +186,7 @@ public class VideoService {
         lesson.setSeriesId(seriesId);
         applyLessonReq(lesson, req);
         lessonMapper.insert(lesson);
+        backfillSeriesCoverIfEmpty(series, lesson.getCoverImageKey());
         return lesson.getId();
     }
 
@@ -175,6 +198,20 @@ public class VideoService {
         }
         applyLessonReq(lesson, req);
         lessonMapper.updateById(lesson);
+        if (lesson.getSeriesId() != null) {
+            EduVideoSeries series = seriesMapper.selectById(lesson.getSeriesId());
+            if (series != null) {
+                backfillSeriesCoverIfEmpty(series, lesson.getCoverImageKey());
+            }
+        }
+    }
+
+    private void backfillSeriesCoverIfEmpty(EduVideoSeries series, String lessonCoverKey) {
+        if ((series.getCoverImageKey() == null || series.getCoverImageKey().isBlank())
+                && lessonCoverKey != null && !lessonCoverKey.isBlank()) {
+            series.setCoverImageKey(lessonCoverKey.trim());
+            seriesMapper.updateById(series);
+        }
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -245,15 +282,19 @@ public class VideoService {
             EduVideoSeries item,
             Map<String, String> realmNameMap,
             long lessonCount,
+            String fallbackCoverKey,
             String baseOrigin
     ) {
         String rc = item.getRealmCode() == null ? "" : item.getRealmCode();
         String rName = rc.isBlank() ? "全境界通用" : realmNameMap.getOrDefault(rc, rc);
+        String effectiveCoverKey = (item.getCoverImageKey() != null && !item.getCoverImageKey().isBlank())
+                ? item.getCoverImageKey()
+                : (fallbackCoverKey == null ? "" : fallbackCoverKey);
         return VideoVO.SeriesVO.builder()
                 .id(item.getId())
                 .title(item.getTitle())
-                .coverImageKey(item.getCoverImageKey() == null ? "" : item.getCoverImageKey())
-                .coverImageUrl(ossService.resolveViewUrl(item.getCoverImageKey(), baseOrigin))
+                .coverImageKey(effectiveCoverKey)
+                .coverImageUrl(ossService.resolveViewUrl(effectiveCoverKey, baseOrigin))
                 .intro(item.getIntro() == null ? "" : item.getIntro())
                 .realmCode(rc)
                 .realmName(rName)

@@ -89,7 +89,7 @@ public class AdminAuthService {
         List<String> perms = "SUPER_ADMIN".equals(admin.getRoleCode())
                 ? List.of("*:*:*")
                 : List.of("bank:view", "bank:edit", "user:view");
-        String expires = LocalDateTime.now().plusHours(24).format(EXPIRES_FMT);
+        String expires = LocalDateTime.now().plusDays(30).format(EXPIRES_FMT);
         return AdminLoginVO.builder()
                 .id(admin.getId())
                 .username(admin.getUsername())

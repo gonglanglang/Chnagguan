@@ -50,6 +50,8 @@ const notesInputRef = ref<any>(null);
 
 let activeUploadAbort: AbortController | null = null;
 let activeUploadMeta: { uploadId: string; objectKey: string } | null = null;
+const lastSelectedVideoFile = ref<File | null>(null);
+let coverUploadToken = 0;
 
 const form = reactive({
   title: "",
@@ -102,6 +104,8 @@ async function fetchDetail() {
 
 function openCreateLesson() {
   editLessonId.value = null;
+  lastSelectedVideoFile.value = null;
+  coverUploadToken += 1;
   form.title = `第 ${lessons.value.length + 1} 节：`;
   form.coverImageKey = "";
   form.coverPreviewUrl = "";
@@ -119,6 +123,8 @@ function openCreateLesson() {
 
 function openEditLesson(row: VideoLessonItem) {
   editLessonId.value = row.id;
+  lastSelectedVideoFile.value = null;
+  coverUploadToken += 1;
   form.title = row.title;
   form.coverImageKey = row.coverImageKey || "";
   form.coverPreviewUrl = row.coverImageUrl || "";
@@ -139,8 +145,163 @@ function triggerCoverPick() {
 }
 
 function clearLessonCover() {
+  coverUploadToken += 1;
   form.coverImageKey = "";
   form.coverPreviewUrl = "";
+}
+
+async function captureVideoFirstFrame(file: File): Promise<{ coverFile: File | null; durationSec: number }> {
+  return new Promise(resolve => {
+    const objectUrl = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "auto";
+
+    let settled = false;
+    let durationSec = 0;
+
+    const cleanup = () => {
+      video.onloadedmetadata = null;
+      video.onloadeddata = null;
+      video.onseeked = null;
+      video.onerror = null;
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+      URL.revokeObjectURL(objectUrl);
+    };
+
+    const finish = (coverFile: File | null) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(hardTimer);
+      cleanup();
+      resolve({ coverFile, durationSec });
+    };
+
+    const grabCurrentFrame = () => {
+      try {
+        const vw = video.videoWidth || 0;
+        const vh = video.videoHeight || 0;
+        if (vw <= 0 || vh <= 0) {
+          finish(null);
+          return;
+        }
+        const maxWidth = 1280;
+        const scale = vw > maxWidth ? maxWidth / vw : 1;
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(vw * scale));
+        canvas.height = Math.max(1, Math.round(vh * scale));
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          finish(null);
+          return;
+        }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(
+          blob => {
+            if (!blob || blob.size === 0) {
+              finish(null);
+              return;
+            }
+            const baseName = file.name.replace(/\.[^.]+$/, "") || "video";
+            const coverFile = new File([blob], `${baseName}-first-frame.jpg`, {
+              type: "image/jpeg"
+            });
+            finish(coverFile);
+          },
+          "image/jpeg",
+          0.86
+        );
+      } catch {
+        finish(null);
+      }
+    };
+
+    const hardTimer = window.setTimeout(() => {
+      if (video.readyState >= 2 && video.videoWidth > 0) {
+        grabCurrentFrame();
+      } else {
+        finish(null);
+      }
+    }, 8000);
+
+    video.onloadedmetadata = () => {
+      if (Number.isFinite(video.duration) && video.duration > 0) {
+        durationSec = Math.round(video.duration);
+      }
+    };
+
+    video.onloadeddata = () => {
+      if (Number.isFinite(video.duration) && video.duration > 0) {
+        durationSec = Math.round(video.duration);
+      }
+      const targetTime = Number.isFinite(video.duration) && video.duration > 0.25 ? 0.1 : 0;
+      if (targetTime > 0 && Math.abs(video.currentTime - targetTime) > 0.02) {
+        let seekFallbackTimer = 0;
+        video.onseeked = () => {
+          window.clearTimeout(seekFallbackTimer);
+          grabCurrentFrame();
+        };
+        seekFallbackTimer = window.setTimeout(() => {
+          grabCurrentFrame();
+        }, 1500);
+        try {
+          video.currentTime = targetTime;
+        } catch {
+          window.clearTimeout(seekFallbackTimer);
+          grabCurrentFrame();
+        }
+      } else {
+        grabCurrentFrame();
+      }
+    };
+
+    video.onerror = () => finish(null);
+    video.src = objectUrl;
+    video.load();
+  });
+}
+
+async function autoGenerateFirstFrameCover(file: File, force = false) {
+  if (!force && form.coverImageKey.trim()) {
+    return;
+  }
+  const token = ++coverUploadToken;
+  coverUploading.value = true;
+  try {
+    const { coverFile, durationSec } = await captureVideoFirstFrame(file);
+    if (durationSec > 0 && form.durationSec <= 0) {
+      form.durationSec = durationSec;
+    }
+    if (!coverFile || !dialogVisible.value || token !== coverUploadToken) {
+      return;
+    }
+    if (!force && form.coverImageKey.trim()) {
+      return;
+    }
+    const fd = new FormData();
+    fd.append("file", coverFile);
+    const res = await uploadVideoCover(fd);
+    if (!dialogVisible.value || token !== coverUploadToken) {
+      return;
+    }
+    if (!force && form.coverImageKey.trim()) {
+      return;
+    }
+    form.coverImageKey = res.data.objectKey;
+    form.coverPreviewUrl = res.data.previewUrl;
+    ElMessage.success(force ? "已重新截取视频首帧作为封面" : "未设置封面，已自动截取视频首帧作为封面");
+  } catch {
+    if (force) {
+      ElMessage.warning("截取视频首帧失败，请手动上传封面图");
+    }
+  } finally {
+    if (token === coverUploadToken) {
+      coverUploading.value = false;
+    }
+  }
 }
 
 async function onCoverFileChange(evt: Event) {
@@ -149,16 +310,20 @@ async function onCoverFileChange(evt: Event) {
   input.value = "";
   if (!file) return;
 
+  const token = ++coverUploadToken;
   coverUploading.value = true;
   try {
     const fd = new FormData();
     fd.append("file", file);
     const res = await uploadVideoCover(fd);
+    if (token !== coverUploadToken) return;
     form.coverImageKey = res.data.objectKey;
     form.coverPreviewUrl = res.data.previewUrl;
     ElMessage.success("小节封面上传成功");
   } finally {
-    coverUploading.value = false;
+    if (token === coverUploadToken) {
+      coverUploading.value = false;
+    }
   }
 }
 
@@ -174,6 +339,8 @@ function cancelVideoUpload() {
 }
 
 function onDialogClosed() {
+  lastSelectedVideoFile.value = null;
+  coverUploadToken += 1;
   if (videoUploading.value) {
     cancelVideoUpload();
   }
@@ -212,6 +379,11 @@ async function onVideoFileChange(evt: Event) {
   const file = input.files?.[0];
   input.value = "";
   if (!file) return;
+
+  lastSelectedVideoFile.value = file;
+  if (!form.coverImageKey.trim()) {
+    void autoGenerateFirstFrameCover(file, false);
+  }
 
   videoUploading.value = true;
   uploadProgress.value = 0;
@@ -645,15 +817,24 @@ onBeforeUnmount(() => {
                 class="hidden"
                 @change="onCoverFileChange"
               />
-              <div class="flex items-center gap-2">
+              <div class="flex flex-wrap items-center gap-2">
                 <el-button :loading="coverUploading" plain @click="triggerCoverPick">
                   {{ form.coverImageKey ? "更换小节封面" : "上传小节封面" }}
+                </el-button>
+                <el-button
+                  v-if="lastSelectedVideoFile"
+                  :loading="coverUploading"
+                  plain
+                  type="success"
+                  @click="autoGenerateFirstFrameCover(lastSelectedVideoFile, true)"
+                >
+                  截取视频首帧
                 </el-button>
                 <el-button v-if="form.coverImageKey" link type="danger" @click="clearLessonCover">
                   清除
                 </el-button>
               </div>
-              <div class="text-xs text-slate-400">支持 PNG/JPG/WEBP；未设置时自动复用所属系列封面</div>
+              <div class="text-xs text-slate-400">支持 PNG/JPG/WEBP；未手动上传封面时，上传视频将自动截取视频首帧作为封面（系列无封面时也会自动同步）</div>
             </div>
           </div>
         </el-form-item>

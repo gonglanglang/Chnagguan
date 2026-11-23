@@ -112,6 +112,18 @@ class GuoguanlaApi {
     );
   }
 
+  Future<List<ChapterCard>> getChaptersByGrade(
+    String gradeCode, {
+    List<int>? guestPassedIds,
+  }) {
+    return client.request<List<ChapterCard>>(
+      path: '/app/grades/$gradeCode/chapters',
+      method: 'GET',
+      queryParameters: {'guestPassedIds': _guestCsv(guestPassedIds)},
+      parser: (raw) => _asMapList(raw).map(ChapterCard.fromJson).toList(),
+    );
+  }
+
   Future<List<GateCard>> getGatesByChapter(
     int chapterId, {
     List<int>? guestPassedIds,

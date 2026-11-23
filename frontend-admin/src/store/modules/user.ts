@@ -30,10 +30,10 @@ export const useUserStore = defineStore("pure-user", {
     // 按钮级别权限
     permissions:
       storageLocal().getItem<DataInfo<number>>(userKey)?.permissions ?? [],
-    // 是否勾选了登录页的免登录
-    isRemembered: false,
-    // 登录页的免登录存储几天，默认7天
-    loginDay: 7
+    // 是否勾选了登录页的免登录（默认开启，与后端 30 天 Token 对齐）
+    isRemembered: true,
+    // 登录页的免登录存储几天，默认 30 天
+    loginDay: 30
   }),
   actions: {
     /** 存储头像 */

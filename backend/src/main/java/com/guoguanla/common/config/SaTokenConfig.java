@@ -1,6 +1,7 @@
 package com.guoguanla.common.config;
 
 import cn.dev33.satoken.interceptor.SaInterceptor;
+import cn.dev33.satoken.router.SaHttpMethod;
 import cn.dev33.satoken.router.SaRouter;
 import cn.dev33.satoken.stp.StpInterface;
 import com.guoguanla.common.security.StpAdminUtil;
@@ -24,6 +25,7 @@ public class SaTokenConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(new SaInterceptor(handle -> {
+                    SaRouter.match(SaHttpMethod.OPTIONS).stop();
                     SaRouter.match("/api/admin/**")
                             .notMatch("/api/admin/auth/login", "/api/admin/auth/refresh-token")
                             .check(r -> StpAdminUtil.checkLogin());

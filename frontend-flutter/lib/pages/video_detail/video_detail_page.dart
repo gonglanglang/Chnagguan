@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 import 'package:welkui_flutter/welkui_flutter.dart';
 
 import '../../app/app_theme.dart';
+import '../../core/cache/global_cache.dart';
 import '../../core/network/api_client.dart';
 import '../../core/utils/format_utils.dart';
 import '../../models/models.dart';
@@ -67,19 +68,27 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   Future<void> _fetchDetail() async {
     setState(() => _loading = true);
     try {
+      final cache = context.read<GlobalCache>();
       final res = await context
           .read<GuoguanlaApi>()
           .getVideoSeriesDetail(widget.seriesId);
+      final targetLessonId = (widget.initialLessonId != null &&
+              widget.initialLessonId! > 0)
+          ? widget.initialLessonId
+          : cache.getLastVideoLessonId(widget.seriesId);
       VideoLessonItem? picked;
-      if (widget.initialLessonId != null && widget.initialLessonId! > 0) {
+      if (targetLessonId != null && targetLessonId > 0) {
         for (final item in res.lessons) {
-          if (item.id == widget.initialLessonId) {
+          if (item.id == targetLessonId) {
             picked = item;
             break;
           }
         }
       }
       picked ??= res.lessons.isNotEmpty ? res.lessons.first : null;
+      if (picked != null) {
+        unawaited(cache.setLastVideoLessonId(widget.seriesId, picked.id));
+      }
       if (!mounted) return;
       setState(() {
         _detail = res;
@@ -124,6 +133,11 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
 
   Future<void> _selectLesson(VideoLessonItem lesson) async {
     setState(() => _activeLesson = lesson);
+    unawaited(
+      context
+          .read<GlobalCache>()
+          .setLastVideoLessonId(widget.seriesId, lesson.id),
+    );
     if (_scrollController.hasClients) {
       unawaited(
         _scrollController.animateTo(

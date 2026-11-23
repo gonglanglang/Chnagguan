@@ -4,8 +4,8 @@ class AppConfig {
   AppConfig._();
 
   static const String appName = '过关啦';
-  static const String fallbackVersion = '1.0.13';
-  static const int fallbackVersionCode = 113;
+  static const String fallbackVersion = '1.0.14';
+  static const int fallbackVersionCode = 114;
 
   static const String prodOrigin = 'http://47.107.94.90';
   static const String localOrigin = 'http://localhost:8080';

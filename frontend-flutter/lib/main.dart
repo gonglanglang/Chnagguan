@@ -6,8 +6,8 @@ import 'package:provider/provider.dart';
 import 'package:welkui_flutter/welkui_flutter.dart';
 
 import 'app/app_config.dart';
+import 'core/cache/global_cache.dart';
 import 'core/network/api_client.dart';
-import 'core/storage/app_storage.dart';
 import 'pages/main_shell_page.dart';
 import 'providers/theme_provider.dart';
 import 'providers/update_provider.dart';
@@ -24,8 +24,8 @@ Future<void> main() async {
       DeviceOrientation.portraitUp,
     ]);
   }
-  final storage = await AppStorage.init();
-  runApp(GuoguanlaApp(storage: storage));
+  final cache = await GlobalCache.init();
+  runApp(GuoguanlaApp(storage: cache));
 }
 
 class GuoguanlaApp extends StatefulWidget {
@@ -35,7 +35,7 @@ class GuoguanlaApp extends StatefulWidget {
     this.apiBaseUrlOverride,
   });
 
-  final AppStorage storage;
+  final GlobalCache storage;
   final String? apiBaseUrlOverride;
 
   @override
@@ -84,7 +84,7 @@ class _GuoguanlaAppState extends State<GuoguanlaApp> {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        Provider<AppStorage>.value(value: widget.storage),
+        Provider<GlobalCache>.value(value: widget.storage),
         Provider<ApiClient>.value(value: _apiClient),
         Provider<GuoguanlaApi>.value(value: _api),
         ChangeNotifierProvider<ThemeProvider>.value(value: _themeProvider),

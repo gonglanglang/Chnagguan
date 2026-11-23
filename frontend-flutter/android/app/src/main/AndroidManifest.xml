@@ -8,6 +8,7 @@
         android:label="过关啦"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
+        android:allowBackup="true"
         android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"

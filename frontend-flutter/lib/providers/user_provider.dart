@@ -1,12 +1,12 @@
 import 'package:flutter/foundation.dart';
 
-import '../core/storage/app_storage.dart';
+import '../core/cache/global_cache.dart';
 import '../models/models.dart';
 import '../services/guoguanla_api.dart';
 
 class UserProvider extends ChangeNotifier {
   UserProvider({
-    required AppStorage storage,
+    required GlobalCache storage,
     required GuoguanlaApi api,
   }) : this._internal(storage, api);
 
@@ -15,7 +15,7 @@ class UserProvider extends ChangeNotifier {
         _userInfo = _storage.cachedProfile,
         _guestPassedIds = _storage.guestPassedIds;
 
-  final AppStorage _storage;
+  final GlobalCache _storage;
   final GuoguanlaApi _api;
 
   String _accessToken;

@@ -4,8 +4,8 @@ import 'package:welkui_flutter/welkui_flutter.dart';
 
 import '../../app/app_config.dart';
 import '../../app/app_theme.dart';
+import '../../core/cache/global_cache.dart';
 import '../../core/network/api_client.dart';
-import '../../core/storage/app_storage.dart';
 import '../../widgets/ggl_comic_panel.dart';
 import '../../widgets/ggl_feedback.dart';
 import '../../widgets/ggl_skeleton.dart';
@@ -37,9 +37,9 @@ class _NetworkCheckPageState extends State<NetworkCheckPage> {
   }
 
   Future<void> _switchEndpoint(String url, String label) async {
-    final storage = context.read<AppStorage>();
+    final cache = context.read<GlobalCache>();
     final client = context.read<ApiClient>();
-    await storage.setCustomApiBaseUrl(url);
+    await cache.setCustomApiBaseUrl(url);
     client.updateBaseUrl(url);
     if (mounted) {
       setState(() => _result = null);

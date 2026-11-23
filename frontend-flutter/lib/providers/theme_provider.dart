@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:welkui_flutter/welkui_flutter.dart';
 
 import '../app/app_theme.dart';
-import '../core/storage/app_storage.dart';
+import '../core/cache/global_cache.dart';
 
 class ThemeProvider extends ChangeNotifier {
   ThemeProvider(this._storage)
@@ -10,7 +10,7 @@ class ThemeProvider extends ChangeNotifier {
         _accentHex = _storage.themeHex,
         _accentName = _storage.themeName;
 
-  final AppStorage _storage;
+  final GlobalCache _storage;
   bool _isDarkMode;
   String _accentHex;
   String _accentName;

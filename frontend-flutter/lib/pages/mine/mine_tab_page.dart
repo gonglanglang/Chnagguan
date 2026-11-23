@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:welkui_flutter/welkui_flutter.dart';
 
 import '../../app/app_theme.dart';
-import '../../core/storage/app_storage.dart';
+import '../../core/cache/global_cache.dart';
 import '../../core/utils/format_utils.dart';
 import '../../models/models.dart';
 import '../../providers/theme_provider.dart';
@@ -66,7 +66,7 @@ class _MineTabPageState extends State<MineTabPage> {
 
   Future<void> _syncMineData() async {
     final user = context.read<UserProvider>();
-    final storage = context.read<AppStorage>();
+    final cache = context.read<GlobalCache>();
     final update = context.read<UpdateProvider>();
 
     if (!_hasLoadedOnce || _lastAuthState != user.isAuthenticated) {
@@ -74,7 +74,7 @@ class _MineTabPageState extends State<MineTabPage> {
     }
     _lastAuthState = user.isAuthenticated;
 
-    final bytes = storage.estimateCacheBytes();
+    final bytes = cache.estimateCacheBytes();
     if (mounted) {
       setState(() => _cacheUsageText = FormatUtils.formatFileSize(bytes));
     }
@@ -279,13 +279,13 @@ class _MineTabPageState extends State<MineTabPage> {
       noText: '取消',
     );
     if (!ok || !mounted) return;
-    final storage = context.read<AppStorage>();
-    await storage.clearTemporaryCache();
+    final cache = context.read<GlobalCache>();
+    await cache.clearTemporaryCache();
     PaintingBinding.instance.imageCache.clear();
     if (mounted) {
       setState(
         () => _cacheUsageText =
-            FormatUtils.formatFileSize(storage.estimateCacheBytes()),
+            FormatUtils.formatFileSize(cache.estimateCacheBytes()),
       );
       GglFeedback.success(context, '缓存已清理');
     }

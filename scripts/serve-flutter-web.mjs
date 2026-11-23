@@ -53,7 +53,7 @@ const server = http.createServer((req, res) => {
 
   res.writeHead(200, {
     "Content-Type": contentType,
-    "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=300",
+    "Cache-Control": "no-store",
   });
   fs.createReadStream(filePath).pipe(res);
 });

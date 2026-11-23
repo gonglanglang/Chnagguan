@@ -3,8 +3,8 @@ import 'package:provider/provider.dart';
 import 'package:welkui_flutter/welkui_flutter.dart';
 
 import '../../app/app_theme.dart';
+import '../../core/cache/global_cache.dart';
 import '../../core/network/api_client.dart';
-import '../../core/storage/app_storage.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/ggl_comic_panel.dart';
 import '../../widgets/ggl_feedback.dart';
@@ -36,8 +36,8 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void initState() {
     super.initState();
-    final storage = context.read<AppStorage>();
-    _loginAccount = storage.rememberedAccount;
+    final cache = context.read<GlobalCache>();
+    _loginAccount = cache.rememberedAccount;
     _rememberAccount = true;
 
     final user = context.read<UserProvider>();
@@ -64,9 +64,9 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
-    final storage = context.read<AppStorage>();
+    final cache = context.read<GlobalCache>();
     final user = context.read<UserProvider>();
-    await storage.setRememberedAccount(_rememberAccount ? account : '');
+    await cache.setRememberedAccount(_rememberAccount ? account : '');
 
     if (!mounted) return;
     setState(() => _submitting = true);
@@ -191,15 +191,15 @@ class _LoginPageState extends State<LoginPage> {
                         Column(
                           children: [
                             Transform.rotate(
-                              angle: -0.05,
+                              angle: -0.04,
                               child: GglComicPanel(
-                                color: colors.accent,
-                                padding: const EdgeInsets.all(16),
+                                padding: EdgeInsets.zero,
                                 shadowOffset: const Offset(4, 4),
-                                child: Icon(
-                                  Icons.flag_rounded,
-                                  size: 36,
-                                  color: colors.onFill(colors.accent),
+                                child: Image.asset(
+                                  'assets/images/app_icon.png',
+                                  width: 78,
+                                  height: 78,
+                                  fit: BoxFit.cover,
                                 ),
                               ),
                             ),

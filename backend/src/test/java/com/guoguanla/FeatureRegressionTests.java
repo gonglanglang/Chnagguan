@@ -631,4 +631,108 @@ class FeatureRegressionTests {
                 .andExpect(jsonPath("$.data.lessons[2].notesAttachments[0].name").value("有理数讲义.pdf"))
                 .andExpect(jsonPath("$.data.lessons[2].notesAttachments[0].url").isNotEmpty());
     }
+
+    @Test
+    void statelessThirtyDayTokenAndVideoSeriesCoverBackfillShouldWork() throws Exception {
+        String adminToken = loginAdmin();
+
+        // 1. Register student and verify stateless 30-day JWT expiration
+        MvcResult regRes = mockMvc.perform(post("/api/app/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "username", "token30d_stu",
+                                "password", "pass123456",
+                                "nickname", "三十天道友",
+                                "gradeCode", "g8"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andReturn();
+        String studentToken = objectMapper.readTree(regRes.getResponse().getContentAsString())
+                .path("data").path("token").asText();
+
+        assertEquals(3, studentToken.split("\\.").length, "Student token must be a JWT");
+        assertEquals(3, adminToken.split("\\.").length, "Admin token must be a JWT");
+
+        String studentPayloadJson = new String(
+                java.util.Base64.getUrlDecoder().decode(studentToken.split("\\.")[1]),
+                java.nio.charset.StandardCharsets.UTF_8
+        );
+        long effMs = objectMapper.readTree(studentPayloadJson).path("eff").asLong();
+        long remainingSec = (effMs - System.currentTimeMillis()) / 1000L;
+        assertTrue(
+                remainingSec >= 29L * 24 * 3600 && remainingSec <= 30L * 24 * 3600 + 300,
+                "Student JWT must expire in ~30 days, actual remaining seconds=" + remainingSec
+        );
+
+        String adminPayloadJson = new String(
+                java.util.Base64.getUrlDecoder().decode(adminToken.split("\\.")[1]),
+                java.nio.charset.StandardCharsets.UTF_8
+        );
+        long adminEffMs = objectMapper.readTree(adminPayloadJson).path("eff").asLong();
+        long adminRemainingSec = (adminEffMs - System.currentTimeMillis()) / 1000L;
+        assertTrue(
+                adminRemainingSec >= 29L * 24 * 3600 && adminRemainingSec <= 30L * 24 * 3600 + 300,
+                "Admin JWT must expire in ~30 days, actual remaining seconds=" + adminRemainingSec
+        );
+
+        // Verify CORS preflight OPTIONS on protected endpoints passes without 500
+        mockMvc.perform(options("/api/app/wrong-questions")
+                        .header("Origin", "http://localhost:5175")
+                        .header("Access-Control-Request-Method", "GET")
+                        .header("Access-Control-Request-Headers", "Authorization"))
+                .andExpect(status().isOk());
+
+        // Verify token works & isolation still enforced
+        mockMvc.perform(get("/api/app/user/profile")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.username").value("token30d_stu"));
+        mockMvc.perform(get("/api/admin/dashboard/overview")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isUnauthorized());
+
+        // 2. Video series without cover auto-backfills cover when lesson with first-frame cover is added
+        MvcResult seriesRes = mockMvc.perform(post("/api/admin/videos/series")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "title", "无封面系列自动回填首帧测试",
+                                "coverImageKey", "",
+                                "intro", "测试首帧自动封面回填",
+                                "realmCode", "zhuji",
+                                "sortOrder", 1,
+                                "enabled", 1
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn();
+        long seriesId = objectMapper.readTree(seriesRes.getResponse().getContentAsString()).path("data").asLong();
+
+        MockMultipartFile coverFile = new MockMultipartFile("file", "first-frame.png", "image/png", MINIMAL_PNG);
+        MvcResult coverRes = mockMvc.perform(multipart("/api/admin/videos/upload-cover")
+                        .file(coverFile)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        String firstFrameCoverKey = objectMapper.readTree(coverRes.getResponse().getContentAsString())
+                .path("data").path("objectKey").asText();
+
+        mockMvc.perform(post("/api/admin/videos/series/" + seriesId + "/lessons")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "title", "第1节：自动首帧封面",
+                                "coverImageKey", firstFrameCoverKey,
+                                "videoKey", "/downloads/course-videos/test-demo.mp4",
+                                "durationSec", 120,
+                                "sortOrder", 1,
+                                "enabled", 1
+                        ))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/app/videos/series/" + seriesId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.series.coverImageKey").value(firstFrameCoverKey))
+                .andExpect(jsonPath("$.data.series.coverImageUrl").isNotEmpty());
+    }
 }

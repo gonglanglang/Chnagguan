@@ -67,13 +67,13 @@ class _AboutPageState extends State<AboutPage> {
                 Row(
                   children: [
                     GglComicPanel(
-                      color: colors.accent,
-                      padding: const EdgeInsets.all(12),
+                      padding: EdgeInsets.zero,
                       shadowOffset: const Offset(3, 3),
-                      child: Icon(
-                        Icons.auto_stories_rounded,
-                        size: 28,
-                        color: colors.onFill(colors.accent),
+                      child: Image.asset(
+                        'assets/images/app_icon.png',
+                        width: 56,
+                        height: 56,
+                        fit: BoxFit.cover,
                       ),
                     ),
                     const SizedBox(width: 14),

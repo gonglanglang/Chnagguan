@@ -6,8 +6,8 @@ import 'package:provider/provider.dart';
 import 'package:welkui_flutter/welkui_flutter.dart';
 
 import '../../app/app_theme.dart';
+import '../../core/cache/global_cache.dart';
 import '../../core/network/api_client.dart';
-import '../../core/utils/format_utils.dart';
 import '../../models/models.dart';
 import '../../providers/user_provider.dart';
 import '../../services/guoguanla_api.dart';
@@ -135,165 +135,27 @@ class _CultivateTabPageState extends State<CultivateTabPage> {
     unawaited(_fetchSeries(true));
   }
 
-  Future<void> _openCourseDrawer(VideoSeriesItem series) async {
-    final api = context.read<GuoguanlaApi>();
-    var drawerLoading = true;
-    var lessons = <VideoLessonItem>[];
-    var selectedLessonId = 0;
-    var startedFetch = false;
-
-    await showWelkDrawer<void>(
-      context: context,
-      position: WelkDrawerPosition.bottom,
-      closeOnTapOutside: true,
-      builder: (drawerCtx) {
-        return StatefulBuilder(
-          builder: (ctx, setModalState) {
-            if (!startedFetch) {
-              startedFetch = true;
-              api.getVideoSeriesDetail(series.id).then((detail) {
-                if (!ctx.mounted) return;
-                setModalState(() {
-                  lessons = detail.lessons;
-                  selectedLessonId =
-                      lessons.isNotEmpty ? lessons.first.id : 0;
-                  drawerLoading = false;
-                });
-              }).catchError((Object e) {
-                if (!ctx.mounted) return;
-                setModalState(() => drawerLoading = false);
-                if (mounted) {
-                  GglFeedback.error(
-                    context,
-                    friendlyErrorMessage(e, '加载课程目录失败'),
-                  );
-                }
-              });
-            }
-
-            final colors = WelkTheme.of(ctx).resolveColors(ctx);
-            return WelkDrawer(
-              title: Text(series.title),
-              closeLabel: '关闭',
-              onClose: () => Navigator.of(drawerCtx).pop(),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '${series.realmName.isNotEmpty ? series.realmName : '综合课程'} · 共 ${lessons.isNotEmpty ? lessons.length : series.lessonCount} 节',
-                    style: TextStyle(
-                      color: AppTheme.mutedText(ctx),
-                      fontSize: 13,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  if (drawerLoading) ...[
-                    const GglSkeletonBox(width: double.infinity, height: 42),
-                    const SizedBox(height: 8),
-                    const GglSkeletonBox(width: double.infinity, height: 42),
-                    const SizedBox(height: 8),
-                    const GglSkeletonBox(width: double.infinity, height: 42),
-                  ] else if (lessons.isEmpty)
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: colors.muted,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: colors.outline, width: 1.5),
-                      ),
-                      child: Text(
-                        '该课程暂未添加课时，点击下方按钮可查看课程简介',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: AppTheme.mutedText(ctx),
-                          fontSize: 13,
-                        ),
-                      ),
-                    )
-                  else
-                    for (var i = 0; i < lessons.length; i++)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: GglComicPanel(
-                          color: selectedLessonId == lessons[i].id
-                              ? colors.accent.withValues(
-                                  alpha: colors.isDark ? 0.28 : 0.38,
-                                )
-                              : colors.paper,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 11,
-                          ),
-                          shadowOffset: const Offset(2, 2),
-                          onTap: () => setModalState(
-                            () => selectedLessonId = lessons[i].id,
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.play_circle_outline_rounded,
-                                size: 18,
-                                color: colors.ink,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  '第 ${i + 1} 节 · ${lessons[i].title}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: colors.ink,
-                                    fontSize: 14,
-                                    fontWeight: selectedLessonId == lessons[i].id
-                                        ? FontWeight.w800
-                                        : FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                FormatUtils.formatDuration(
-                                    lessons[i].durationSec),
-                                style: TextStyle(
-                                  color: AppTheme.mutedText(ctx),
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                  const SizedBox(height: 12),
-                  GglBlockButton(
-                    label: '开始学习',
-                    size: WelkButtonSize.large,
-                    onPressed: () {
-                      Navigator.of(drawerCtx).pop();
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => VideoDetailPage(
-                            seriesId: series.id,
-                            initialLessonId:
-                                selectedLessonId > 0 ? selectedLessonId : null,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
+  Future<void> _openCourseDirectly(VideoSeriesItem series) async {
+    final cache = context.read<GlobalCache>();
+    final cachedLessonId = cache.getLastVideoLessonId(series.id);
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => VideoDetailPage(
+          seriesId: series.id,
+          initialLessonId: cachedLessonId,
+        ),
+      ),
     );
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = WelkTheme.of(context).resolveColors(context);
     final realms = context.watch<UserProvider>().realms;
+    final cache = context.read<GlobalCache>();
     final showInitialSkeleton =
         _loading && _list.isEmpty && _featuredList.isEmpty;
 
@@ -344,7 +206,7 @@ class _CultivateTabPageState extends State<CultivateTabPage> {
                         padding: const EdgeInsets.only(right: 12, bottom: 6),
                         child: GglComicPanel(
                           padding: EdgeInsets.zero,
-                          onTap: () => _openCourseDrawer(item),
+                          onTap: () => _openCourseDirectly(item),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
@@ -470,36 +332,40 @@ class _CultivateTabPageState extends State<CultivateTabPage> {
                       const SizedBox(height: 10),
                       const GglCardSkeleton(lines: 2),
                     ] else if (_list.isEmpty)
-                      GglComicPanel(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 42,
-                          horizontal: 20,
-                        ),
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.video_library_outlined,
-                              size: 38,
-                              color: AppTheme.mutedText(context),
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              '暂无教学课程',
-                              style: TextStyle(
-                                color: colors.ink,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '切换其他境界查看，或等待教研老师上传新课',
-                              style: TextStyle(
+                      SizedBox(
+                        width: double.infinity,
+                        child: GglComicPanel(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 42,
+                            horizontal: 20,
+                          ),
+                          child: Column(
+                            children: [
+                              Icon(
+                                Icons.video_library_outlined,
+                                size: 38,
                                 color: AppTheme.mutedText(context),
-                                fontSize: 12.5,
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 10),
+                              Text(
+                                '暂无教学课程',
+                                style: TextStyle(
+                                  color: colors.ink,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '切换其他境界查看，或等待教研老师上传新课',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: AppTheme.mutedText(context),
+                                  fontSize: 12.5,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       )
                     else ...[
@@ -508,7 +374,7 @@ class _CultivateTabPageState extends State<CultivateTabPage> {
                           margin: const EdgeInsets.only(bottom: 12),
                           padding: const EdgeInsets.all(12),
                           shadowOffset: const Offset(2, 2),
-                          onTap: () => _openCourseDrawer(item),
+                          onTap: () => _openCourseDirectly(item),
                           child: Row(
                             children: [
                               Container(
@@ -547,7 +413,11 @@ class _CultivateTabPageState extends State<CultivateTabPage> {
                                       ),
                                     ),
                                     const SizedBox(height: 6),
-                                    Row(
+                                    Wrap(
+                                      spacing: 6,
+                                      runSpacing: 4,
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
                                       children: [
                                         Text(
                                           item.realmName.isNotEmpty
@@ -559,16 +429,23 @@ class _CultivateTabPageState extends State<CultivateTabPage> {
                                             fontWeight: FontWeight.w600,
                                           ),
                                         ),
-                                        const SizedBox(width: 8),
                                         const GglStatusTag(
                                           label: '讲师笔记',
                                           variant: WelkBadgeVariant.success,
                                         ),
+                                        if (cache.getLastVideoLessonId(
+                                                item.id) !=
+                                            null)
+                                          const GglStatusTag(
+                                            label: '续看上次',
+                                            variant:
+                                                WelkBadgeVariant.defaultStyle,
+                                          ),
                                       ],
                                     ),
                                     const SizedBox(height: 5),
                                     Text(
-                                      '${item.lessonCount} 节 · ${item.intro.isNotEmpty ? item.intro : '名师讲解 · 点击选集'}',
+                                      '${item.lessonCount} 节 · ${item.intro.isNotEmpty ? item.intro : '名师讲解 · 点击直达学习'}',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(

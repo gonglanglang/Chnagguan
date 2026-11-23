@@ -1,8 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:guoguanla_app/core/cache/global_cache.dart';
 import 'package:guoguanla_app/core/utils/format_utils.dart';
 import 'package:guoguanla_app/core/utils/math_parser.dart';
 import 'package:guoguanla_app/core/utils/update_utils.dart';
 import 'package:guoguanla_app/models/models.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('MathParser', () {
@@ -118,6 +120,68 @@ void main() {
         'lastWrongAt': '2026-11-23T12:00:00',
       });
       expect(essay.formattedCorrectAnswer(), 'x = ±1');
+    });
+  });
+
+  group('GlobalCache', () {
+    test('registers all keys uniquely and preserves auth across update/clear',
+        () async {
+      final storageKeys = GlobalCache.registry.map((e) => e.storageKey).toList();
+      expect(storageKeys.toSet().length, storageKeys.length);
+      for (final key in storageKeys) {
+        expect(key.startsWith('ggl_'), isTrue);
+      }
+
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'temp_orphan_key': 'removable',
+      });
+      final cache = await GlobalCache.init();
+      await cache.setAccessToken('jwt-30-days-token');
+      await cache.setRememberedAccount('student01');
+
+      // Version upgrade sync must NEVER wipe login token
+      final firstSync = await cache.syncInstalledAppVersion('1.0.14+114');
+      expect(firstSync, isFalse);
+      final upgraded = await cache.syncInstalledAppVersion('1.0.15+115');
+      expect(upgraded, isTrue);
+      expect(cache.accessToken, 'jwt-30-days-token');
+
+      // Clearing temporary cache preserves auth & preferences
+      await cache.clearTemporaryCache();
+      expect(cache.accessToken, 'jwt-30-days-token');
+      expect(cache.rememberedAccount, 'student01');
+      expect(globalCache.accessToken, 'jwt-30-days-token');
+    });
+
+    test('caches last watched video lesson per course series', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final cache = await GlobalCache.init();
+
+      expect(cache.getLastVideoLessonId(10), isNull);
+      await cache.setLastVideoLessonId(10, 102);
+      await cache.setLastVideoLessonId(20, 205);
+
+      expect(cache.getLastVideoLessonId(10), 102);
+      expect(cache.getLastVideoLessonId(20), 205);
+      expect(cache.getLastVideoLessonId(99), isNull);
+
+      await cache.setLastVideoLessonId(10, 103);
+      expect(cache.getLastVideoLessonId(10), 103);
+    });
+
+    test('triggers announcement once per app version and re-triggers on update',
+        () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final cache = await GlobalCache.init();
+
+      expect(cache.shouldAutoShowAnnouncement('1.0.14+114'), isTrue);
+      await cache.markAnnouncementShown('1.0.14+114');
+      expect(cache.shouldAutoShowAnnouncement('1.0.14+114'), isFalse);
+
+      // After installing a newer version, announcement triggers once again
+      expect(cache.shouldAutoShowAnnouncement('1.0.15+115'), isTrue);
+      await cache.markAnnouncementShown('1.0.15+115');
+      expect(cache.shouldAutoShowAnnouncement('1.0.15+115'), isFalse);
     });
   });
 }

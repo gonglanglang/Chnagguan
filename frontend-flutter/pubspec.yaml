@@ -1,7 +1,7 @@
 name: guoguanla_app
 description: "过关啦 - Flutter + WelkUI 修仙数学闯关与错题巩固应用"
 publish_to: 'none'
-version: 1.0.13+113
+version: 1.0.14+114
 
 environment:
   sdk: ^3.13.4
@@ -31,3 +31,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/images/app_icon.png
