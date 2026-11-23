@@ -19,7 +19,7 @@
 |---|---|---|
 | **Java 后端** (`backend/`) | Spring Boot 3.3.5 (JDK 17+ / 本机 JDK 21) + MyBatis-Plus + MySQL 8.0 + Sa-Token JWT + Rhino 沙箱 + Knife4j | **已初始化并可运行** |
 | **学生端** (`frontend-uniapp/`) | 基于 **`vue-uniapp-template` (`youlai-app`)**（UniApp + Vue 3 + TypeScript + Vite + Pinia + UnoCSS）改造 | **已运行并可构建** |
-| **学生端 UI 框架** | **`@wot-ui/ui`（Wot Design Uni v2）**，极简 `#f7f8fa` 画布 + `#16a34a` 克制主色 | **已锁定确认** |
+| **学生端 UI 框架** | **`@wot-ui/ui`（Wot Design Uni v2）**，极简 `#F6F7F9` 画布 + `#0284C7` 天青蓝默认主色 | **已锁定确认** |
 | **管理后台** (`frontend-admin/`) | 基于开源 **`pure-admin-thin` v6.2.0**（Vue 3 + TS + Element Plus）改造精简（4 个通俗核心模块） | **已运行并可构建** |
 
 > ✅ **境界规则说明**：全境界题库开放自由学习（不限制低境界学习高境界内容）；同时保留高境界压制境界重温低境界、进阶考核晋升以及后台调整学生境界与进阶配置能力。
@@ -97,4 +97,4 @@ guoguanla/
 - **语言与路径**：文档与注释使用简体中文；源码目录与文件名统一使用英文/拼音小写（避免 Windows 下 Maven/Vite/微信开发者工具因中文路径报错）。
 - **后端分层**：`controller -> service -> mapper`，Controller 只做鉴权/参数校验/VO转换，业务逻辑收口在 Service。
 - **统一响应**：所有接口返回 `Result<T>`（`{ code, message, data, timestamp }`），成功 `code = 200`（或业务约定 `0`，详见 `docs/02-开发规范.md` 统一为准，全局唯一）。
-- **UI 视觉基准**：学生端采用极简克制风格（浅灰画布 `#f7f8fa`、纯白卡片 `#ffffff`、主色 `#16a34a`、矢量 `<wd-icon>`），避免冗余渐变与 Emoji 堆砌。
+- **UI 视觉基准**：学生端采用极简克制扁平风格（浅灰画布 `#F6F7F9`、纯白无阴影卡片 `#FFFFFF`、默认主色 `#0284C7`、1px `#F0F0F0` 分割线与线性矢量图标），避免冗余渐变与 Emoji 堆砌。

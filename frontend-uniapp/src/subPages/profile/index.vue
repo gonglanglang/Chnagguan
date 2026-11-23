@@ -186,8 +186,7 @@ onLoad(async () => {
   padding: 24rpx 28rpx;
   margin-bottom: 20rpx;
   background: var(--color-bg-card);
-  border-radius: 20rpx;
-  box-shadow: var(--shadow-sm);
+  border-radius: 16rpx;
 }
 
 .avatar-card__left {
@@ -253,8 +252,7 @@ onLoad(async () => {
 .profile-card {
   overflow: hidden;
   background: var(--color-bg-card);
-  border-radius: 20rpx;
-  box-shadow: var(--shadow-sm);
+  border-radius: 16rpx;
 }
 
 .profile-sk-card {

@@ -122,8 +122,7 @@ onShow(async () => {
   align-items: center;
   padding: 26rpx 24rpx;
   background: var(--color-bg-card);
-  border-radius: 20rpx;
-  box-shadow: var(--shadow-sm);
+  border-radius: 16rpx;
 }
 
 .summary-card__badge {
@@ -164,8 +163,7 @@ onShow(async () => {
 .realm-card {
   padding: 24rpx;
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  border-radius: 18rpx;
+  border-radius: 16rpx;
 }
 
 .realm-card__head {

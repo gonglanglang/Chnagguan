@@ -468,9 +468,7 @@ onShow(() => {
 .section-card {
   padding: 24rpx;
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  border-radius: 18rpx;
-  box-shadow: var(--shadow-sm);
+  border-radius: 16rpx;
 }
 
 .series-card__head {

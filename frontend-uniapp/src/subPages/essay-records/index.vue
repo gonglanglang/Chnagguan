@@ -223,9 +223,7 @@ onShow(() => {
   padding: 20rpx 24rpx;
   margin-bottom: 20rpx;
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  border-radius: 18rpx;
-  box-shadow: var(--shadow-sm);
+  border-radius: 16rpx;
 }
 
 .summary-bar__left {
@@ -254,9 +252,7 @@ onShow(() => {
 .essay-card {
   padding: 24rpx;
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  border-radius: 18rpx;
-  box-shadow: var(--shadow-sm);
+  border-radius: 16rpx;
 }
 
 .essay-card__top {
@@ -313,11 +309,11 @@ onShow(() => {
 }
 
 .essay-card__ref {
-  padding: 14rpx 18rpx;
+  padding: 16rpx 20rpx;
   margin-top: 14rpx;
   font-size: 24rpx;
-  color: #166534;
-  background: #f0fdf4;
+  color: var(--color-success);
+  background: var(--color-success-light);
   border-radius: 12rpx;
 }
 

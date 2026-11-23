@@ -1,19 +1,6 @@
 <template>
   <view class="home-page">
-    <app-navbar
-      :title="navTitle"
-      :show-back="false"
-      :show-home="false"
-      :fixed="false"
-      :placeholder="false"
-    >
-      <template v-if="selectedChapter" #left>
-        <view class="nav-back-btn" @click="exitChapter">
-          <app-icon name="back" size="18" color="text" />
-          <text class="nav-back-text">返回</text>
-        </view>
-      </template>
-    </app-navbar>
+    <app-navbar title="过关啦" :show-back="false" :fixed="false" />
 
     <scroll-view
       scroll-y
@@ -22,258 +9,266 @@
       class="home-scroll"
       @scroll="onBodyScroll"
     >
-      <view class="page-body">
-      <template v-if="!selectedChapter">
-        <!-- 六大境界 3x2 网格切换（全境界开放自由学习，高境可压制低境，低境可跨级研习） -->
-        <view v-if="showSummarySkeleton" class="realm-box">
-          <view class="realm-box__head">
-            <wd-skeleton animation="gradient" :row-col="[[{ width: '30%', height: '16px' }, { width: '22%', height: '14px' }]]" />
-          </view>
-          <view class="realm-grid">
-            <view v-for="n in 6" :key="n" class="realm-cell">
+      <view class="home-body">
+        <template v-if="showSummarySkeleton">
+          <view class="greeting-row">
+            <view class="greeting-main">
               <wd-skeleton
                 animation="gradient"
-                :row-col="[
-                  { width: '62%', height: '14px' },
-                  { width: '78%', height: '11px' },
-                ]"
+                :row-col="[[{ width: '58%', height: '24px' }], [{ width: '74%', height: '14px' }]]"
+              />
+            </view>
+            <wd-skeleton animation="gradient" :row-col="[[{ width: '76px', height: '30px', type: 'circle' }]]" />
+          </view>
+
+          <view class="hero-card">
+            <wd-skeleton
+              animation="gradient"
+              :row-col="[
+                [{ width: '32%', height: '16px' }, { width: '18%', height: '18px' }],
+                [{ width: '62%', height: '22px' }],
+                [{ width: '48%', height: '14px' }],
+                [{ width: '100%', height: '6px' }],
+                [{ width: '24%', height: '32px' }, { width: '24%', height: '32px' }],
+              ]"
+            />
+          </view>
+
+          <view class="notice-skeleton">
+            <wd-skeleton animation="gradient" :row-col="[[{ width: '100%', height: '34px' }]]" />
+          </view>
+
+          <text class="ggl-section-label">章节闯关</text>
+          <view class="catalog-card">
+            <view v-for="n in 4" :key="n" class="chapter-skeleton-row">
+              <wd-skeleton
+                animation="gradient"
+                :row-col="[[{ width: '36px', height: '36px' }, { width: '52%', height: '16px' }, { width: '16%', height: '18px' }]]"
               />
             </view>
           </view>
-        </view>
+        </template>
 
-        <view v-else class="realm-box">
-          <view class="realm-box__head">
-            <text class="realm-box__title">修炼境界</text>
-            <view class="realm-box__actions">
+        <template v-else>
+          <!-- 顶部问候 + 学习体系弹窗入口 -->
+          <view class="greeting-row">
+            <view class="greeting-main">
+              <text class="greeting-title">{{ greetingText }}</text>
+              <view class="greeting-sub">
+                <text class="greeting-sub__muted">当前境界</text>
+                <text class="greeting-sub__realm">{{ currentRealm.realmName }}</text>
+                <text class="greeting-sub__muted">
+                  · 已过 {{ totalPassedGates }}/{{ totalRealmGates }} 关
+                </text>
+              </view>
+            </view>
+            <view class="system-btn" @click="openSystemPopup">
+              <text class="system-btn__text">学习体系</text>
+            </view>
+          </view>
+
+          <!-- 继续修炼 Hero 主卡片 -->
+          <view v-if="heroChapter" class="hero-card">
+            <view class="hero-card__head">
+              <text class="hero-card__eyebrow">继续修炼</text>
+              <text class="ggl-tag ggl-tag--primary">第 {{ heroChapterSeq }} 章</text>
+            </view>
+
+            <text class="hero-card__title">{{ heroChapter.name }}</text>
+            <text class="hero-card__sub">{{ heroSubtitle }}</text>
+
+            <view class="hero-progress">
+              <view class="hero-progress__track">
+                <view class="hero-progress__fill" :style="{ width: heroProgressPercent + '%' }" />
+              </view>
+              <text class="hero-progress__pct">{{ heroProgressPercent }}%</text>
+            </view>
+
+            <view class="hero-card__footer">
+              <view class="pill-btn pill-btn--outline" @click="openChapterMap(heroChapter, heroChapterSeq)">
+                <text class="pill-btn__text">查看地图</text>
+              </view>
+              <view class="pill-btn pill-btn--primary" @click="handleContinuePractice">
+                <text class="pill-btn__text">继续闯关</text>
+              </view>
+            </view>
+          </view>
+
+          <!-- 公告条 -->
+          <view v-if="noticeText" class="notice-banner" @click="handleNoticeTap">
+            <app-icon name="notice" :size="15" color="warning" />
+            <text class="notice-banner__text">{{ noticeText }}</text>
+          </view>
+
+          <!-- 章节闯关标题 -->
+          <text class="ggl-section-label">章节闯关</text>
+
+          <!-- 粘性境界 Tabs + 章节列表一体白卡 -->
+          <view class="catalog-card">
+            <scroll-view scroll-x :show-scrollbar="false" class="realm-tabs-scroll">
+              <view class="realm-tabs">
+                <view
+                  v-for="realm in userStore.realms"
+                  :key="realm.realmCode"
+                  class="realm-tab"
+                  :class="{ 'realm-tab--active': viewingRealmCode === realm.realmCode }"
+                  @click="selectRealmTab(realm)"
+                >
+                  <text class="realm-tab__name">{{ realm.realmName }}</text>
+                  <view v-if="viewingRealmCode === realm.realmCode" class="realm-tab__bar" />
+                </view>
+              </view>
+            </scroll-view>
+
+            <view v-if="isSuppressedViewing || currentRealm.examEligible" class="realm-hint-strip">
+              <text class="realm-hint-strip__text">
+                {{
+                  isSuppressedViewing
+                    ? `高境压制 · 正在重温${viewingRealm.realmName}内容，全章节自由开放`
+                    : `${currentRealm.realmName}已达标，可点击下方按钮参加境界进阶考核`
+                }}
+              </text>
               <text
-                v-if="userStore.isAuthenticated && currentRealm.examEligible && userStore.userInfo?.nextRealmName"
-                class="realm-box__exam"
+                v-if="currentRealm.examEligible && !isSuppressedViewing"
+                class="realm-hint-strip__action"
                 @click="startAdvanceExam"
               >
-                可进阶考核 ›
-              </text>
-              <text v-else class="realm-box__hint" @click="goRealmsOverview">
-                境界体系 ›
+                去考核
               </text>
             </view>
-          </view>
 
-          <view class="realm-grid">
-            <view
-              v-for="r in userStore.realms"
-              :key="r.realmCode"
-              class="realm-cell"
-              :class="{
-                'realm-cell--active': viewingRealmCode === r.realmCode,
-              }"
-              @click="selectRealmTab(r)"
-            >
-              <view class="realm-cell__row">
-                <text class="realm-cell__name">{{ r.realmName }}</text>
-                <text v-if="r.isCurrent" class="realm-cell__mark">本境</text>
-                <text v-else-if="r.isLower" class="realm-cell__mark">可压</text>
-                <text v-else class="realm-cell__mark">高境</text>
-              </view>
-              <text class="realm-cell__sub">{{ shortDiff(r.difficultyLabel) }}</text>
-            </view>
-          </view>
-
-          <view v-if="isSuppressedViewing" class="suppress-banner">
-            <text class="suppress-banner__text">
-              压制境界中：当前以「{{ currentRealm.realmName }}」修为练习「{{ viewingRealm?.realmName }}」题目
-            </text>
-            <text class="suppress-banner__back" @click="resetToCurrentRealm">回到本境</text>
-          </view>
-
-          <view v-else-if="isHigherViewing" class="cross-banner">
-            <text class="cross-banner__text">
-              跨级研习中：当前以「{{ currentRealm.realmName }}」修为挑战「{{ viewingRealm?.realmName }}」内容
-            </text>
-            <text class="cross-banner__back" @click="resetToCurrentRealm">回到本境</text>
-          </view>
-        </view>
-
-        <view v-if="showSummarySkeleton" class="notice-strip">
-          <wd-skeleton animation="gradient" :row-col="[{ width: '100%', height: '14px' }]" />
-        </view>
-        <view v-else-if="userStore.appNotice" class="notice-strip">
-          <app-icon name="notice" size="15" color="primary" />
-          <text class="notice-strip__text">{{ userStore.appNotice }}</text>
-        </view>
-
-        <!-- 章节列表 -->
-        <view class="section-header">
-          <text class="section-title">{{ viewingRealm?.realmName }} · 章节修炼</text>
-          <text class="section-sub">共 {{ chapters.length }} 章</text>
-        </view>
-
-        <view v-if="showChapterSkeleton" class="chapter-list">
-          <view v-for="n in 4" :key="n" class="chapter-card">
-            <wd-skeleton
-              animation="gradient"
-              :row-col="[
-                [
-                  { type: 'rect', width: '28px', height: '28px', borderRadius: '7px', marginRight: '10px' },
-                  { width: '58%', height: '16px' },
-                  { width: '16%', height: '13px' },
-                ],
-                { width: '100%', height: '6px', borderRadius: '999px' },
-              ]"
-            />
-          </view>
-        </view>
-
-        <wd-empty
-          v-else-if="chapters.length === 0"
-          icon="no-content"
-          tip="该境界暂未配置章节"
-        />
-
-        <view v-else class="chapter-list">
-          <view
-            v-for="(chap, idx) in chapters"
-            :key="chap.id"
-            class="chapter-card"
-            @click="enterChapter(chap)"
-          >
-            <view class="chapter-card__top">
-              <view class="chapter-card__left">
-                <view class="chapter-card__no">{{ String(idx + 1).padStart(2, "0") }}</view>
-                <view class="chapter-card__info">
-                  <text class="chapter-card__name">{{ chap.name }}</text>
-                  <text v-if="chap.description" class="chapter-card__desc">{{ chap.description }}</text>
-                </view>
-              </view>
-              <view class="chapter-card__right">
-                <text
-                  class="chapter-card__stat"
-                  :class="{ 'chapter-card__stat--done': chap.passedCount >= chap.totalGates && chap.totalGates > 0 }"
-                >
-                  {{ chap.passedCount }}/{{ chap.totalGates }} 关
-                </text>
-                <app-icon name="right" size="14" color="muted" />
+            <view v-if="showChapterSkeleton" class="chapter-skeleton-list">
+              <view v-for="n in 4" :key="n" class="chapter-skeleton-row">
+                <wd-skeleton
+                  animation="gradient"
+                  :row-col="[[{ width: '36px', height: '36px' }, { width: '54%', height: '16px' }, { width: '16%', height: '18px' }]]"
+                />
               </view>
             </view>
 
-            <view class="chapter-card__bar">
-              <wd-progress
-                :percentage="calcPercent(chap.passedCount, chap.totalGates)"
-                hide-text
-              />
+            <view v-else-if="chapters.length === 0" class="catalog-empty">
+              <app-icon name="empty" :size="28" color="muted" />
+              <text class="catalog-empty__text">该境界暂未配置章节</text>
             </view>
-          </view>
-        </view>
-      </template>
 
-      <!-- 章节关卡钻取视图 -->
-      <template v-else>
-        <view class="chapter-summary">
-          <view class="chapter-summary__top">
-            <text class="chapter-summary__title">{{ selectedChapter.name }}</text>
-            <wd-tag v-if="isSuppressedViewing" type="warning" variant="light" size="small">
-              压制境界
-            </wd-tag>
-            <text v-else class="chapter-summary__count">
-              {{ passedGatesInChapter }} / {{ gates.length }} 关已通
-            </text>
-          </view>
-          <text v-if="selectedChapter.description" class="chapter-summary__desc">
-            {{ selectedChapter.description }}
-          </text>
-        </view>
-
-        <view v-if="loadingGates && gates.length === 0" class="gate-list">
-          <view v-for="n in 4" :key="n" class="gate-card">
-            <wd-skeleton
-              animation="gradient"
-              :row-col="[
-                [
-                  { type: 'rect', width: '33px', height: '33px', borderRadius: '8px', marginRight: '10px' },
-                  { width: '50%', height: '16px' },
-                  { width: '56px', height: '28px', borderRadius: '8px' },
-                ],
-                { width: '48%', height: '12px' },
-              ]"
-            />
-          </view>
-        </view>
-
-        <wd-empty
-          v-else-if="gates.length === 0"
-          icon="no-content"
-          tip="该章节暂未设置关卡"
-        />
-
-        <view v-else class="gate-list">
-          <view
-            v-for="gate in gates"
-            :key="gate.id"
-            class="gate-card"
-            :class="{ 'gate-card--locked': gate.locked || gate.empty }"
-            @click="startGateQuiz(gate)"
-          >
-            <view class="gate-card__left">
+            <view v-else class="chapter-list">
               <view
-                class="gate-card__index"
-                :class="{
-                  'gate-card__index--done': gate.passed,
-                  'gate-card__index--locked': gate.locked || gate.empty,
-                }"
+                v-for="(chapter, idx) in chapters"
+                :key="chapter.id"
+                class="chapter-row"
+                @click="openChapterMap(chapter, idx + 1)"
               >
-                <app-icon v-if="gate.passed" name="check" size="18" color="#ffffff" />
-                <text v-else>{{ String(gate.gateIndex + 1).padStart(2, "0") }}</text>
-              </view>
+                <view class="chapter-row__inner">
+                  <view class="chapter-badge" :class="chapterBadgeClass(chapter)">
+                    <text class="chapter-badge__num">{{ formatIndex(idx + 1) }}</text>
+                  </view>
 
-              <view class="gate-card__info">
-                <view class="gate-card__title-row">
-                  <text class="gate-card__name">{{ gate.gateName }}</text>
-                  <view class="gate-card__stars">
-                    <app-icon
-                      v-for="n in gate.star || 1"
-                      :key="n"
-                      name="star-fill"
-                      size="12"
-                      color="#f59e0b"
-                    />
+                  <view class="chapter-main">
+                    <text class="chapter-main__title">{{ chapter.name }}</text>
+                    <text class="chapter-main__desc">
+                      {{ chapter.description || "四关精讲精练，循序夯实基础" }}
+                    </text>
+                  </view>
+
+                  <view class="chapter-right">
+                    <text class="ggl-tag" :class="chapterTagClass(chapter)">
+                      {{ chapterStatusText(chapter) }}
+                    </text>
+                    <text class="chapter-right__count">
+                      {{ chapter.passedCount }}/{{ chapter.totalGates }}
+                    </text>
+                    <app-icon name="right" :size="14" color="#BFBFBF" />
                   </view>
                 </view>
-                <text class="gate-card__meta">
-                  共 {{ gate.questionCount }} 题 · 答对 {{ gate.passCount }} 题过关
-                </text>
+                <view v-if="idx < chapters.length - 1" class="chapter-row__divider" />
               </view>
             </view>
-
-            <view class="gate-card__right">
-              <template v-if="gate.empty">
-                <wd-tag variant="light" size="small">敬请期待</wd-tag>
-              </template>
-              <template v-else-if="gate.locked">
-                <view class="gate-card__lock">
-                  <app-icon name="lock" size="15" color="muted" />
-                  <text>未解锁</text>
-                </view>
-              </template>
-              <template v-else-if="gate.passed">
-                <wd-button size="small" variant="plain">再闯</wd-button>
-              </template>
-              <template v-else>
-                <wd-button size="small" type="primary">开始</wd-button>
-              </template>
-            </view>
           </view>
-        </view>
-      </template>
+
+          <view class="bottom-exam-tip" @click="openSystemPopup">
+            <text class="bottom-exam-tip__text">
+              {{
+                currentRealm.examEligible
+                  ? `${currentRealm.realmName}已满足进阶条件，点击查看学习体系并考核晋升`
+                  : `全境界题库已自由开放 · 本境再过 ${Math.max(0, currentRealm.examRemainingGates)} 关可解锁进阶考核`
+              }}
+            </text>
+          </view>
+        </template>
       </view>
     </scroll-view>
+
+    <!-- 学习体系底部抽屉弹窗 -->
+    <wd-popup
+      v-model="showSystemPopup"
+      position="bottom"
+      :z-index="900"
+      safe-area-inset-bottom
+      custom-style="border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; overflow: hidden;"
+    >
+      <view class="system-sheet">
+        <view class="system-sheet__header">
+          <view class="system-sheet__close-placeholder" />
+          <text class="system-sheet__title">学习体系</text>
+          <view class="system-sheet__close" @click="showSystemPopup = false">
+            <app-icon name="close" :size="18" color="muted" />
+          </view>
+        </view>
+
+        <text class="system-sheet__desc">
+          共 {{ userStore.realms.length }} 大境界，全阶段课程与章节题库自由开放学习；完成本境指定关卡后可发起进阶考核晋升。
+        </text>
+
+        <scroll-view scroll-y :show-scrollbar="false" class="system-sheet__scroll">
+          <view class="system-list-card">
+            <view
+              v-for="(realm, rIdx) in userStore.realms"
+              :key="realm.realmCode"
+              class="system-row"
+              @click="handleChooseRealmFromPopup(realm)"
+            >
+              <view class="system-row__content">
+                <view class="system-row__main">
+                  <text class="system-row__title">
+                    {{ realm.realmName }} · {{ shortDiff(realm.difficultyLabel) }}
+                  </text>
+                  <text class="system-row__sub">
+                    {{ realm.description || `共 ${realm.chapterCount} 章 ${realm.gateCount} 关` }}
+                  </text>
+                </view>
+                <text class="ggl-tag" :class="realmPopupTagClass(realm)">
+                  {{ realmPopupTagText(realm) }}
+                </text>
+              </view>
+              <view v-if="rIdx < userStore.realms.length - 1" class="system-row__divider" />
+            </view>
+          </view>
+        </scroll-view>
+
+        <view class="system-sheet__footer">
+          <view
+            v-if="currentRealm.examEligible"
+            class="sheet-primary-btn"
+            @click="handleExamFromPopup"
+          >
+            <text class="sheet-primary-btn__text">参加{{ currentRealm.realmName }}进阶考核</text>
+          </view>
+          <view v-else class="sheet-secondary-btn" @click="goRealmsOverview">
+            <text class="sheet-secondary-btn__text">查看境界详情与进阶规则</text>
+          </view>
+        </view>
+      </view>
+    </wd-popup>
   </view>
 </template>
 
 <script setup lang="ts">
+import { computed, nextTick, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
+import { useToast } from "@wot-ui/ui";
 import { AppBankAPI } from "@/api/guoguanla";
 import { useUserStore } from "@/store";
-import type { ChapterCard, GateCard, RealmItem } from "@/types/guoguanla";
+import type { ChapterCard, RealmItem } from "@/types/guoguanla";
 import { ensureAuthenticated, getGuestPassedIds } from "@/utils/auth";
 import { getErrorMessage } from "@/utils/error";
 
@@ -282,7 +277,7 @@ definePage({
   layout: "tabbar",
   style: {
     navigationStyle: "custom",
-    navigationBarTitleText: "过关啦",
+    navigationBarTitleText: "闯关",
   },
 });
 
@@ -293,25 +288,16 @@ const viewingRealmCode = ref<string>("lianqi");
 const manualRealmSelected = ref(false);
 const lastKnownUserRealmCode = ref<string>("lianqi");
 const lastLoadedChaptersRealm = ref<string>("");
-const selectedChapter = ref<ChapterCard | null>(null);
 const chapters = ref<ChapterCard[]>([]);
-const gates = ref<GateCard[]>([]);
+const heroChapters = ref<ChapterCard[]>([]);
 const loadingSummary = ref(!userStore.homeSummary);
 const loadingChapters = ref(false);
-const loadingGates = ref(false);
+const showSystemPopup = ref(false);
 const currentScrollY = ref(0);
 const innerScrollTop = ref(0);
 
 function onBodyScroll(e: { detail?: { scrollTop?: number } }): void {
   currentScrollY.value = e?.detail?.scrollTop ?? 0;
-}
-
-function resetScroll(): void {
-  innerScrollTop.value = currentScrollY.value;
-  void nextTick(() => {
-    innerScrollTop.value = 0;
-    currentScrollY.value = 0;
-  });
 }
 
 const currentRealm = computed(() => userStore.currentRealm);
@@ -324,10 +310,6 @@ const isSuppressedViewing = computed(() => {
   return (viewingRealm.value?.realmOrder ?? 1) < (currentRealm.value?.realmOrder ?? 1);
 });
 
-const isHigherViewing = computed(() => {
-  return (viewingRealm.value?.realmOrder ?? 1) > (currentRealm.value?.realmOrder ?? 1);
-});
-
 const showSummarySkeleton = computed(() => loadingSummary.value && !userStore.homeSummary);
 
 const showChapterSkeleton = computed(
@@ -336,12 +318,77 @@ const showChapterSkeleton = computed(
     (chapters.value.length === 0 || lastLoadedChaptersRealm.value !== viewingRealmCode.value),
 );
 
-const navTitle = computed(() => {
-  if (selectedChapter.value) return selectedChapter.value.name;
-  return "过关啦";
+const greetingText = computed(() => {
+  const hour = new Date().getHours();
+  const period = hour < 12 ? "早上好" : hour < 18 ? "下午好" : "晚上好";
+  const name = userStore.userInfo?.nickname || (userStore.isAuthenticated ? "道友" : "同学");
+  return `${period}，${name}`;
 });
 
-const passedGatesInChapter = computed(() => gates.value.filter((g) => g.passed).length);
+const totalPassedGates = computed(() => {
+  if (userStore.isAuthenticated && userStore.userInfo) {
+    return userStore.userInfo.passedGateCount ?? currentRealm.value?.passedGateCount ?? 0;
+  }
+  return userStore.realms.reduce((acc, r) => acc + (r.passedGateCount || 0), 0);
+});
+
+const totalRealmGates = computed(() => {
+  const total = userStore.realms.reduce((acc, r) => acc + (r.gateCount || 0), 0);
+  return total > 0 ? total : currentRealm.value?.gateCount || 204;
+});
+
+const activeHeroSource = computed(() => {
+  if (heroChapters.value.length > 0) return heroChapters.value;
+  return chapters.value;
+});
+
+const heroChapter = computed<ChapterCard | null>(() => {
+  const list = activeHeroSource.value;
+  if (list.length === 0) return null;
+  const inProgress = list.find((c) => c.passedCount > 0 && c.passedCount < c.totalGates);
+  if (inProgress) return inProgress;
+  const unstarted = list.find((c) => c.passedCount < c.totalGates);
+  return unstarted || list[0];
+});
+
+const heroChapterSeq = computed(() => {
+  if (!heroChapter.value) return 1;
+  const idx = activeHeroSource.value.findIndex((c) => c.id === heroChapter.value?.id);
+  return idx >= 0 ? idx + 1 : 1;
+});
+
+const heroProgressPercent = computed(() => {
+  if (!heroChapter.value || heroChapter.value.totalGates <= 0) return 0;
+  return Math.min(
+    100,
+    Math.round((heroChapter.value.passedCount / heroChapter.value.totalGates) * 100),
+  );
+});
+
+const heroSubtitle = computed(() => {
+  const ch = heroChapter.value;
+  if (!ch) return "";
+  if (ch.passedCount >= ch.totalGates && ch.totalGates > 0) {
+    return `${ch.realmName} · 本章已全部通关`;
+  }
+  if (ch.passedCount > 0) {
+    return `上次停在第 ${ch.passedCount + 1} 关 · ${ch.description || ch.realmName}`;
+  }
+  return ch.description || `${ch.realmName} · 共 ${ch.totalGates} 关等你挑战`;
+});
+
+const noticeText = computed(() => {
+  const msg = userStore.appNotice?.trim();
+  if (msg) return msg;
+  if (currentRealm.value.examEligible) {
+    return `恭喜！你在${currentRealm.value.realmName}已达晋升条件，点击立即参加进阶考核`;
+  }
+  return `全境界 51 章题库开放自由练习，完成本境指定关卡可参加进阶考核`;
+});
+
+function formatIndex(num: number): string {
+  return String(num).padStart(2, "0");
+}
 
 function shortDiff(label: string): string {
   if (!label) return "";
@@ -349,13 +396,50 @@ function shortDiff(label: string): string {
   return idx >= 0 ? label.slice(idx + 1).trim() : label;
 }
 
-function calcPercent(passed: number, total: number): number {
-  if (!total || total <= 0) return 0;
-  return Math.min(100, Math.round((passed / total) * 100));
-}
-
 function activeGuestIds(): number[] | undefined {
   return userStore.isAuthenticated ? undefined : getGuestPassedIds();
+}
+
+function chapterBadgeClass(chapter: ChapterCard): string {
+  if (chapter.totalGates > 0 && chapter.passedCount >= chapter.totalGates) {
+    return "chapter-badge--done";
+  }
+  if (chapter.passedCount > 0) {
+    return "chapter-badge--active";
+  }
+  return "chapter-badge--idle";
+}
+
+function chapterTagClass(chapter: ChapterCard): string {
+  if (chapter.totalGates > 0 && chapter.passedCount >= chapter.totalGates) {
+    return "ggl-tag--success";
+  }
+  if (chapter.passedCount > 0) {
+    return "ggl-tag--primary";
+  }
+  return "ggl-tag--neutral";
+}
+
+function chapterStatusText(chapter: ChapterCard): string {
+  if (chapter.totalGates > 0 && chapter.passedCount >= chapter.totalGates) {
+    return "已通关";
+  }
+  if (chapter.passedCount > 0) {
+    return "进行中";
+  }
+  return "未开始";
+}
+
+function realmPopupTagText(realm: RealmItem): string {
+  if (realm.isCurrent) return "修炼中";
+  if (realm.isLower) return "已通过";
+  return "自由开放";
+}
+
+function realmPopupTagClass(realm: RealmItem): string {
+  if (realm.isCurrent) return "ggl-tag--primary";
+  if (realm.isLower) return "ggl-tag--success";
+  return "ggl-tag--neutral";
 }
 
 async function fetchChapters(realmCode: string): Promise<void> {
@@ -364,21 +448,13 @@ async function fetchChapters(realmCode: string): Promise<void> {
     const res = await AppBankAPI.getChaptersByRealm(realmCode, activeGuestIds());
     chapters.value = res;
     lastLoadedChaptersRealm.value = realmCode;
+    if (realmCode === currentRealm.value.realmCode) {
+      heroChapters.value = res;
+    }
   } catch (err) {
     toast.error(getErrorMessage(err, "加载章节失败"));
   } finally {
     loadingChapters.value = false;
-  }
-}
-
-async function fetchGates(chapterId: number): Promise<void> {
-  loadingGates.value = true;
-  try {
-    gates.value = await AppBankAPI.getGatesByChapter(chapterId, activeGuestIds());
-  } catch (err) {
-    toast.error(getErrorMessage(err, "加载关卡失败"));
-  } finally {
-    loadingGates.value = false;
   }
 }
 
@@ -399,10 +475,14 @@ async function refreshPage(): Promise<void> {
     manualRealmSelected.value = false;
   }
   lastKnownUserRealmCode.value = active;
-  if (selectedChapter.value) {
-    await fetchGates(selectedChapter.value.id);
-  } else {
-    await fetchChapters(viewingRealmCode.value);
+
+  await fetchChapters(viewingRealmCode.value);
+  if (viewingRealmCode.value !== active) {
+    try {
+      heroChapters.value = await AppBankAPI.getChaptersByRealm(active, activeGuestIds());
+    } catch {
+      // Ignore secondary hero fetch failure
+    }
   }
 }
 
@@ -412,41 +492,60 @@ function selectRealmTab(realm: RealmItem): void {
   void fetchChapters(realm.realmCode);
 }
 
-function resetToCurrentRealm(): void {
-  manualRealmSelected.value = false;
-  viewingRealmCode.value = currentRealm.value.realmCode;
-  void fetchChapters(viewingRealmCode.value);
-}
-
-async function enterChapter(chapter: ChapterCard): Promise<void> {
-  selectedChapter.value = chapter;
-  gates.value = [];
-  resetScroll();
-  await fetchGates(chapter.id);
-}
-
-function exitChapter(): void {
-  selectedChapter.value = null;
-  resetScroll();
-  void fetchChapters(viewingRealmCode.value);
-}
-
-function startGateQuiz(gate: GateCard): void {
-  if (gate.empty) {
-    toast.info("该关卡题目整理中，敬请期待");
-    return;
-  }
-  if (gate.locked) {
-    toast.info("请先通过上一关解锁当前关卡");
-    return;
-  }
-  if (!userStore.isAuthenticated && !userStore.guestModeEnabled) {
-    ensureAuthenticated();
-    return;
-  }
+function openChapterMap(chapter: ChapterCard, seq: number): void {
+  const name = encodeURIComponent(chapter.name || "");
+  const desc = encodeURIComponent(chapter.description || "");
+  const realmName = encodeURIComponent(chapter.realmName || "");
   uni.navigateTo({
-    url: `/subPages/quiz/index?mode=GATE&gateId=${gate.id}`,
+    url: `/subPages/chapter-map/index?chapterId=${chapter.id}&chapterSeq=${seq}&name=${name}&desc=${desc}&realmName=${realmName}`,
   });
+}
+
+async function handleContinuePractice(): Promise<void> {
+  const ch = heroChapter.value;
+  if (!ch) return;
+  try {
+    const gateList = await AppBankAPI.getGatesByChapter(ch.id, activeGuestIds());
+    const playable = gateList.find((g) => !g.passed && !g.locked && !g.empty)
+      || gateList.find((g) => !g.locked && !g.empty);
+    if (playable) {
+      if (!userStore.isAuthenticated && !userStore.guestModeEnabled) {
+        ensureAuthenticated();
+        return;
+      }
+      const offset = gateList.some((g) => g.gateIndex === 0) ? 1 : 0;
+      uni.navigateTo({
+        url: `/subPages/quiz/index?mode=GATE&gateId=${playable.id}&gateSeq=${playable.gateIndex + offset}`,
+      });
+      return;
+    }
+  } catch {
+    // Fallback to chapter map on error
+  }
+  openChapterMap(ch, heroChapterSeq.value);
+}
+
+function handleNoticeTap(): void {
+  if (currentRealm.value.examEligible) {
+    startAdvanceExam();
+    return;
+  }
+  uni.showModal({
+    title: "修炼公告",
+    content: noticeText.value,
+    showCancel: false,
+    confirmText: "知道了",
+    confirmColor: "#0284C7",
+  });
+}
+
+function openSystemPopup(): void {
+  showSystemPopup.value = true;
+}
+
+function handleChooseRealmFromPopup(realm: RealmItem): void {
+  showSystemPopup.value = false;
+  selectRealmTab(realm);
 }
 
 function startAdvanceExam(): void {
@@ -456,11 +555,20 @@ function startAdvanceExam(): void {
   });
 }
 
+function handleExamFromPopup(): void {
+  showSystemPopup.value = false;
+  startAdvanceExam();
+}
+
 function goRealmsOverview(): void {
+  showSystemPopup.value = false;
   uni.navigateTo({ url: "/subPages/levels/index" });
 }
 
 onShow(() => {
+  void nextTick(() => {
+    innerScrollTop.value = currentScrollY.value;
+  });
   void refreshPage();
 });
 </script>
@@ -471,7 +579,7 @@ onShow(() => {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  background: var(--color-bg-page);
+  background-color: var(--color-bg-page);
 }
 
 .home-scroll {
@@ -479,417 +587,534 @@ onShow(() => {
   min-height: 0;
 }
 
-.page-body {
-  padding: 20rpx 24rpx 48rpx;
+.home-body {
+  padding-bottom: 40rpx;
 }
 
-.nav-back-btn {
+.greeting-row {
   display: flex;
-  gap: 6rpx;
+  gap: 20rpx;
   align-items: center;
-  padding: 8rpx 4rpx;
-}
-
-.nav-back-text {
-  font-size: 28rpx;
-  color: var(--color-text);
-}
-
-.realm-box {
-  padding: 22rpx;
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
-  border-radius: 20rpx;
-  box-shadow: var(--shadow-sm);
-}
-
-.realm-box__head {
-  display: flex;
-  align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 16rpx;
+  padding: 28rpx 32rpx 16rpx;
 }
 
-.realm-box__title {
-  font-size: 27rpx;
-  font-weight: 600;
+.greeting-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.greeting-title {
+  display: block;
+  font-size: 40rpx;
+  font-weight: 700;
+  line-height: 1.25;
   color: var(--color-text);
 }
 
-.realm-box__actions {
+.greeting-sub {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  margin-top: 8rpx;
+  font-size: 26rpx;
+  line-height: 1.4;
 }
 
-.realm-box__exam {
-  font-size: 23rpx;
-  font-weight: 600;
-  color: var(--color-primary);
-}
-
-.realm-box__hint {
-  font-size: 22rpx;
+.greeting-sub__muted {
   color: var(--color-text-muted);
 }
 
-.realm-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12rpx;
+.greeting-sub__realm {
+  margin: 0 8rpx;
+  font-weight: 500;
+  color: var(--color-primary);
 }
 
-.realm-cell {
+.system-btn {
   display: flex;
-  flex-direction: column;
-  gap: 4rpx;
-  padding: 16rpx 14rpx;
-  background: var(--color-bg-page);
-  border: 2rpx solid transparent;
-  border-radius: 16rpx;
-  transition: all 0.15s ease;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  height: 60rpx;
+  padding: 0 24rpx;
+  background-color: var(--color-bg-card);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 9999px;
 
-  &--active {
-    background: var(--color-primary-soft);
-    border-color: var(--color-primary);
-
-    .realm-cell__name,
-    .realm-cell__mark,
-    .realm-cell__sub {
-      color: var(--color-primary);
-    }
+  &:active {
+    background-color: var(--color-fill-1);
   }
 }
 
-.realm-cell__row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.realm-cell__name {
-  font-size: 27rpx;
-  font-weight: 600;
-  color: var(--color-text);
-}
-
-.realm-cell__mark {
-  font-size: 20rpx;
+.system-btn__text {
+  font-size: 24rpx;
+  font-weight: 500;
   color: var(--color-text-secondary);
 }
 
-.realm-cell__sub {
-  font-size: 20rpx;
-  color: var(--color-text-muted);
-}
-
-.suppress-banner {
-  display: flex;
-  gap: 12rpx;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14rpx 18rpx;
-  margin-top: 16rpx;
-  background: var(--color-warning-light);
-  border-radius: 12rpx;
-}
-
-.suppress-banner__text {
-  flex: 1;
-  font-size: 22rpx;
-  color: var(--color-warning);
-}
-
-.suppress-banner__back {
-  flex-shrink: 0;
-  font-size: 22rpx;
-  font-weight: 600;
-  color: var(--color-primary);
-}
-
-.cross-banner {
-  display: flex;
-  gap: 12rpx;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14rpx 18rpx;
-  margin-top: 16rpx;
-  background: var(--color-primary-soft);
-  border-radius: 12rpx;
-}
-
-.cross-banner__text {
-  flex: 1;
-  font-size: 22rpx;
-  color: var(--color-primary);
-}
-
-.cross-banner__back {
-  flex-shrink: 0;
-  font-size: 22rpx;
-  font-weight: 600;
-  color: var(--color-primary);
-}
-
-.notice-strip {
-  display: flex;
-  gap: 12rpx;
-  align-items: center;
-  padding: 16rpx 20rpx;
-  margin-top: 18rpx;
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
+.hero-card {
+  padding: 32rpx;
+  margin: 12rpx 24rpx 0;
+  background-color: var(--color-bg-card);
   border-radius: 16rpx;
 }
 
-.notice-strip__text {
-  flex: 1;
-  font-size: 23rpx;
-  color: var(--color-text-secondary);
-}
-
-.section-header {
+.hero-card__head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  padding: 0 4rpx;
-  margin: 26rpx 0 16rpx;
 }
 
-.section-title {
+.hero-card__eyebrow {
   font-size: 30rpx;
   font-weight: 600;
   color: var(--color-text);
 }
 
-.section-sub {
-  font-size: 23rpx;
+.hero-card__title {
+  display: block;
+  margin-top: 20rpx;
+  font-size: 36rpx;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--color-text);
+}
+
+.hero-card__sub {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 26rpx;
+  color: var(--color-text-muted);
+}
+
+.hero-progress {
+  display: flex;
+  gap: 24rpx;
+  align-items: center;
+  margin-top: 26rpx;
+}
+
+.hero-progress__track {
+  flex: 1;
+  height: 8rpx;
+  overflow: hidden;
+  background-color: var(--color-fill-2);
+  border-radius: 9999px;
+}
+
+.hero-progress__fill {
+  height: 100%;
+  background-color: var(--color-primary);
+  border-radius: 9999px;
+  transition: width 0.25s ease;
+}
+
+.hero-progress__pct {
+  font-size: 24rpx;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.hero-card__footer {
+  display: flex;
+  gap: 16rpx;
+  align-items: center;
+  justify-content: flex-end;
+  padding-top: 24rpx;
+  margin-top: 26rpx;
+  border-top: 1px solid var(--color-border);
+}
+
+.pill-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 64rpx;
+  padding: 0 30rpx;
+  border-radius: 9999px;
+
+  &--outline {
+    color: var(--color-text-secondary);
+    background-color: var(--color-bg-card);
+    border: 1px solid var(--color-border-strong);
+
+    &:active {
+      background-color: var(--color-fill-1);
+    }
+  }
+
+  &--primary {
+    color: #ffffff;
+    background-color: var(--color-primary);
+
+    &:active {
+      opacity: 0.88;
+    }
+  }
+}
+
+.pill-btn__text {
+  font-size: 26rpx;
+  font-weight: 500;
+  color: inherit;
+}
+
+.notice-skeleton {
+  margin: 24rpx 24rpx 0;
+}
+
+.notice-banner {
+  display: flex;
+  gap: 14rpx;
+  align-items: center;
+  padding: 18rpx 24rpx;
+  margin: 24rpx 24rpx 0;
+  background-color: var(--color-warning-light);
+  border-radius: 12rpx;
+}
+
+.notice-banner__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 26rpx;
+  color: var(--color-warning);
+  white-space: nowrap;
+}
+
+.catalog-card {
+  margin: 0 24rpx;
+  overflow: hidden;
+  background-color: var(--color-bg-card);
+  border-radius: 16rpx;
+}
+
+.realm-tabs-scroll {
+  width: 100%;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.realm-tabs {
+  display: flex;
+  align-items: center;
+  padding: 0 12rpx;
+}
+
+.realm-tab {
+  position: relative;
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 112rpx;
+  height: 84rpx;
+  padding: 0 16rpx;
+}
+
+.realm-tab__name {
+  font-size: 28rpx;
+  font-weight: 400;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.realm-tab--active .realm-tab__name {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.realm-tab__bar {
+  position: absolute;
+  bottom: 0;
+  width: 38rpx;
+  height: 6rpx;
+  background-color: var(--color-primary);
+  border-radius: 9999px;
+}
+
+.realm-hint-strip {
+  display: flex;
+  gap: 12rpx;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16rpx 32rpx;
+  background-color: var(--color-primary-soft);
+}
+
+.realm-hint-strip__text {
+  flex: 1;
+  font-size: 22rpx;
+  color: var(--color-primary);
+}
+
+.realm-hint-strip__action {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.chapter-skeleton-list {
+  padding: 8rpx 0;
+}
+
+.chapter-skeleton-row {
+  padding: 26rpx 32rpx;
+  border-bottom: 1px solid var(--color-border);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.catalog-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 14rpx;
+  align-items: center;
+  padding: 72rpx 32rpx;
+}
+
+.catalog-empty__text {
+  font-size: 26rpx;
   color: var(--color-text-muted);
 }
 
 .chapter-list {
   display: flex;
   flex-direction: column;
-  gap: 16rpx;
 }
 
-.chapter-card {
-  padding: 24rpx;
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
-  border-radius: 18rpx;
-  box-shadow: var(--shadow-sm);
+.chapter-row {
+  background-color: var(--color-bg-card);
+
+  &:active {
+    background-color: var(--color-fill-1);
+  }
 }
 
-.chapter-card:active {
-  background: var(--color-bg-active);
-}
-
-.chapter-card__top {
+.chapter-row__inner {
   display: flex;
-  gap: 14rpx;
+  gap: 24rpx;
   align-items: center;
-  justify-content: space-between;
+  padding: 28rpx 32rpx;
 }
 
-.chapter-card__left {
-  display: flex;
-  flex: 1;
-  gap: 16rpx;
-  align-items: center;
-  min-width: 0;
+.chapter-row__divider {
+  height: 1px;
+  margin: 0 32rpx;
+  background-color: var(--color-border);
 }
 
-.chapter-card__no {
+.chapter-badge {
   display: flex;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  width: 56rpx;
-  height: 56rpx;
-  font-size: 24rpx;
-  font-weight: 600;
-  color: var(--color-primary);
-  background: var(--color-primary-soft);
-  border-radius: 14rpx;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 16rpx;
+
+  &--done {
+    color: var(--color-success);
+    background-color: var(--color-success-light);
+  }
+
+  &--active {
+    color: var(--color-primary);
+    background-color: var(--color-primary-soft);
+  }
+
+  &--idle {
+    color: var(--color-text-muted);
+    background-color: var(--color-fill-1);
+  }
 }
 
-.chapter-card__info {
+.chapter-badge__num {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: inherit;
+}
+
+.chapter-main {
+  display: flex;
   flex: 1;
+  flex-direction: column;
+  gap: 6rpx;
   min-width: 0;
 }
 
-.chapter-card__name {
-  display: block;
+.chapter-main__title {
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 29rpx;
-  font-weight: 600;
+  font-size: 30rpx;
+  font-weight: 500;
   color: var(--color-text);
   white-space: nowrap;
 }
 
-.chapter-card__desc {
-  display: block;
-  margin-top: 4rpx;
+.chapter-main__desc {
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 23rpx;
-  color: var(--color-text-secondary);
+  font-size: 24rpx;
+  color: var(--color-text-muted);
   white-space: nowrap;
 }
 
-.chapter-card__right {
+.chapter-right {
   display: flex;
   flex-shrink: 0;
-  gap: 6rpx;
+  gap: 12rpx;
   align-items: center;
 }
 
-.chapter-card__stat {
-  font-size: 23rpx;
-  font-weight: 500;
-  color: var(--color-text-secondary);
-
-  &--done {
-    font-weight: 600;
-    color: var(--color-primary);
-  }
+.chapter-right__count {
+  font-size: 24rpx;
+  color: var(--color-text-muted);
 }
 
-.chapter-card__bar {
-  margin-top: 16rpx;
+.bottom-exam-tip {
+  padding: 24rpx 32rpx 0;
+  text-align: center;
 }
 
-.chapter-summary {
-  padding: 24rpx;
-  margin-bottom: 20rpx;
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
-  border-radius: 18rpx;
+.bottom-exam-tip__text {
+  font-size: 24rpx;
+  color: var(--color-text-muted);
 }
 
-.chapter-summary__top {
+.system-sheet {
   display: flex;
-  gap: 12rpx;
+  flex-direction: column;
+  max-height: 76vh;
+  padding: 28rpx 32rpx 32rpx;
+  overflow: hidden;
+  background-color: var(--color-bg-card);
+}
+
+.system-sheet__header {
+  display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
 }
 
-.chapter-summary__title {
+.system-sheet__close-placeholder {
+  width: 48rpx;
+  height: 48rpx;
+}
+
+.system-sheet__title {
   font-size: 32rpx;
   font-weight: 600;
   color: var(--color-text);
 }
 
-.chapter-summary__count {
-  font-size: 24rpx;
-  font-weight: 500;
-  color: var(--color-primary);
-}
-
-.chapter-summary__desc {
-  display: block;
-  margin-top: 8rpx;
-  font-size: 24rpx;
-  color: var(--color-text-secondary);
-}
-
-.gate-list {
+.system-sheet__close {
   display: flex;
-  flex-direction: column;
-  gap: 16rpx;
-}
-
-.gate-card {
-  display: flex;
-  gap: 16rpx;
-  align-items: center;
-  justify-content: space-between;
-  padding: 24rpx;
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
-  border-radius: 18rpx;
-  box-shadow: var(--shadow-sm);
-
-  &--locked {
-    opacity: 0.7;
-  }
-}
-
-.gate-card__left {
-  display: flex;
-  flex: 1;
-  gap: 18rpx;
-  align-items: center;
-  min-width: 0;
-}
-
-.gate-card__index {
-  display: flex;
-  flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  width: 66rpx;
-  height: 66rpx;
-  font-size: 26rpx;
-  font-weight: 600;
-  color: var(--color-primary);
-  background: var(--color-primary-soft);
+  width: 48rpx;
+  height: 48rpx;
+}
+
+.system-sheet__desc {
+  margin-top: 16rpx;
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+.system-sheet__scroll {
+  flex: 1;
+  min-height: 0;
+  max-height: 48vh;
+  margin-top: 24rpx;
+}
+
+.system-list-card {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
   border-radius: 16rpx;
+}
 
-  &--done {
-    color: #ffffff;
-    background: var(--color-primary);
-  }
+.system-row {
+  background-color: var(--color-bg-card);
 
-  &--locked {
-    color: var(--color-text-muted);
-    background: var(--color-bg-page);
+  &:active {
+    background-color: var(--color-fill-1);
   }
 }
 
-.gate-card__info {
+.system-row__content {
+  display: flex;
+  gap: 20rpx;
+  align-items: center;
+  justify-content: space-between;
+  padding: 26rpx 28rpx;
+}
+
+.system-row__main {
+  display: flex;
   flex: 1;
+  flex-direction: column;
+  gap: 6rpx;
   min-width: 0;
 }
 
-.gate-card__title-row {
-  display: flex;
-  gap: 10rpx;
-  align-items: center;
-}
-
-.gate-card__name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 30rpx;
-  font-weight: 600;
+.system-row__title {
+  font-size: 28rpx;
+  font-weight: 500;
   color: var(--color-text);
-  white-space: nowrap;
 }
 
-.gate-card__stars {
-  display: flex;
-  gap: 2rpx;
-  align-items: center;
-}
-
-.gate-card__meta {
-  display: block;
-  margin-top: 8rpx;
-  font-size: 24rpx;
-  color: var(--color-text-secondary);
-}
-
-.gate-card__right {
-  flex-shrink: 0;
-}
-
-.gate-card__lock {
-  display: flex;
-  gap: 6rpx;
-  align-items: center;
+.system-row__sub {
   font-size: 24rpx;
   color: var(--color-text-muted);
+}
+
+.system-row__divider {
+  height: 1px;
+  margin: 0 28rpx;
+  background-color: var(--color-border);
+}
+
+.system-sheet__footer {
+  margin-top: 28rpx;
+}
+
+.sheet-primary-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 88rpx;
+  background-color: var(--color-primary);
+  border-radius: 9999px;
+}
+
+.sheet-primary-btn__text {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.sheet-secondary-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 84rpx;
+  background-color: var(--color-bg-card);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 9999px;
+}
+
+.sheet-secondary-btn__text {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: var(--color-text-secondary);
 }
 </style>

@@ -21,11 +21,11 @@ export default defineUniPages({
     list: [
       {
         pagePath: "pages/index/index",
-        text: "首页",
+        text: "闯关",
       },
       {
         pagePath: "pages/cultivate/index",
-        text: "修炼",
+        text: "课堂",
       },
       {
         pagePath: "pages/wrong/index",

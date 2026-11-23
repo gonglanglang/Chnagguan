@@ -11,81 +11,89 @@ page {
   --z-mask: 1;
   --z-content: 2;
 
-  // 雅致青竹修仙绿主色体系
-  --color-primary: #16a34a;
-  --color-primary-soft: rgba(22, 163, 74, 0.1);
-  --color-success: #16a34a;
-  --color-success-light: #f0fdf4;
+  // 墨刀原型天青蓝极简扁平主色体系
+  --color-primary: #0284c7;
+  --color-primary-soft: #e6f3fa;
+  --color-success: #059669;
+  --color-success-outline: #10b981;
+  --color-success-light: #ecfdf5;
   --color-warning: #d97706;
+  --color-star: #f59e0b;
   --color-warning-light: #fffbeb;
   --color-danger: #ef4444;
+  --color-danger-text: #dc2626;
   --color-danger-light: #fef2f2;
-  --color-info: #64748b;
-  --color-info-light: #f1f5f9;
-  --color-wx-green: #22c55e;
+  --color-info: #595959;
+  --color-info-light: #f0f2f5;
+  --color-wx-green: #10b981;
 
   --color-bg-card: #ffffff;
-  --color-bg-page: #f6f8f7;
+  --color-bg-page: #f6f7f9;
 
-  --color-text: #1e293b;
-  --color-text-secondary: #64748b;
-  --color-text-muted: #94a3b8;
-  --color-text-placeholder: #94a3b8;
-  --color-text-placeholder-rgb: 148, 163, 184;
+  --color-text: #262626;
+  --color-text-secondary: #595959;
+  --color-text-muted: #8c8c8c;
+  --color-text-placeholder: #bfbfbf;
+  --color-text-placeholder-rgb: 191, 191, 191;
   --color-text-inverse: #ffffff;
 
-  --color-border: #e7ece9;
-  --color-border-light: #f1f5f3;
-  --color-border-glass: rgba(148, 163, 184, 0.22);
-  --color-border-glass-strong: rgba(255, 255, 255, 0.9);
+  --color-border: #f0f0f0;
+  --color-border-strong: #d9d9d9;
+  --color-border-muted: #e5e5e5;
+  --color-border-light: #f0f0f0;
+  --color-border-glass: rgba(140, 140, 140, 0.18);
+  --color-border-glass-strong: rgba(255, 255, 255, 0.92);
 
   --color-glass: rgba(255, 255, 255, 0.22);
   --color-glass-light: rgba(255, 255, 255, 0.12);
   --color-bg-card-alpha-95: rgba(255, 255, 255, 0.95);
 
-  --color-fill-1: #f1f5f3;
-  --color-fill-2: #e2e8f0;
-  --color-bg-active: #f1f5f3;
+  --color-fill-1: #f0f2f5;
+  --color-fill-2: #ebedf0;
+  --color-bg-active: #f0f2f5;
 
   --color-media-mask: rgba(255, 255, 255, 0.22);
   --color-media-mask-light: rgba(255, 255, 255, 0.12);
 
-  --color-primary-alpha-20: rgba(22, 163, 74, 0.2);
-  --color-primary-alpha-15: rgba(22, 163, 74, 0.15);
+  --color-primary-alpha-20: rgba(2, 132, 199, 0.2);
+  --color-primary-alpha-15: rgba(2, 132, 199, 0.15);
 
-  --shadow-sm: 0 2rpx 10rpx rgba(15, 23, 42, 0.04);
-  --shadow-md: 0 8rpx 20rpx rgba(15, 23, 42, 0.07);
-  --shadow-lg: 0 18rpx 32rpx rgba(15, 23, 42, 0.1);
-  --shadow-float: 0 18rpx 44rpx -10rpx rgba(15, 23, 42, 0.1);
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: 0 8rpx 24rpx rgba(0, 0, 0, 0.08);
+  --shadow-float: 0 12rpx 32rpx rgba(0, 0, 0, 0.1);
 
-  --color-overlay: rgba(15, 23, 42, 0.56);
+  --color-overlay: rgba(0, 0, 0, 0.45);
 
   // @wot-ui/ui v2 主色标尺与组件变量统一
-  --wot-color-theme: #16a34a;
-  --wot-primary-1: #f0fdf4;
-  --wot-primary-2: #dcfce7;
-  --wot-primary-3: #bbf7d0;
-  --wot-primary-4: #86efac;
-  --wot-primary-5: #22c55e;
-  --wot-primary-6: #16a34a;
-  --wot-primary-7: #15803d;
-  --wot-button-radius-main: 18rpx;
-  --wot-cell-bg-active: var(--color-fill-2);
+  --wot-color-theme: #0284c7;
+  --wot-primary-1: #e6f3fa;
+  --wot-primary-2: #bae6fd;
+  --wot-primary-3: #7dd3fc;
+  --wot-primary-4: #38bdf8;
+  --wot-primary-5: #0ea5e9;
+  --wot-primary-6: #0284c7;
+  --wot-primary-7: #0369a1;
+  --wot-button-radius-main: 9999px;
+  --wot-cell-bg-active: var(--color-fill-1);
   --wot-fab-z-index: 6;
-  --wot-skeleton-col-bg: #e7ece9;
-  --wot-skeleton-animation-gradient: rgba(255, 255, 255, 0.65);
-  --wot-skeleton-animation-flashed: #f1f5f3;
+  --wot-skeleton-col-bg: #ebedf0;
+  --wot-skeleton-animation-gradient: rgba(255, 255, 255, 0.72);
+  --wot-skeleton-animation-flashed: #f0f2f5;
 }
 
 // 暗色主题
 .wot-theme-dark {
-  --color-primary: #22c55e;
-  --color-primary-soft: rgba(34, 197, 94, 0.14);
-  --color-success: #22c55e;
+  --color-primary: #38bdf8;
+  --color-primary-soft: rgba(56, 189, 248, 0.16);
+  --color-success: #34d399;
+  --color-success-outline: #10b981;
   --color-success-light: #122417;
   --color-warning: #f59e0b;
+  --color-star: #fbbf24;
   --color-warning-light: #2c1f12;
   --color-danger: #f87171;
+  --color-danger-text: #f87171;
   --color-danger-light: #2b1919;
   --color-info: #94a3b8;
   --color-info-light: #202122;
@@ -94,12 +102,14 @@ page {
   --color-bg-page: #0f172a;
 
   --color-text: #f8fafc;
-  --color-text-secondary: #94a3b8;
-  --color-text-muted: #64748b;
+  --color-text-secondary: #cbd5e1;
+  --color-text-muted: #94a3b8;
   --color-text-placeholder: #64748b;
   --color-text-placeholder-rgb: 100, 116, 139;
 
   --color-border: #334155;
+  --color-border-strong: #475569;
+  --color-border-muted: #334155;
   --color-border-light: #1e293b;
   --color-border-glass: rgba(148, 163, 184, 0.15);
 
@@ -114,22 +124,22 @@ page {
   --color-media-mask: rgba(15, 23, 42, 0.82);
   --color-media-mask-light: rgba(15, 23, 42, 0.82);
 
-  --color-primary-alpha-20: rgba(34, 197, 94, 0.2);
-  --color-primary-alpha-15: rgba(34, 197, 94, 0.15);
+  --color-primary-alpha-20: rgba(56, 189, 248, 0.2);
+  --color-primary-alpha-15: rgba(56, 189, 248, 0.15);
 
-  --shadow-sm: 0 2rpx 6rpx rgba(0, 0, 0, 0.24);
-  --shadow-md: 0 8rpx 16rpx rgba(0, 0, 0, 0.32);
+  --shadow-sm: none;
+  --shadow-md: none;
   --shadow-lg: 0 20rpx 30rpx rgba(0, 0, 0, 0.42);
   --shadow-float: 0 20rpx 50rpx -10rpx rgba(0, 0, 0, 0.42);
 
   --color-overlay: rgba(0, 0, 0, 0.72);
 
-  --wot-color-theme: #22c55e;
-  --wot-primary-1: rgba(34, 197, 94, 0.14);
-  --wot-primary-2: rgba(34, 197, 94, 0.24);
-  --wot-primary-5: #4ade80;
-  --wot-primary-6: #22c55e;
-  --wot-primary-7: #16a34a;
+  --wot-color-theme: #38bdf8;
+  --wot-primary-1: rgba(56, 189, 248, 0.16);
+  --wot-primary-2: rgba(56, 189, 248, 0.24);
+  --wot-primary-5: #7dd3fc;
+  --wot-primary-6: #38bdf8;
+  --wot-primary-7: #0284c7;
   --wot-skeleton-col-bg: #334155;
   --wot-skeleton-animation-gradient: rgba(148, 163, 184, 0.16);
   --wot-skeleton-animation-flashed: #1e293b;

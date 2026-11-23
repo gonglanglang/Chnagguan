@@ -63,7 +63,7 @@ const providerStyle = computed(() => {
       `--wot-primary-2: ${tint(0.8)}`,
       `--wot-primary-5: ${tint(0.2)}`,
       `--wot-primary-7: ${shade(0.16)}`,
-      `--color-primary-soft: rgba(${rgb}, 0.1)`,
+      `--color-primary-soft: ${themeMode.value === "dark" ? `rgba(${rgb}, 0.16)` : tint(0.9)}`,
       `--color-primary-alpha-20: rgba(${rgb}, 0.2)`,
       `--color-primary-alpha-15: rgba(${rgb}, 0.15)`,
     );

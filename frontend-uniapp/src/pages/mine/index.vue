@@ -1,123 +1,181 @@
 <template>
   <view class="mine-page">
-    <view class="mine-hero" :style="{ paddingTop: statusBarHeight + 'px' }">
-      <view class="mine-hero__bar">
-        <text class="mine-hero__title">我的</text>
-      </view>
-    </view>
+    <app-navbar title="我的" :show-back="false" :fixed="false" />
 
     <scroll-view scroll-y :show-scrollbar="false" class="mine-scroll">
-      <view v-if="initialLoading" class="mine-content">
-        <view class="mine-sk-card">
-          <wd-skeleton
-            animation="gradient"
-            :row-col="[
-              [
-                { type: 'circle', width: '50px', height: '50px', marginRight: '10px' },
-                { width: '54%', height: '18px' },
-                { width: '20%', height: '24px', borderRadius: '8px' },
-              ],
-              { width: '62%', height: '12px' },
-              [
-                { width: '28%', height: '32px' },
-                { width: '28%', height: '32px' },
-                { width: '28%', height: '32px' },
-              ],
-            ]"
-          />
-        </view>
-
-        <view v-if="userStore.isAuthenticated" class="records-card">
-          <wd-skeleton
-            animation="gradient"
-            :row-col="[
-              [{ width: '36%', height: '16px' }, { width: '24%', height: '13px' }],
-              [{ width: '64%', height: '14px' }, { width: '16%', height: '14px' }],
-              [{ width: '58%', height: '14px' }, { width: '16%', height: '14px' }],
-            ]"
-          />
-        </view>
-
-        <view class="mine-sk-menu">
-          <wd-skeleton
-            animation="gradient"
-            :row-col="[
-              { width: '26%', height: '13px' },
-              [{ width: '48%', height: '16px' }, { width: '22%', height: '14px' }],
-              { width: '48%', height: '16px' },
-            ]"
-          />
-        </view>
-
-        <view class="mine-sk-menu">
-          <wd-skeleton
-            animation="gradient"
-            :row-col="[
-              { width: '26%', height: '13px' },
-              { width: '52%', height: '16px' },
-              [{ width: '46%', height: '16px' }, { width: '18%', height: '14px' }],
-              { width: '46%', height: '16px' },
-              [{ width: '40%', height: '16px' }, { width: '18%', height: '14px' }],
-              { width: '42%', height: '16px' },
-            ]"
-          />
-        </view>
-      </view>
-
-      <view v-else class="mine-content">
-        <profile-card
-          :is-logged-in="userStore.isAuthenticated"
-          :user-info="userStore.userInfo"
-          :passed-count="userStore.passedGateCount"
-          @login="goLogin"
-          @profile="goProfile"
-          @realms="goRealmsOverview"
-        />
-
-        <view v-if="userStore.isAuthenticated && passedChapters.length > 0" class="records-card">
-          <view class="records-card__header">
-            <text class="records-card__title">章节过关战绩</text>
-            <text class="records-card__sub">共 {{ passedChapters.length }} 章有进展</text>
+      <view class="mine-body">
+        <!-- 骨架屏 -->
+        <template v-if="initialLoading">
+          <view class="profile-skeleton-card">
+            <wd-skeleton
+              animation="gradient"
+              :row-col="[
+                [{ width: '56px', height: '56px', type: 'circle' }, { width: '58%', height: '48px' }],
+                [{ width: '26%', height: '38px' }, { width: '26%', height: '38px' }, { width: '26%', height: '38px' }],
+              ]"
+            />
           </view>
-          <view class="records-list">
-            <view v-for="chap in passedChapters.slice(0, 5)" :key="chap.id" class="record-row">
-              <text class="record-row__name">
-                <template v-if="chap.realmName">[{{ chap.realmName }}] </template>
-                {{ chap.name }}
-              </text>
-              <text class="record-row__count">{{ chap.passedCount }}/{{ chap.totalGates }} 关</text>
+
+          <view class="grid-skeleton-card">
+            <wd-skeleton
+              animation="gradient"
+              :row-col="[[
+                { width: '20%', height: '46px' },
+                { width: '20%', height: '46px' },
+                { width: '20%', height: '46px' },
+                { width: '20%', height: '46px' },
+              ]]"
+            />
+          </view>
+
+          <text class="ggl-section-label mine-section-label">设置</text>
+          <view class="menu-skeleton-card">
+            <view v-for="n in 4" :key="n" class="menu-skeleton-row">
+              <wd-skeleton
+                animation="gradient"
+                :row-col="[[{ width: '18px', height: '18px' }, { width: '48%', height: '18px' }, { width: '16%', height: '14px' }]]"
+              />
             </view>
           </view>
-        </view>
+        </template>
 
-        <menu-section :groups="menuGroups" @select="handleMenuSelect" />
+        <!-- 正式内容 -->
+        <template v-else>
+          <profile-card
+            :is-authenticated="userStore.isAuthenticated"
+            :avatar-url="userStore.userInfo?.avatarUrl"
+            :nickname="userStore.userInfo?.nickname || userStore.userInfo?.username"
+            :grade-name="userStore.userInfo?.gradeName"
+            :realm-name="userStore.currentRealm.realmName"
+            :passed-gate-count="userStore.passedGateCount"
+            :passed-chapter-count="passedChapters.length"
+            :realm-progress-percent="realmProgressPercent"
+            @edit="goProfile"
+            @login="goLogin"
+          />
 
-        <view v-if="userStore.isAuthenticated" class="logout-wrap">
-          <wd-button
-            variant="plain"
-            type="danger"
-            block
-            :loading="isLoggingOut"
-            @click="requestLogout"
-          >
-            退出登录
-          </wd-button>
-        </view>
+          <!-- 四宫格学习入口 -->
+          <view class="quick-grid">
+            <view class="quick-item" @click="goRealmsOverview">
+              <view class="quick-item__icon">
+                <app-icon name="layers" :size="22" color="primary" />
+              </view>
+              <text class="quick-item__label">境界体系</text>
+            </view>
+
+            <view class="quick-item" @click="goEssayRecords">
+              <view class="quick-item__icon">
+                <app-icon name="pen-line" :size="22" color="primary" />
+              </view>
+              <text class="quick-item__label">解答记录</text>
+            </view>
+
+            <view class="quick-item" @click="handleStartExam">
+              <view class="quick-item__icon">
+                <app-icon name="graduation-cap" :size="22" color="primary" />
+              </view>
+              <text class="quick-item__label">进阶考</text>
+            </view>
+
+            <view class="quick-item" @click="openRecordsPopup">
+              <view class="quick-item__icon">
+                <app-icon name="chart-column" :size="22" color="primary" />
+              </view>
+              <text class="quick-item__label">章节档案</text>
+            </view>
+          </view>
+
+          <!-- 设置分组 -->
+          <menu-section :groups="menuGroups" @select="handleMenuSelect" />
+
+          <!-- 退出 / 登录 胶囊按钮 -->
+          <view v-if="userStore.isAuthenticated" class="auth-action">
+            <view
+              class="logout-btn"
+              :class="{ 'logout-btn--busy': isLoggingOut }"
+              @click="requestLogout"
+            >
+              <text class="logout-btn__text">{{ isLoggingOut ? "正在退出..." : "退出登录" }}</text>
+            </view>
+          </view>
+          <view v-else class="auth-action">
+            <view class="login-btn" @click="goLogin">
+              <text class="login-btn__text">登录 / 注册</text>
+            </view>
+          </view>
+        </template>
       </view>
     </scroll-view>
+
+    <!-- 章节档案弹窗 -->
+    <wd-popup
+      v-model="showChapterRecordsPopup"
+      position="bottom"
+      :z-index="900"
+      safe-area-inset-bottom
+      custom-style="border-top-left-radius: 32rpx; border-top-right-radius: 32rpx; overflow: hidden;"
+    >
+      <view class="records-sheet">
+        <view class="records-sheet__header">
+          <view class="records-sheet__placeholder" />
+          <text class="records-sheet__title">章节学习档案</text>
+          <view class="records-sheet__close" @click="showChapterRecordsPopup = false">
+            <app-icon name="close" :size="18" color="muted" />
+          </view>
+        </view>
+
+        <text class="records-sheet__sub">
+          已留下闯关记录的章节共 {{ passedChapters.length }} 个，点击可直接进入该章闯关地图。
+        </text>
+
+        <view v-if="passedChapters.length === 0" class="records-empty">
+          <app-icon name="empty" :size="28" color="muted" />
+          <text class="records-empty__text">
+            {{ userStore.isAuthenticated ? "还没有通过关卡，回首页开始第一关吧" : "登录后可同步全部章节学习记录" }}
+          </text>
+        </view>
+
+        <scroll-view v-else scroll-y :show-scrollbar="false" class="records-scroll">
+          <view class="records-list-card">
+            <view
+              v-for="(ch, idx) in passedChapters"
+              :key="ch.id"
+              class="record-row"
+              @click="openChapterFromPopup(ch, idx + 1)"
+            >
+              <view class="record-row__inner">
+                <view class="record-row__main">
+                  <text class="record-row__title">{{ ch.name }}</text>
+                  <text class="record-row__sub">{{ ch.realmName }}</text>
+                </view>
+                <text
+                  class="ggl-tag"
+                  :class="ch.passedCount >= ch.totalGates ? 'ggl-tag--success' : 'ggl-tag--primary'"
+                >
+                  {{ ch.passedCount }}/{{ ch.totalGates }} 关
+                </text>
+              </view>
+              <view v-if="idx < passedChapters.length - 1" class="record-row__divider" />
+            </view>
+          </view>
+        </scroll-view>
+      </view>
+    </wd-popup>
   </view>
 </template>
 
 <script setup lang="ts">
+import { computed, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
+import { useToast } from "@wot-ui/ui";
 import { AppUserAPI } from "@/api/guoguanla";
 import { useCacheCleaner } from "@/composables/useCacheCleaner";
 import { useLogout } from "@/composables/useLogout";
-import { useNavbarMetrics } from "@/composables/useNavbarMetrics";
+import { useTheme } from "@/composables/useTheme";
 import { useUserStore } from "@/store";
 import type { ChapterCard } from "@/types/guoguanla";
-import { ensureAuthenticated } from "@/utils/auth";
 import { checkAppUpdate, getLocalAppVersion } from "@/utils/app-update";
+import { ensureAuthenticated } from "@/utils/auth";
 import MenuSection, { type MenuGroup } from "./components/MenuSection.vue";
 import ProfileCard from "./components/ProfileCard.vue";
 
@@ -131,7 +189,8 @@ definePage({
 });
 
 const userStore = useUserStore();
-const { statusBarHeight } = useNavbarMetrics();
+const toast = useToast();
+const { selectedThemeColor } = useTheme();
 const { isLoggingOut, requestLogout } = useLogout();
 const { usageText, loadUsage, clearCache } = useCacheCleaner();
 
@@ -139,43 +198,36 @@ const chapterRecords = ref<ChapterCard[]>([]);
 const initialLoading = ref(true);
 const hasLoadedOnce = ref(false);
 const lastAuthState = ref(userStore.isAuthenticated);
-const passedChapters = computed(() => chapterRecords.value.filter((c) => c.passedCount > 0));
 const currentAppVersion = ref(import.meta.env.VITE_APP_VERSION || "1.0.0");
+const showChapterRecordsPopup = ref(false);
+
+const passedChapters = computed(() => chapterRecords.value.filter((c) => c.passedCount > 0));
+
+const realmProgressPercent = computed(() => {
+  const realm = userStore.currentRealm;
+  if (!realm || !realm.gateCount) return 0;
+  return Math.min(100, Math.round((realm.passedGateCount / realm.gateCount) * 100));
+});
 
 const menuGroups = computed<MenuGroup[]>(() => [
   {
-    title: "修炼档案",
-    items: [
-      {
-        key: "realms",
-        title: "修仙境界体系",
-        icon: "realm-lotus",
-        value: userStore.currentRealm.realmName,
-      },
-      {
-        key: "essay",
-        title: "我的解答作答记录",
-        icon: "brush",
-      },
-    ],
-  },
-  {
-    title: "系统设置",
+    title: "设置",
     items: [
       {
         key: "theme",
-        title: "主题与深色模式",
+        title: "主题设置",
         icon: "theme",
+        value: selectedThemeColor.value?.name || "默认",
       },
       {
         key: "cache",
-        title: "清理本地缓存",
+        title: "清理缓存",
         icon: "clear",
         value: usageText.value,
       },
       {
         key: "network",
-        title: "网络服务检测",
+        title: "网络检测",
         icon: "wifi",
       },
       {
@@ -186,8 +238,9 @@ const menuGroups = computed<MenuGroup[]>(() => [
       },
       {
         key: "about",
-        title: "关于过关啦",
+        title: "关于我们",
         icon: "info",
+        value: `v${currentAppVersion.value}`,
       },
     ],
   },
@@ -213,17 +266,28 @@ function goEssayRecords(): void {
   uni.navigateTo({ url: "/subPages/essay-records/index" });
 }
 
+function handleStartExam(): void {
+  if (!ensureAuthenticated()) return;
+  if (!userStore.currentRealm.examEligible) {
+    toast.info(`还差 ${Math.max(1, userStore.currentRealm.examRemainingGates)} 关解锁进阶考`);
+    return;
+  }
+  uni.navigateTo({ url: "/subPages/quiz/index?mode=ADVANCE_EXAM" });
+}
+
+function openRecordsPopup(): void {
+  showChapterRecordsPopup.value = true;
+}
+
+function openChapterFromPopup(ch: ChapterCard, seq: number): void {
+  showChapterRecordsPopup.value = false;
+  uni.navigateTo({
+    url: `/subPages/chapter-map/index?chapterId=${ch.id}&chapterSeq=${seq}&name=${encodeURIComponent(ch.name || "")}&desc=${encodeURIComponent(ch.description || "")}&realmName=${encodeURIComponent(ch.realmName || "")}`,
+  });
+}
+
 function handleMenuSelect(key: string): void {
   switch (key) {
-    case "realms":
-      goRealmsOverview();
-      break;
-    case "essay":
-      goEssayRecords();
-      break;
-    case "profile":
-      goProfile();
-      break;
     case "theme":
       uni.navigateTo({ url: "/subPages/mine/settings/theme/index" });
       break;
@@ -264,6 +328,7 @@ async function syncMineData(): Promise<void> {
     return;
   }
   try {
+    await userStore.loadHomeSummary(true);
     await userStore.loadUserInfo(true);
     chapterRecords.value = await AppUserAPI.getChapterRecords();
   } catch {
@@ -285,25 +350,7 @@ onShow(() => {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  background: var(--color-bg-page);
-}
-
-.mine-hero {
-  flex-shrink: 0;
-  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
-}
-
-.mine-hero__bar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 44px;
-}
-
-.mine-hero__title {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #ffffff;
+  background-color: var(--color-bg-page);
 }
 
 .mine-scroll {
@@ -311,87 +358,228 @@ onShow(() => {
   min-height: 0;
 }
 
-.mine-content {
-  padding: 20rpx 24rpx 48rpx;
+.mine-body {
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+  padding: 24rpx 24rpx 56rpx;
 }
 
-.mine-sk-card {
-  padding: 28rpx;
-  background: var(--color-bg-card);
-  border-radius: 20rpx;
-  box-shadow: var(--shadow-sm);
+.profile-skeleton-card,
+.grid-skeleton-card {
+  padding: 32rpx;
+  background-color: var(--color-bg-card);
+  border-radius: 16rpx;
 }
 
-.mine-sk-menu {
-  padding: 24rpx 28rpx;
-  margin-top: 20rpx;
-  background: var(--color-bg-card);
-  border-radius: 20rpx;
-  box-shadow: var(--shadow-sm);
+.mine-section-label {
+  padding: 0 8rpx;
+  margin: 4rpx 0 -10rpx;
 }
 
-.records-card {
-  padding: 24rpx 28rpx;
-  margin-top: 24rpx;
-  background: var(--color-bg-card);
-  border-radius: 20rpx;
-  box-shadow: var(--shadow-sm);
+.menu-skeleton-card {
+  overflow: hidden;
+  background-color: var(--color-bg-card);
+  border-radius: 16rpx;
 }
 
-.records-card__header {
+.menu-skeleton-row {
+  padding: 28rpx 32rpx;
+  border-bottom: 1px solid var(--color-border);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  padding: 28rpx 16rpx;
+  background-color: var(--color-bg-card);
+  border-radius: 16rpx;
+}
+
+.quick-item {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  align-items: center;
+  justify-content: center;
+  padding: 8rpx 0;
+
+  &:active {
+    opacity: 0.72;
+  }
+}
+
+.quick-item__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48rpx;
+  height: 48rpx;
+}
+
+.quick-item__label {
+  font-size: 24rpx;
+  color: var(--color-text-secondary);
+}
+
+.auth-action {
+  margin-top: 12rpx;
+}
+
+.logout-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 88rpx;
+  background-color: var(--color-bg-card);
+  border: 1px solid var(--color-danger);
+  border-radius: 9999px;
+
+  &--busy {
+    opacity: 0.6;
+  }
+
+  &:active {
+    background-color: var(--color-danger-light);
+  }
+}
+
+.logout-btn__text {
+  font-size: 30rpx;
+  font-weight: 500;
+  color: var(--color-danger);
+}
+
+.login-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 88rpx;
+  background-color: var(--color-primary);
+  border-radius: 9999px;
+}
+
+.login-btn__text {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.records-sheet {
+  display: flex;
+  flex-direction: column;
+  max-height: 76vh;
+  padding: 28rpx 32rpx 36rpx;
+  overflow: hidden;
+  background-color: var(--color-bg-card);
+}
+
+.records-sheet__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16rpx;
 }
 
-.records-card__title {
-  font-size: 28rpx;
+.records-sheet__placeholder {
+  width: 48rpx;
+  height: 48rpx;
+}
+
+.records-sheet__title {
+  font-size: 32rpx;
   font-weight: 600;
   color: var(--color-text);
 }
 
-.records-card__sub {
-  font-size: 22rpx;
+.records-sheet__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48rpx;
+  height: 48rpx;
+}
+
+.records-sheet__sub {
+  margin-top: 14rpx;
+  font-size: 24rpx;
   color: var(--color-text-muted);
 }
 
-.records-list {
+.records-empty {
   display: flex;
   flex-direction: column;
   gap: 14rpx;
+  align-items: center;
+  padding: 64rpx 24rpx;
+  margin-top: 24rpx;
+  text-align: center;
+  border: 1px solid var(--color-border);
+  border-radius: 16rpx;
+}
+
+.records-empty__text {
+  font-size: 24rpx;
+  color: var(--color-text-muted);
+}
+
+.records-scroll {
+  flex: 1;
+  min-height: 0;
+  max-height: 48vh;
+  margin-top: 24rpx;
+}
+
+.records-list-card {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 16rpx;
 }
 
 .record-row {
+  background-color: var(--color-bg-card);
+
+  &:active {
+    background-color: var(--color-fill-1);
+  }
+}
+
+.record-row__inner {
   display: flex;
   gap: 16rpx;
   align-items: center;
   justify-content: space-between;
-  padding-top: 14rpx;
-  border-top: 1px solid var(--color-border);
+  padding: 24rpx 28rpx;
 }
 
-.record-row:first-child {
-  padding-top: 0;
-  border-top: none;
-}
-
-.record-row__name {
+.record-row__main {
+  display: flex;
   flex: 1;
+  flex-direction: column;
+  gap: 4rpx;
+  min-width: 0;
+}
+
+.record-row__title {
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 26rpx;
+  font-size: 28rpx;
+  font-weight: 500;
   color: var(--color-text);
   white-space: nowrap;
 }
 
-.record-row__count {
+.record-row__sub {
   font-size: 24rpx;
-  font-weight: 500;
-  color: var(--color-primary);
+  color: var(--color-text-muted);
 }
 
-.logout-wrap {
-  margin-top: 32rpx;
+.record-row__divider {
+  height: 1px;
+  margin: 0 28rpx;
+  background-color: var(--color-border);
 }
 </style>

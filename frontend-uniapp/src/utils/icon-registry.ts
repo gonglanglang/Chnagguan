@@ -6,9 +6,16 @@
 export type GglIconName =
   | "gate-home"
   | "home"
+  | "flag"
   | "cultivate-scroll"
+  | "circle-play"
   | "wrong-sword"
+  | "notebook-pen"
   | "edit"
+  | "pen-line"
+  | "layers"
+  | "graduation-cap"
+  | "chart-column"
   | "dao-user"
   | "user"
   | "realm-lotus"
@@ -38,11 +45,14 @@ export type GglIconName =
   | "close-circle"
   | "close-circle-fill"
   | "warning"
+  | "alert-circle"
   | "info"
   | "info-circle"
   | "notice"
   | "notification"
   | "time"
+  | "eye"
+  | "eye-off"
   | "theme"
   | "skin"
   | "wifi"
@@ -57,6 +67,77 @@ export type GglIconName =
 type GlyphBuilder = (color: string) => string;
 
 const GLYPHS: Record<string, GlyphBuilder> = {
+  // 闯关旗帜（TabBar / 品牌图标）
+  flag: (c) => `
+    <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" stroke="${c}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M4 22V15" stroke="${c}" stroke-width="1.9" stroke-linecap="round"/>
+  `,
+
+  // 课堂播放圆环
+  "circle-play": (c) => `
+    <circle cx="12" cy="12" r="9" stroke="${c}" stroke-width="1.9"/>
+    <polygon points="10 8.5 16 12 10 15.5" stroke="${c}" stroke-width="1.75" stroke-linejoin="round"/>
+  `,
+
+  // 错题笔记
+  "notebook-pen": (c) => `
+    <path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4" stroke="${c}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M2 6h4M2 10h4M2 14h4M2 18h4" stroke="${c}" stroke-width="1.9" stroke-linecap="round"/>
+    <path d="M21.38 3.62a1.7 1.7 0 0 0-2.4 0L11 11.6l-.9 3.3 3.3-.9 7.98-7.98a1.7 1.7 0 0 0 0-2.4z" stroke="${c}" stroke-width="1.8" stroke-linejoin="round"/>
+  `,
+
+  // 我的（简洁人形）
+  user: (c) => `
+    <circle cx="12" cy="8" r="4" stroke="${c}" stroke-width="1.9"/>
+    <path d="M5 20a7 7 0 0 1 14 0" stroke="${c}" stroke-width="1.9" stroke-linecap="round"/>
+  `,
+
+  // 境界层级
+  layers: (c) => `
+    <path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.84z" stroke="${c}" stroke-width="1.9" stroke-linejoin="round"/>
+    <path d="m2 12 8.58 3.91a2 2 0 0 0 1.66 0L22 12" stroke="${c}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="m2 17 8.58 3.91a2 2 0 0 0 1.66 0L22 17" stroke="${c}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+  `,
+
+  // 解答记录钢笔
+  "pen-line": (c) => `
+    <path d="M12 20h9" stroke="${c}" stroke-width="1.9" stroke-linecap="round"/>
+    <path d="M16.38 3.62a1.7 1.7 0 0 1 2.4 2.4L6.7 18.1 3 19l.9-3.7Z" stroke="${c}" stroke-width="1.9" stroke-linejoin="round"/>
+  `,
+
+  // 进阶考学士帽
+  "graduation-cap": (c) => `
+    <path d="M21.42 10.92a1 1 0 0 0-.02-1.84L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.84l8.58 3.91a2 2 0 0 0 1.66 0z" stroke="${c}" stroke-width="1.9" stroke-linejoin="round"/>
+    <path d="M22 10v6" stroke="${c}" stroke-width="1.9" stroke-linecap="round"/>
+    <path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5" stroke="${c}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+  `,
+
+  // 学习周报柱状图
+  "chart-column": (c) => `
+    <path d="M3 3v16a2 2 0 0 0 2 2h16" stroke="${c}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M18 17V9M13 17V5M8 17v-3" stroke="${c}" stroke-width="1.9" stroke-linecap="round"/>
+  `,
+
+  // 错误感叹圆圈
+  "alert-circle": (c) => `
+    <circle cx="12" cy="12" r="9" stroke="${c}" stroke-width="1.9"/>
+    <path d="M12 8v5" stroke="${c}" stroke-width="1.9" stroke-linecap="round"/>
+    <circle cx="12" cy="16" r="1" fill="${c}"/>
+  `,
+
+  // 密码可见
+  eye: (c) => `
+    <path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z" stroke="${c}" stroke-width="1.9" stroke-linejoin="round"/>
+    <circle cx="12" cy="12" r="2.8" stroke="${c}" stroke-width="1.9"/>
+  `,
+
+  // 密码隐藏
+  "eye-off": (c) => `
+    <path d="M9.9 5.3A9.7 9.7 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a16.8 16.8 0 0 1-3.2 4.1" stroke="${c}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M6.2 6.8C4 8.4 2.5 12 2.5 12s3.5 6.5 9.5 6.5c1.7 0 3.2-.4 4.5-1.1" stroke="${c}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M3 3l18 18" stroke="${c}" stroke-width="1.9" stroke-linecap="round"/>
+  `,
+
   // 山门关隘（首页）
   "gate-home": (c) => `
     <path d="M3 10.5L12 3.5L21 10.5" stroke="${c}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
@@ -278,9 +359,8 @@ const GLYPHS: Record<string, GlyphBuilder> = {
 
 // 兼容旧名称映射，统一收口到专属图标库
 const ALIAS_MAP: Record<string, string> = {
-  home: "gate-home",
+  home: "flag",
   edit: "brush",
-  user: "dao-user",
   notification: "notice",
   "info-circle": "info",
   skin: "theme",
@@ -295,11 +375,11 @@ export function resolveGlyphSvgBody(name: string, color: string): string {
   return builder(color);
 }
 
-export function buildGglIconSvg(name: string, color = "#16a34a"): string {
+export function buildGglIconSvg(name: string, color = "#0284C7"): string {
   const body = resolveGlyphSvgBody(name, color).replace(/\s+/g, " ").trim();
   return `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none">${body}</svg>`;
 }
 
-export function buildGglIconDataUri(name: string, color = "#16a34a"): string {
+export function buildGglIconDataUri(name: string, color = "#0284C7"): string {
   return `data:image/svg+xml;utf8,${encodeURIComponent(buildGglIconSvg(name, color))}`;
 }

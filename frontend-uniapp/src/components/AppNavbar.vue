@@ -204,7 +204,8 @@ export default {
 .app-navbar__title {
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 32rpx;
+  font-size: 34rpx;
+  font-weight: 600;
   color: var(--color-text);
   white-space: nowrap;
 }

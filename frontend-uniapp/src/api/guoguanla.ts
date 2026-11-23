@@ -203,11 +203,15 @@ export const AppRealmExamAPI = {
 };
 
 export const AppWrongAPI = {
-  getPage(params: { realmCode?: string; chapterId?: number; pageNum?: number; pageSize?: number }) {
+  getPage(
+    params: { realmCode?: string; chapterId?: number; pageNum?: number; pageSize?: number },
+    silent = false,
+  ) {
     return request<PageResult<WrongQuestionItem>>({
       url: "/app/wrong-questions",
       method: "GET",
       params,
+      silent,
     });
   },
   startRedo(data?: { realmCode?: string; chapterId?: number; limit?: number }) {

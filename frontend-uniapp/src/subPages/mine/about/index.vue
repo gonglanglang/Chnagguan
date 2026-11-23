@@ -108,16 +108,14 @@ async function handleCheckUpdate(): Promise<void> {
 .about-card {
   padding: 32rpx 28rpx;
   background: var(--color-bg-card);
-  border-radius: 20rpx;
-  box-shadow: var(--shadow-sm);
+  border-radius: 16rpx;
 }
 
 .about-sk-group {
   padding: 26rpx 24rpx;
   margin-top: 24rpx;
   background: var(--color-bg-card);
-  border-radius: 20rpx;
-  box-shadow: var(--shadow-sm);
+  border-radius: 16rpx;
 }
 
 .about__header {

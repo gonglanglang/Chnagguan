@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { AppAuthAPI, AppBankAPI, AppUserAPI } from "@/api/guoguanla";
+import { AppAuthAPI, AppBankAPI, AppUserAPI, AppWrongAPI } from "@/api/guoguanla";
 import { USER_INFO_KEY } from "@/constants";
 import type {
   AppUserProfile,
@@ -181,10 +181,31 @@ export const useUserStore = defineStore("user", () => {
     Storage.set(USER_INFO_KEY, profile);
   }
 
+  const wrongCount = ref(0);
+
+  function setWrongCount(count: number): void {
+    wrongCount.value = Math.max(0, Number(count) || 0);
+  }
+
+  async function refreshWrongCount(): Promise<number> {
+    if (!accessToken.value) {
+      wrongCount.value = 0;
+      return 0;
+    }
+    try {
+      const page = await AppWrongAPI.getPage({ pageNum: 1, pageSize: 1 }, true);
+      wrongCount.value = Math.max(0, Number(page.total) || 0);
+    } catch {
+      // Ignore silent badge refresh failure
+    }
+    return wrongCount.value;
+  }
+
   function resetSession(): void {
     clearTokens();
     accessToken.value = "";
     userInfo.value = undefined;
+    wrongCount.value = 0;
     Storage.remove(USER_INFO_KEY);
   }
 
@@ -285,6 +306,9 @@ export const useUserStore = defineStore("user", () => {
     appNotice,
     guestModeEnabled,
     passedGateCount,
+    wrongCount,
+    setWrongCount,
+    refreshWrongCount,
     loadHomeSummary,
     login,
     register,

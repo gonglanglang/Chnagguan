@@ -12,13 +12,15 @@ export interface ThemeColorOption {
 export type ThemeMode = "light" | "dark";
 
 export const themeColorOptions: ThemeColorOption[] = [
+  { name: "天青蓝", value: "blue", primary: "#0284C7" },
   { name: "过关绿", value: "green", primary: "#16a34a" },
-  { name: "默认蓝", value: "blue", primary: "#165DFF" },
   { name: "活力橙", value: "orange", primary: "#FF7D00" },
   { name: "樱花粉", value: "pink", primary: "#FF69B4" },
   { name: "紫罗兰", value: "purple", primary: "#8A2BE2" },
   { name: "朱砂红", value: "red", primary: "#FF4757" },
 ];
+
+const THEME_UI_V2_FLAG = "ggl_ui_v2_theme_migrated";
 
 function mixHex(hex: string, targetHex: string, ratio: number): string {
   const valid = /^#[0-9a-fA-F]{6}$/;
@@ -36,12 +38,21 @@ function mixHex(hex: string, targetHex: string, ratio: number): string {
   return `#${blend(r1, r2)}${blend(g1, g2)}${blend(b1, b2)}`;
 }
 
+function resolveInitialThemeColor(): ThemeColorOption {
+  const defaultBlue = themeColorOptions[0];
+  const migrated = Storage.get<boolean>(THEME_UI_V2_FLAG, false);
+  if (!migrated) {
+    Storage.set(THEME_UI_V2_FLAG, true);
+    Storage.set(THEME_COLOR_KEY, defaultBlue);
+    return defaultBlue;
+  }
+  return Storage.get<ThemeColorOption>(THEME_COLOR_KEY, defaultBlue);
+}
+
 export const useThemeStore = defineStore("theme", () => {
   const themeMode = ref<ThemeMode>(Storage.get<ThemeMode>(THEME_MODE_KEY, "light"));
 
-  const selectedThemeColor = ref<ThemeColorOption>(
-    Storage.get<ThemeColorOption>(THEME_COLOR_KEY, themeColorOptions[0]),
-  );
+  const selectedThemeColor = ref<ThemeColorOption>(resolveInitialThemeColor());
 
   // @wot-ui/ui v2 所有主色组件均绑定 --wot-primary-1..7 CSS 变量
   const themeVars = computed<ConfigProviderThemeVars>(() => {

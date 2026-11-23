@@ -43,7 +43,7 @@
             :class="{ 'tool-btn--active': handMode }"
             @click="toggleHandMode"
           >
-            <app-icon name="hand" size="13" :color="handMode ? '#16a34a' : '#374151'" />
+            <app-icon name="hand" size="13" :color="handMode ? '#0284c7' : '#374151'" />
             <text class="tool-btn__text">移动</text>
           </view>
           <view
@@ -1118,7 +1118,7 @@ onUnload(() => {
   flex-shrink: 0;
   font-size: 11px;
   font-weight: 600;
-  color: #16a34a;
+  color: #0284c7;
 }
 
 .stem-pill__math {
@@ -1155,7 +1155,7 @@ onUnload(() => {
 
   &--active {
     border-color: #ffffff;
-    box-shadow: 0 0 0 2px #16a34a;
+    box-shadow: 0 0 0 2px #0284c7;
   }
 }
 
@@ -1169,12 +1169,12 @@ onUnload(() => {
   border-radius: 8px;
 
   &--active {
-    color: #16a34a;
-    background: #f0fdf4;
-    border-color: #16a34a;
+    color: #0284c7;
+    background: #e6f3fa;
+    border-color: #0284c7;
 
     .tool-btn__text {
-      color: #16a34a;
+      color: #0284c7;
     }
   }
 
@@ -1196,8 +1196,8 @@ onUnload(() => {
   justify-content: center;
   padding: 5px 12px;
   line-height: 1;
-  background: #16a34a;
-  border-radius: 8px;
+  background: #0284c7;
+  border-radius: 999px;
 
   &--disabled {
     opacity: 0.65;
@@ -1375,7 +1375,7 @@ onUnload(() => {
 
 .stem-modal__close {
   font-size: 13px;
-  color: #16a34a;
+  color: #0284c7;
 }
 
 .stem-modal__body {

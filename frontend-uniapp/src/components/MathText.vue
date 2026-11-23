@@ -30,16 +30,19 @@ import { parseMathTokens, renderMathHtml } from "@/utils/math";
 const props = withDefaults(
   defineProps<{
     text?: string | null;
+    content?: string | null;
     inline?: boolean;
   }>(),
   {
-    text: "",
+    text: undefined,
+    content: undefined,
     inline: false,
   },
 );
 
-const renderedHtml = computed(() => renderMathHtml(props.text));
-const tokens = computed(() => parseMathTokens(props.text));
+const rawSource = computed(() => props.text ?? props.content ?? "");
+const renderedHtml = computed(() => renderMathHtml(rawSource.value));
+const tokens = computed(() => parseMathTokens(rawSource.value));
 </script>
 
 <style lang="scss" scoped>
