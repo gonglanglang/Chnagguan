@@ -18,12 +18,14 @@ import com.guoguanla.module.bank.mapper.EduQuestionMapper;
 import com.guoguanla.module.oss.AliyunOssService;
 import com.guoguanla.module.progress.entity.UserGateProgress;
 import com.guoguanla.module.progress.mapper.UserGateProgressMapper;
+import com.guoguanla.module.system.AdminSystemService;
 import com.guoguanla.module.system.RealmHelperService;
 import com.guoguanla.module.system.entity.EduLevelRule;
 import com.guoguanla.module.system.entity.EduRealm;
 import com.guoguanla.module.system.entity.SysConfig;
 import com.guoguanla.module.system.mapper.EduLevelRuleMapper;
 import com.guoguanla.module.system.mapper.SysConfigMapper;
+import com.guoguanla.module.system.vo.AppDefaultThemeVO;
 import com.guoguanla.module.user.entity.AppUser;
 import com.guoguanla.module.user.mapper.AppUserMapper;
 import lombok.RequiredArgsConstructor;
@@ -46,7 +48,12 @@ public class AppBankService {
     private final UserGateProgressMapper gateProgressMapper;
     private final SysConfigMapper sysConfigMapper;
     private final RealmHelperService realmHelper;
+    private final AdminSystemService systemService;
     private final AliyunOssService ossService;
+
+    public AppDefaultThemeVO getDefaultTheme() {
+        return systemService.getDefaultTheme();
+    }
 
     public AppUserProfileVO.HomeSummaryVO homeSummary(Set<Long> guestPassedGateIds) {
         boolean guestEnabled = isGuestModeEnabled();
@@ -86,6 +93,7 @@ public class AppBankService {
         return AppUserProfileVO.HomeSummaryVO.builder()
                 .guestModeEnabled(guestEnabled)
                 .appNotice(notice)
+                .defaultTheme(systemService.getDefaultTheme())
                 .profile(profile)
                 .grades(gradeItems)
                 .realms(realms)

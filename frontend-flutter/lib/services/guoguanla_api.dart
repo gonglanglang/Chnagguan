@@ -82,6 +82,15 @@ class GuoguanlaApi {
 
   // ==================== Home / Bank / Realms ====================
 
+  Future<AppDefaultTheme> getDefaultTheme() {
+    return client.request<AppDefaultTheme>(
+      path: '/app/theme/default',
+      method: 'GET',
+      skipAuth: true,
+      parser: (raw) => AppDefaultTheme.fromJson(_asMap(raw)),
+    );
+  }
+
   Future<HomeSummary> getHomeSummary({List<int>? guestPassedIds}) {
     return client.request<HomeSummary>(
       path: '/app/home/summary',

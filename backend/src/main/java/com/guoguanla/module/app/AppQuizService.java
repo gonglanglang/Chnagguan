@@ -76,6 +76,8 @@ public class AppQuizService {
         private Integer answerIndex;
         private String referenceAnswer;
         private String analysis;
+        private Map<String, Object> diagram;
+        private String imageKey;
         private Integer userIndex;
         private String userAnswerText;
         private String userAnswerImageKey;
@@ -84,6 +86,11 @@ public class AppQuizService {
 
     @Transactional(rollbackFor = Exception.class)
     public AppQuizVO.StartVO startGateQuiz(AppQuizDTO.StartReq req) {
+        return startGateQuiz(req, "");
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public AppQuizVO.StartVO startGateQuiz(AppQuizDTO.StartReq req, String baseOrigin) {
         Long userId = StpAppUtil.getLoginIdOrNull();
         boolean guestMode = userId == null;
         if (guestMode && !bankService.isGuestModeEnabled()) {
@@ -167,6 +174,8 @@ public class AppQuizService {
                     .questionFormat(snap.getQuestionFormat())
                     .stem(gen.getStem())
                     .options(gen.getOptions())
+                    .diagram(gen.getDiagram())
+                    .imageUrl(ossService.resolveViewUrl(gen.getImageKey(), baseOrigin))
                     .build());
         }
 
@@ -207,6 +216,11 @@ public class AppQuizService {
 
     @Transactional(rollbackFor = Exception.class)
     public AppQuizVO.StartVO startAdvanceExam() {
+        return startAdvanceExam("");
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public AppQuizVO.StartVO startAdvanceExam(String baseOrigin) {
         Long userId = StpAppUtil.getLoginIdAsLong();
         AppUser user = userMapper.selectById(userId);
         if (user == null) {
@@ -253,6 +267,8 @@ public class AppQuizService {
                     .questionFormat(snap.getQuestionFormat())
                     .stem(gen.getStem())
                     .options(gen.getOptions())
+                    .diagram(gen.getDiagram())
+                    .imageUrl(ossService.resolveViewUrl(gen.getImageKey(), baseOrigin))
                     .build());
         }
 
@@ -419,11 +435,21 @@ public class AppQuizService {
                         .orderByDesc(UserEssayAnswer::getUpdatedAt)
                         .orderByDesc(UserEssayAnswer::getId)
         );
+        Set<Long> qIds = page.getRecords().stream()
+                .map(UserEssayAnswer::getQuestionId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, EduQuestion> qMap = qIds.isEmpty()
+                ? Map.of()
+                : questionMapper.selectBatchIds(qIds).stream()
+                .collect(Collectors.toMap(EduQuestion::getId, q -> q, (a, b) -> a));
+
         List<AppQuizVO.EssayAnswerRecordVO> records = page.getRecords().stream()
                 .map(e -> {
                     EduRealm realm = e.getRealmCode() != null && !e.getRealmCode().isBlank()
                             ? realmHelper.findByRealmCode(e.getRealmCode())
                             : realmByGrade.get(e.getGradeCode());
+                    QuestionFigureMeta fig = extractQuestionFigure(qMap.get(e.getQuestionId()), baseOrigin);
                     return AppQuizVO.EssayAnswerRecordVO.builder()
                             .id(e.getId())
                             .sessionNo(e.getSessionNo())
@@ -434,6 +460,8 @@ public class AppQuizService {
                             .gateId(e.getGateId())
                             .gateName(e.getGateName())
                             .stem(e.getStem())
+                            .diagram(fig.diagram())
+                            .imageUrl(fig.imageUrl())
                             .referenceAnswer(e.getReferenceAnswer())
                             .answerText(e.getAnswerText())
                             .answerImageUrl(ossService.resolveViewUrl(e.getAnswerImageKey(), baseOrigin))
@@ -471,7 +499,21 @@ public class AppQuizService {
             AppUserProfileVO.LevelProgress promotedLevel
     ) {}
 
-    private EvalOutcome evaluateSnapshots(List<SnapshotItem> snapshots) {
+    private record NextGateTarget(
+            Long gateId,
+            Integer gateIndex,
+            String gateName,
+            Long chapterId,
+            String chapterName,
+            boolean crossChapter
+    ) {}
+
+    private record QuestionFigureMeta(
+            Map<String, Object> diagram,
+            String imageUrl
+    ) {}
+
+    private EvalOutcome evaluateSnapshots(List<SnapshotItem> snapshots, String baseOrigin) {
         int correctCount = 0;
         int pendingReviewCount = 0;
         List<SnapshotItem> wrongSnaps = new ArrayList<>();
@@ -483,7 +525,7 @@ public class AppQuizService {
                 pendingReviewCount++;
             } else {
                 wrongSnaps.add(item);
-                wrongReview.add(toWrongReviewItem(item));
+                wrongReview.add(toWrongReviewItem(item, baseOrigin));
             }
         }
         return new EvalOutcome(correctCount, pendingReviewCount, wrongSnaps, wrongReview);
@@ -491,6 +533,11 @@ public class AppQuizService {
 
     @Transactional(rollbackFor = Exception.class)
     public AppQuizVO.SubmitResultVO submitGateQuiz(AppQuizDTO.SubmitReq req) {
+        return submitGateQuiz(req, "");
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public AppQuizVO.SubmitResultVO submitGateQuiz(AppQuizDTO.SubmitReq req, String baseOrigin) {
         UserQuizRecord record = loadAuthorizedSession(req.getSessionNo());
         if (record.getStatus() != null && record.getStatus() == 1) {
             throw new BizException(ErrorCode.QUIZ_ALREADY_SUBMITTED);
@@ -498,7 +545,7 @@ public class AppQuizService {
         List<SnapshotItem> snapshots = readSnapshots(record.getQuestionSnapshotJson());
         applyBatchAnswers(record, snapshots, req.getAnswers());
 
-        EvalOutcome eval = evaluateSnapshots(snapshots);
+        EvalOutcome eval = evaluateSnapshots(snapshots, baseOrigin);
         EduGate gate = gateMapper.selectById(record.getGateId());
         EduChapter chapter = chapterMapper.selectById(record.getChapterId());
         int passCount = gate != null ? Math.min(gate.getPassCount(), snapshots.size()) : (int) Math.ceil(snapshots.size() * 2.0 / 3.0);
@@ -515,10 +562,22 @@ public class AppQuizService {
 
         GateOutcome gateOut = new GateOutcome(false, 0, null);
         Long userId = StpAppUtil.getLoginIdOrNull();
+        boolean alreadyPassedBefore = false;
         if (userId != null && record.getUserId() != 0L && gate != null && chapter != null) {
+            UserGateProgress prevProg = gateProgressMapper.selectOne(
+                    new LambdaQueryWrapper<UserGateProgress>()
+                            .eq(UserGateProgress::getUserId, userId)
+                            .eq(UserGateProgress::getGateId, gate.getId())
+                            .last("LIMIT 1")
+            );
+            alreadyPassedBefore = prevProg != null && prevProg.getIsPassed() != null && prevProg.getIsPassed() == 1;
             gateOut = applyGatePassOutcome(userId, gate, chapter, eval.correctCount(), passed);
             recordWrongQuestions(userId, chapter, gate.getGateName(), eval.wrongSnaps());
         }
+
+        NextGateTarget nextGate = (gate != null && chapter != null && (passed || alreadyPassedBefore))
+                ? resolveNextPlayableGate(chapter, gate)
+                : null;
 
         return AppQuizVO.SubmitResultVO.builder()
                 .sessionNo(record.getSessionNo())
@@ -534,11 +593,92 @@ public class AppQuizService {
                 .promotedLevel(gateOut.promotedLevel())
                 .wrongItems(eval.wrongReview())
                 .masteredCount(0)
+                .nextGateId(nextGate != null ? nextGate.gateId() : null)
+                .nextGateIndex(nextGate != null ? nextGate.gateIndex() : null)
+                .nextGateName(nextGate != null ? nextGate.gateName() : null)
+                .nextChapterId(nextGate != null ? nextGate.chapterId() : null)
+                .nextChapterName(nextGate != null ? nextGate.chapterName() : null)
+                .nextGateCrossChapter(nextGate != null && nextGate.crossChapter())
                 .build();
+    }
+
+    private NextGateTarget resolveNextPlayableGate(EduChapter currentChapter, EduGate currentGate) {
+        // 1. 优先查找同章节的下一道已启用且有题关卡
+        List<EduGate> sameChapterNext = gateMapper.selectList(
+                new LambdaQueryWrapper<EduGate>()
+                        .eq(EduGate::getChapterId, currentChapter.getId())
+                        .eq(EduGate::getEnabled, 1)
+                        .gt(EduGate::getGateIndex, currentGate.getGateIndex())
+                        .orderByAsc(EduGate::getGateIndex)
+        );
+        for (EduGate candidate : sameChapterNext) {
+            if (hasEnabledQuestions(candidate.getId())) {
+                return new NextGateTarget(
+                        candidate.getId(),
+                        candidate.getGateIndex(),
+                        candidate.getGateName(),
+                        currentChapter.getId(),
+                        currentChapter.getName(),
+                        false
+                );
+            }
+        }
+
+        // 2. 当前章节已到最后一关：顺延至同年级下一章节的第 1 道有题关卡
+        List<EduChapter> gradeChapters = chapterMapper.selectList(
+                new LambdaQueryWrapper<EduChapter>()
+                        .eq(EduChapter::getGradeCode, currentChapter.getGradeCode())
+                        .eq(EduChapter::getEnabled, 1)
+                        .orderByAsc(EduChapter::getSortOrder)
+                        .orderByAsc(EduChapter::getId)
+        );
+        boolean passedCurrent = false;
+        for (EduChapter ch : gradeChapters) {
+            if (!passedCurrent) {
+                if (Objects.equals(ch.getId(), currentChapter.getId())) {
+                    passedCurrent = true;
+                }
+                continue;
+            }
+            List<EduGate> chGates = gateMapper.selectList(
+                    new LambdaQueryWrapper<EduGate>()
+                            .eq(EduGate::getChapterId, ch.getId())
+                            .eq(EduGate::getEnabled, 1)
+                            .orderByAsc(EduGate::getGateIndex)
+            );
+            for (EduGate candidate : chGates) {
+                if (hasEnabledQuestions(candidate.getId())) {
+                    return new NextGateTarget(
+                            candidate.getId(),
+                            candidate.getGateIndex(),
+                            candidate.getGateName(),
+                            ch.getId(),
+                            ch.getName(),
+                            true
+                    );
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean hasEnabledQuestions(Long gateId) {
+        if (gateId == null) return false;
+        Long cnt = questionMapper.selectCount(
+                new LambdaQueryWrapper<EduQuestion>()
+                        .eq(EduQuestion::getGateId, gateId)
+                        .eq(EduQuestion::getEnabled, 1)
+        );
+        return cnt != null && cnt > 0;
     }
 
     @Transactional(rollbackFor = Exception.class)
     public AppQuizVO.SubmitResultVO submitAdvanceExam(AppQuizDTO.SubmitReq req) {
+        return submitAdvanceExam(req, "");
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public AppQuizVO.SubmitResultVO submitAdvanceExam(AppQuizDTO.SubmitReq req, String baseOrigin) {
         UserQuizRecord record = loadAuthorizedSession(req.getSessionNo());
         if (!"ADVANCE_EXAM".equals(record.getMode())) {
             throw new BizException(ErrorCode.BAD_REQUEST, "当前会话不是进阶考核");
@@ -555,7 +695,7 @@ public class AppQuizService {
         List<SnapshotItem> snapshots = readSnapshots(record.getQuestionSnapshotJson());
         applyBatchAnswers(record, snapshots, req.getAnswers());
 
-        EvalOutcome eval = evaluateSnapshots(snapshots);
+        EvalOutcome eval = evaluateSnapshots(snapshots, baseOrigin);
         EduRealm examRealm = realmHelper.findByRealmCode(record.getRealmCode());
         if (examRealm == null) {
             examRealm = realmHelper.resolveUserRealm(user);
@@ -979,10 +1119,16 @@ public class AppQuizService {
         snap.setAnswerIndex(gen.getAnswerIndex() == null ? 0 : gen.getAnswerIndex());
         snap.setReferenceAnswer(safeStr(gen.getReferenceAnswer()));
         snap.setAnalysis(gen.getAnalysis());
+        snap.setDiagram(gen.getDiagram());
+        snap.setImageKey(gen.getImageKey());
         return snap;
     }
 
     public AppQuizVO.WrongReviewItem toWrongReviewItem(SnapshotItem item) {
+        return toWrongReviewItem(item, "");
+    }
+
+    public AppQuizVO.WrongReviewItem toWrongReviewItem(SnapshotItem item, String baseOrigin) {
         String fmt = normalizeFormat(item.getQuestionFormat());
         String rightOpt;
         if ("ESSAY".equals(fmt)) {
@@ -998,7 +1144,31 @@ public class AppQuizService {
                 .questionFormat(fmt)
                 .correctAnswer(rightOpt)
                 .analysis(item.getAnalysis())
+                .diagram(item.getDiagram())
+                .imageUrl(ossService.resolveViewUrl(item.getImageKey(), baseOrigin))
                 .build();
+    }
+
+    @SuppressWarnings("unchecked")
+    private QuestionFigureMeta extractQuestionFigure(EduQuestion q, String baseOrigin) {
+        if (q == null || q.getExtJson() == null || q.getExtJson().isBlank()) {
+            return new QuestionFigureMeta(null, "");
+        }
+        Map<String, Object> ext = JsonHelper.readMap(objectMapper, q.getExtJson());
+        if (ext == null || ext.isEmpty()) {
+            return new QuestionFigureMeta(null, "");
+        }
+        Map<String, Object> diagram = ext.get("diagram") instanceof Map<?, ?> m && !m.isEmpty()
+                ? (Map<String, Object>) m
+                : null;
+        Object rawImg = ext.get("imageKey");
+        if (rawImg == null || String.valueOf(rawImg).isBlank()) {
+            rawImg = ext.get("imageUrl");
+        }
+        String imageUrl = (rawImg != null && !String.valueOf(rawImg).isBlank())
+                ? ossService.resolveViewUrl(String.valueOf(rawImg).trim(), baseOrigin)
+                : "";
+        return new QuestionFigureMeta(diagram, imageUrl);
     }
 
     private void recordWrongQuestions(Long userId, EduChapter chapter, String gateName, List<SnapshotItem> wrongSnaps) {

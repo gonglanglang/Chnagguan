@@ -3,6 +3,7 @@ import { ref, reactive, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import MathFormulaText from "@/components/MathFormulaText.vue";
+import QuestionDiagram from "@/components/QuestionDiagram.vue";
 import {
   getRealms,
   getChapters,
@@ -268,6 +269,15 @@ onMounted(async () => {
               >
                 {{ row.questionFormat === "ESSAY" ? "解答题" : "选择题" }}
               </el-tag>
+              <el-tag
+                v-if="row.ext?.diagram || row.ext?.imageUrl || row.ext?.imageKey"
+                size="small"
+                class="whitespace-nowrap"
+                type="primary"
+                effect="plain"
+              >
+                配图
+              </el-tag>
             </div>
           </template>
         </el-table-column>
@@ -342,6 +352,13 @@ onMounted(async () => {
           <div class="font-bold text-gray-800">
             第 {{ idx + 1 }} 题：<MathFormulaText :text="s.stem" inline />
           </div>
+          <QuestionDiagram
+            v-if="s.diagram || s.imageUrl"
+            :diagram="s.diagram"
+            :image-url="s.imageUrl"
+            compact
+            class="mt-2"
+          />
           <div v-if="s.questionFormat === 'ESSAY' || !s.options?.length" class="mt-2 rounded bg-green-50 p-2 text-sm text-green-800">
             参考答案：<MathFormulaText :text="s.referenceAnswer || '（自由作答）'" inline />
           </div>

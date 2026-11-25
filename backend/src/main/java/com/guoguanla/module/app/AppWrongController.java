@@ -37,8 +37,14 @@ public class AppWrongController {
 
     @Operation(summary = "开始错题重做（最多抽取5题）")
     @PostMapping("/redo/start")
-    public Result<AppQuizVO.StartVO> startRedo(@RequestBody(required = false) AppQuizDTO.RedoStartReq req) {
-        return Result.ok(wrongService.startRedo(req == null ? new AppQuizDTO.RedoStartReq() : req));
+    public Result<AppQuizVO.StartVO> startRedo(
+            @RequestBody(required = false) AppQuizDTO.RedoStartReq req,
+            HttpServletRequest request
+    ) {
+        return Result.ok(wrongService.startRedo(
+                req == null ? new AppQuizDTO.RedoStartReq() : req,
+                ServletUrlHelper.resolveBaseOrigin(request)
+        ));
     }
 
     @Operation(summary = "错题重做交卷（答对标记已掌握，答错保留并累计错次）")

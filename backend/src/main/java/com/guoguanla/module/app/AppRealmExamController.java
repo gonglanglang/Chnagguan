@@ -1,10 +1,12 @@
 package com.guoguanla.module.app;
 
 import com.guoguanla.common.result.Result;
+import com.guoguanla.common.util.ServletUrlHelper;
 import com.guoguanla.module.app.dto.AppQuizDTO;
 import com.guoguanla.module.app.vo.AppQuizVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -19,13 +21,16 @@ public class AppRealmExamController {
 
     @Operation(summary = "开始当前境界进阶考核（随机抽题，不回传答案）")
     @PostMapping("/start")
-    public Result<AppQuizVO.StartVO> startExam() {
-        return Result.ok(quizService.startAdvanceExam());
+    public Result<AppQuizVO.StartVO> startExam(HttpServletRequest request) {
+        return Result.ok(quizService.startAdvanceExam(ServletUrlHelper.resolveBaseOrigin(request)));
     }
 
     @Operation(summary = "提交进阶考核试卷（计算得分并判定是否突破至下一境界）")
     @PostMapping("/submit")
-    public Result<AppQuizVO.SubmitResultVO> submitExam(@Valid @RequestBody AppQuizDTO.SubmitReq req) {
-        return Result.ok(quizService.submitAdvanceExam(req));
+    public Result<AppQuizVO.SubmitResultVO> submitExam(
+            @Valid @RequestBody AppQuizDTO.SubmitReq req,
+            HttpServletRequest request
+    ) {
+        return Result.ok(quizService.submitAdvanceExam(req, ServletUrlHelper.resolveBaseOrigin(request)));
     }
 }

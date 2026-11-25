@@ -17,6 +17,7 @@ import '../../widgets/ggl_skeleton.dart';
 import '../../widgets/ggl_skin_widgets.dart';
 import '../../widgets/image_preview_page.dart';
 import '../../widgets/math_text.dart';
+import '../../widgets/question_figure_card.dart';
 import '../login/login_page.dart';
 import '../quiz/quiz_page.dart';
 
@@ -583,6 +584,15 @@ class _WrongCard extends StatelessWidget {
               fontWeight: FontWeight.w600,
             ),
           ),
+          if (item.diagram != null ||
+              (item.imageUrl != null && item.imageUrl!.trim().isNotEmpty)) ...[
+            const SizedBox(height: 10),
+            QuestionFigureCard(
+              diagram: item.diagram,
+              imageUrl: item.imageUrl,
+              compact: true,
+            ),
+          ],
           const SizedBox(height: 12),
           Container(
             width: double.infinity,

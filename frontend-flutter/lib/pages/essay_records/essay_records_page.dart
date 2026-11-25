@@ -13,6 +13,7 @@ import '../../widgets/ggl_skeleton.dart';
 import '../../widgets/ggl_skin_widgets.dart';
 import '../../widgets/image_preview_page.dart';
 import '../../widgets/math_text.dart';
+import '../../widgets/question_figure_card.dart';
 
 class EssayRecordsPage extends StatefulWidget {
   const EssayRecordsPage({super.key});
@@ -262,6 +263,15 @@ class _EssayRecordsPageState extends State<EssayRecordsPage> {
               fontWeight: FontWeight.w600,
             ),
           ),
+          if (item.diagram != null ||
+              (item.imageUrl != null && item.imageUrl!.trim().isNotEmpty)) ...[
+            const SizedBox(height: 10),
+            QuestionFigureCard(
+              diagram: item.diagram,
+              imageUrl: item.imageUrl,
+              compact: true,
+            ),
+          ],
           if (item.answerText.trim().isNotEmpty) ...[
             const SizedBox(height: 10),
             Container(

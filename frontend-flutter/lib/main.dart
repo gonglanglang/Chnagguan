@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:forui/forui.dart';
 import 'package:provider/provider.dart';
 import 'package:skribble/skribble.dart';
 import 'package:welkui_flutter/welkui_flutter.dart';
@@ -71,6 +74,20 @@ class _GuoguanlaAppState extends State<GuoguanlaApp> {
     _userProvider = UserProvider(storage: widget.storage, api: _api);
     userHolder = _userProvider;
     _updateProvider = UpdateProvider(_api);
+    unawaited(_syncServerDefaultTheme());
+  }
+
+  Future<void> _syncServerDefaultTheme() async {
+    try {
+      final serverTheme = await _api.getDefaultTheme();
+      if (!mounted) return;
+      await _themeProvider.applyServerDefaultTheme(
+        serverTheme,
+        isAppLaunch: true,
+      );
+    } catch (_) {
+      // 网络暂不可用时保留本地已缓存的默认主题配置
+    }
   }
 
   @override
@@ -109,16 +126,22 @@ class _GuoguanlaAppState extends State<GuoguanlaApp> {
                   Locale('en', 'US'),
                 ],
                 localizationsDelegates: const [
+                  ...FLocalizations.localizationsDelegates,
                   GlobalMaterialLocalizations.delegate,
                   GlobalWidgetsLocalizations.delegate,
                   GlobalCupertinoLocalizations.delegate,
                 ],
                 builder: (context, child) {
-                  return Stack(
-                    children: [
-                      ?child,
-                      const AppUpdateOverlay(),
-                    ],
+                  return FTheme(
+                    data: theme.foruiTheme,
+                    child: FToaster(
+                      child: Stack(
+                        children: [
+                          ?child,
+                          const AppUpdateOverlay(),
+                        ],
+                      ),
+                    ),
                   );
                 },
                 home: const MainShellPage(),

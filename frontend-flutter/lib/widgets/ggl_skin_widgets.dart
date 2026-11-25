@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:forui/forui.dart';
 import 'package:skribble/skribble.dart';
 import 'package:welkui_flutter/welkui_flutter.dart';
 
@@ -6,7 +7,8 @@ import '../app/app_theme.dart';
 
 /// 皮肤自适应顶部导航栏：
 /// - `welkui` 皮肤渲染 [WelkAppBar]；
-/// - `skribble` 皮肤渲染 [WiredAppBar]（铺满顶部安全区，搭配手绘底线）。
+/// - `skribble` 皮肤渲染 [WiredAppBar]（铺满顶部安全区，搭配手绘底线）；
+/// - `forui` 皮肤渲染 [FHeader] / [FHeader.nested]（现代 1px 分割线与简洁排版）。
 class GglAppBar extends StatelessWidget implements PreferredSizeWidget {
   const GglAppBar({
     super.key,
@@ -30,8 +32,65 @@ class GglAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isForui = AppTheme.isForui(context);
     final isSkribble = AppTheme.isSkribble(context);
     final backHandler = onBack ?? () => Navigator.of(context).maybePop();
+
+    if (isForui) {
+      final fColors = FTheme.of(context).colors;
+      final titleWidget = Text(
+        title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: fColors.foreground,
+          fontSize: 17.5,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.2,
+          fontFamilyFallback: AppTheme.cjkFontFallback,
+        ),
+      );
+      final hasPrefix = leading != null || showBack;
+      final prefixes = <Widget>[
+        if (leading != null)
+          leading!
+        else if (showBack)
+          FHeaderAction.back(onPress: backHandler),
+      ];
+      return Container(
+        decoration: BoxDecoration(
+          color: fColors.card,
+          border: Border(bottom: BorderSide(color: fColors.border, width: 1)),
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: SizedBox(
+            height: 56,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: hasPrefix || centerTitle
+                  ? FHeader.nested(
+                      titleAlignment:
+                          centerTitle ? Alignment.center : Alignment.centerLeft,
+                      style: FHeaderStyleDelta.delta(
+                        padding: EdgeInsetsGeometryDelta.value(EdgeInsets.zero),
+                      ),
+                      title: titleWidget,
+                      prefixes: prefixes,
+                      suffixes: actions ?? const <Widget>[],
+                    )
+                  : FHeader(
+                      style: FHeaderStyleDelta.delta(
+                        padding: EdgeInsetsGeometryDelta.value(EdgeInsets.zero),
+                      ),
+                      title: titleWidget,
+                      suffixes: actions ?? const <Widget>[],
+                    ),
+            ),
+          ),
+        ),
+      );
+    }
 
     if (isSkribble) {
       final wired = WiredTheme.of(context);
@@ -89,7 +148,7 @@ class GglAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 }
 
-/// 皮肤自适应图标按钮：WelkUI -> [WelkIconButton]，Skribble -> [WiredIconButton]。
+/// 皮肤自适应图标按钮：WelkUI -> [WelkIconButton]，Skribble -> [WiredIconButton]，Forui -> [FButton.icon]。
 class GglIconButton extends StatelessWidget {
   const GglIconButton({
     super.key,
@@ -106,6 +165,19 @@ class GglIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (AppTheme.isForui(context)) {
+      return SizedBox(
+        width: size,
+        height: size,
+        child: FButton.icon(
+          variant: FButtonVariant.ghost,
+          size: FButtonSizeVariant.sm,
+          semanticsLabel: label,
+          onPress: onPressed,
+          child: Icon(icon, size: size * 0.52),
+        ),
+      );
+    }
     if (AppTheme.isSkribble(context)) {
       return WiredIconButton(
         icon: icon,
@@ -123,7 +195,7 @@ class GglIconButton extends StatelessWidget {
   }
 }
 
-/// 皮肤自适应头像：WelkUI -> [WelkAvatar]，Skribble -> [WiredAvatar]。
+/// 皮肤自适应头像：WelkUI -> [WelkAvatar]，Skribble -> [WiredAvatar]，Forui -> [FAvatar]。
 class GglAvatar extends StatelessWidget {
   const GglAvatar({
     super.key,
@@ -138,6 +210,41 @@ class GglAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (AppTheme.isForui(context)) {
+      final fColors = FTheme.of(context).colors;
+      final diameter = switch (size) {
+        WelkAvatarSize.small => 36.0,
+        WelkAvatarSize.medium => 48.0,
+        WelkAvatarSize.large => 56.0,
+      };
+      final initial = alt.trim().isNotEmpty ? alt.trim().substring(0, 1) : '学';
+      final fallbackWidget = Text(
+        initial,
+        style: TextStyle(
+          color: fColors.primaryForeground,
+          fontSize: diameter * 0.36,
+          fontWeight: FontWeight.w700,
+          fontFamilyFallback: AppTheme.cjkFontFallback,
+        ),
+      );
+      if (image != null) {
+        return FAvatar(
+          image: image!,
+          size: diameter,
+          semanticsLabel: alt,
+          fallback: fallbackWidget,
+        );
+      }
+      return FAvatar.raw(
+        size: diameter,
+        style: FAvatarStyleDelta.delta(
+          backgroundColor: fColors.primary,
+          foregroundColor: fColors.primaryForeground,
+        ),
+        child: fallbackWidget,
+      );
+    }
+
     if (AppTheme.isSkribble(context)) {
       final wired = WiredTheme.of(context);
       final radius = switch (size) {
@@ -171,7 +278,7 @@ class GglAvatar extends StatelessWidget {
   }
 }
 
-/// 皮肤自适应复选框：WelkUI -> [WelkCheckBox]，Skribble -> [WiredCheckbox]。
+/// 皮肤自适应复选框：WelkUI -> [WelkCheckBox]，Skribble -> [WiredCheckbox]，Forui -> [FCheckbox]。
 class GglCheckbox extends StatelessWidget {
   const GglCheckbox({
     super.key,
@@ -186,6 +293,23 @@ class GglCheckbox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (AppTheme.isForui(context)) {
+      return FCheckbox(
+        value: value,
+        onChange: onChanged,
+        label: label != null && label!.isNotEmpty
+            ? Text(
+                label!,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w500,
+                  fontFamilyFallback: AppTheme.cjkFontFallback,
+                ),
+              )
+            : null,
+      );
+    }
+
     if (AppTheme.isSkribble(context)) {
       final wired = WiredTheme.of(context);
       return GestureDetector(
@@ -226,7 +350,8 @@ class GglCheckbox extends StatelessWidget {
 
 /// 皮肤自适应按钮：
 /// - `welkui` 皮肤渲染 [WelkButton] / 扁平漫画紧凑按钮；
-/// - `skribble` 皮肤渲染 [WiredElevatedButton] / [WiredButton]（手绘抖动描边 + 素描影线质感）。
+/// - `skribble` 皮肤渲染 [WiredElevatedButton] / [WiredButton]；
+/// - `forui` 皮肤渲染 [FButton]。
 class GglButton extends StatelessWidget {
   const GglButton({
     super.key,
@@ -249,9 +374,52 @@ class GglButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final effectiveTap = loading ? null : onPressed;
+
+    if (AppTheme.isForui(context)) {
+      final fVariant = switch (variant) {
+        WelkButtonVariant.primary => FButtonVariant.primary,
+        WelkButtonVariant.secondary => FButtonVariant.outline,
+        WelkButtonVariant.info => FButtonVariant.secondary,
+        WelkButtonVariant.success => FButtonVariant.primary,
+        WelkButtonVariant.warning => FButtonVariant.secondary,
+        WelkButtonVariant.error => FButtonVariant.destructive,
+        WelkButtonVariant.ghost => FButtonVariant.ghost,
+      };
+      final fSize = compact
+          ? FButtonSizeVariant.xs
+          : switch (size) {
+              WelkButtonSize.small => FButtonSizeVariant.sm,
+              WelkButtonSize.medium => FButtonSizeVariant.md,
+              WelkButtonSize.large => FButtonSizeVariant.lg,
+            };
+      return FButton(
+        variant: fVariant,
+        size: fSize,
+        mainAxisSize: MainAxisSize.min,
+        onPress: effectiveTap,
+        prefix: loading
+            ? const SizedBox(
+                width: 13,
+                height: 13,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : (icon != null ? Icon(icon, size: compact ? 14 : 16) : null),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: compact ? 12 : (size == WelkButtonSize.small ? 13 : 14),
+            fontWeight: FontWeight.w600,
+            fontFamilyFallback: AppTheme.cjkFontFallback,
+          ),
+        ),
+      );
+    }
+
     final isSkribble = AppTheme.isSkribble(context);
     final colors = WelkTheme.of(context).resolveColors(context);
-    final effectiveTap = loading ? null : onPressed;
 
     final content = Row(
       mainAxisSize: MainAxisSize.min,
@@ -423,7 +591,7 @@ class GglButton extends StatelessWidget {
   }
 }
 
-/// 皮肤自适应分割线：WelkUI -> [WelkDivider]，Skribble -> [WiredDivider]。
+/// 皮肤自适应分割线：WelkUI -> [WelkDivider]，Skribble -> [WiredDivider]，Forui -> [FDivider]。
 class GglDivider extends StatelessWidget {
   const GglDivider({super.key, this.verticalPadding = 12});
 
@@ -431,6 +599,15 @@ class GglDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (AppTheme.isForui(context)) {
+      return FDivider(
+        style: FDividerStyleDelta.delta(
+          padding: EdgeInsetsGeometryDelta.value(
+            EdgeInsets.symmetric(vertical: verticalPadding),
+          ),
+        ),
+      );
+    }
     if (AppTheme.isSkribble(context)) {
       return Padding(
         padding: EdgeInsets.symmetric(vertical: verticalPadding * 0.5),
@@ -444,7 +621,7 @@ class GglDivider extends StatelessWidget {
   }
 }
 
-/// 皮肤自适应开关：WelkUI -> [WelkSwitch]，Skribble -> [WiredSwitch]。
+/// 皮肤自适应开关：WelkUI -> [WelkSwitch]，Skribble -> [WiredSwitch]，Forui -> [FSwitch]。
 class GglSwitch extends StatelessWidget {
   const GglSwitch({
     super.key,
@@ -459,6 +636,26 @@ class GglSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (AppTheme.isForui(context)) {
+      final fColors = FTheme.of(context).colors;
+      return FSwitch(
+        value: value,
+        enabled: onChanged != null,
+        leadingLabel: true,
+        label: label != null && label!.isNotEmpty
+            ? Text(
+                label!,
+                style: TextStyle(
+                  color: fColors.foreground,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  fontFamilyFallback: AppTheme.cjkFontFallback,
+                ),
+              )
+            : null,
+        onChange: onChanged,
+      );
+    }
     if (AppTheme.isSkribble(context)) {
       final wired = WiredTheme.of(context);
       return Row(
@@ -492,7 +689,7 @@ class GglSwitch extends StatelessWidget {
   }
 }
 
-/// 皮肤自适应单行输入框：WelkUI -> [WelkInput]，Skribble -> [WiredInput]。
+/// 皮肤自适应单行输入框：WelkUI -> [WelkInput]，Skribble -> [WiredInput]，Forui -> [FTextField]。
 class GglInput extends StatefulWidget {
   const GglInput({
     super.key,
@@ -547,6 +744,44 @@ class _GglInputState extends State<GglInput> {
 
   @override
   Widget build(BuildContext context) {
+    if (AppTheme.isForui(context)) {
+      final fColors = FTheme.of(context).colors;
+      return FTextField(
+        control: FTextFieldControl.managed(
+          controller: _ctrl,
+          onChange: (v) => widget.onChanged(v.text),
+        ),
+        label: Text(
+          widget.label,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontFamilyFallback: AppTheme.cjkFontFallback,
+          ),
+        ),
+        hint: widget.placeholder,
+        keyboardType: widget.keyboardType,
+        obscureText: widget.obscureText,
+        clearable: widget.onToggleObscure == null && widget.allowClear
+            ? (v) => v.text.isNotEmpty
+            : FTextField.defaultClearable,
+        suffixBuilder: widget.onToggleObscure != null
+            ? (ctx, style, states) => Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: GestureDetector(
+                    onTap: widget.onToggleObscure,
+                    child: Icon(
+                      widget.obscureText
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                      size: 18,
+                      color: fColors.mutedForeground,
+                    ),
+                  ),
+                )
+            : null,
+      );
+    }
+
     if (AppTheme.isSkribble(context)) {
       final wired = WiredTheme.of(context);
       return Column(
@@ -644,7 +879,7 @@ class _GglInputState extends State<GglInput> {
   }
 }
 
-/// 皮肤自适应多行文本域：WelkUI -> 粗描边漫画文本域，Skribble -> [WiredTextArea]。
+/// 皮肤自适应多行文本域：WelkUI -> 粗描边漫画文本域，Skribble -> [WiredTextArea]，Forui -> [FTextField.multiline]。
 class GglTextArea extends StatelessWidget {
   const GglTextArea({
     super.key,
@@ -665,6 +900,27 @@ class GglTextArea extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (AppTheme.isForui(context)) {
+      return FTextField.multiline(
+        control: FTextFieldControl.managed(
+          controller: controller,
+          onChange: onChanged != null ? (v) => onChanged!(v.text) : null,
+        ),
+        label: label != null && label!.isNotEmpty
+            ? Text(
+                label!,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontFamilyFallback: AppTheme.cjkFontFallback,
+                ),
+              )
+            : null,
+        hint: hintText,
+        minLines: minLines,
+        maxLines: maxLines,
+      );
+    }
+
     final colors = WelkTheme.of(context).resolveColors(context);
     final isSkribble = AppTheme.isSkribble(context);
 
@@ -739,13 +995,86 @@ class GglTextArea extends StatelessWidget {
   }
 }
 
-/// 皮肤自适应底部抽屉弹窗：WelkUI -> [showWelkDrawer]，Skribble -> [showWiredBottomSheet]。
+/// 皮肤自适应底部抽屉弹窗：
+/// WelkUI -> [showWelkDrawer]，Skribble -> [showWiredBottomSheet]，Forui -> [showFSheet]。
 Future<T?> showGglBottomSheet<T>({
   required BuildContext context,
   required String title,
   required Widget Function(BuildContext sheetCtx) builder,
   String closeLabel = '关闭',
 }) {
+  if (AppTheme.isForui(context, listen: false)) {
+    return showFSheet<T>(
+      context: context,
+      side: FLayout.btt,
+      mainAxisMaxRatio: 0.85,
+      builder: (sheetCtx) {
+        final fColors = FTheme.of(sheetCtx).colors;
+        return Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: fColors.card,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            border: Border(top: BorderSide(color: fColors.border, width: 1)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                12,
+                16,
+                16 + MediaQuery.of(sheetCtx).viewInsets.bottom,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 36,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: fColors.border,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: TextStyle(
+                              color: fColors.foreground,
+                              fontSize: 16.5,
+                              fontWeight: FontWeight.w700,
+                              fontFamilyFallback: AppTheme.cjkFontFallback,
+                            ),
+                          ),
+                        ),
+                        GglButton(
+                          label: closeLabel,
+                          variant: WelkButtonVariant.secondary,
+                          compact: true,
+                          onPressed: () => Navigator.of(sheetCtx).pop(),
+                        ),
+                      ],
+                    ),
+                    const GglDivider(verticalPadding: 10),
+                    builder(sheetCtx),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   if (AppTheme.isSkribble(context, listen: false)) {
     return showWiredBottomSheet<T>(
       context: context,

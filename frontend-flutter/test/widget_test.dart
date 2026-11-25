@@ -1,7 +1,9 @@
 import 'dart:typed_data';
 
+import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forui/forui.dart';
 import 'package:guoguanla_app/app/app_theme.dart';
 import 'package:guoguanla_app/core/cache/global_cache.dart';
 import 'package:guoguanla_app/core/network/api_client.dart';
@@ -11,6 +13,7 @@ import 'package:guoguanla_app/pages/grade_chapters/grade_chapters_page.dart';
 import 'package:guoguanla_app/pages/home/home_tab_page.dart';
 import 'package:guoguanla_app/pages/login/login_page.dart';
 import 'package:guoguanla_app/pages/profile/profile_page.dart';
+import 'package:guoguanla_app/pages/quiz/quiz_page.dart';
 import 'package:guoguanla_app/pages/settings/theme_settings_page.dart';
 import 'package:guoguanla_app/pages/smart_board/smart_board_page.dart';
 import 'package:guoguanla_app/providers/theme_provider.dart';
@@ -18,7 +21,12 @@ import 'package:guoguanla_app/providers/update_provider.dart';
 import 'package:guoguanla_app/providers/user_provider.dart';
 import 'package:guoguanla_app/services/guoguanla_api.dart';
 import 'package:guoguanla_app/widgets/ggl_comic_panel.dart';
+import 'package:guoguanla_app/widgets/ggl_video_player.dart';
 import 'package:guoguanla_app/widgets/math_text.dart';
+import 'package:guoguanla_app/widgets/question_figure_card.dart';
+import 'package:video_player/video_player.dart';
+// ignore: depend_on_referenced_packages
+import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -110,6 +118,11 @@ void main() {
               data: theme.skribbleTheme,
               child: MaterialApp(
                 theme: theme.materialTheme,
+                localizationsDelegates: FLocalizations.localizationsDelegates,
+                builder: (ctx, child) => FTheme(
+                  data: theme.foruiTheme,
+                  child: FToaster(child: child!),
+                ),
                 home: const ThemeSettingsPage(),
               ),
             ),
@@ -121,6 +134,7 @@ void main() {
     expect(find.text('主题与皮肤设置'), findsOneWidget);
     expect(find.text('WelkUI 漫画风'), findsOneWidget);
     expect(find.text('Skribble 手绘风'), findsOneWidget);
+    expect(find.text('Forui 现代极简'), findsOneWidget);
     expect(find.byType(WelkAppBar), findsOneWidget);
     expect(find.byType(WiredAppBar), findsNothing);
     expect(themeProvider.isDarkMode, isFalse);
@@ -135,15 +149,198 @@ void main() {
     expect(find.byType(WiredSwitch), findsOneWidget);
     expect(find.byType(WiredProgress), findsWidgets);
 
+    // 点击切换为 Forui 现代极简皮肤，应立即重渲染 Forui 原生组件
+    await tester.tap(find.text('Forui 现代极简'));
+    await tester.pumpAndSettle();
+    expect(themeProvider.isForui, isTrue);
+    expect(storage.uiSkin, 'forui');
+    expect(find.byWidgetPredicate((w) => w is FHeader), findsOneWidget);
+    expect(find.byType(FCard), findsWidgets);
+    expect(find.byType(FSwitch), findsOneWidget);
+
     // 切换暗黑模式
-    await tester.tap(find.byType(WiredSwitch));
+    await tester.tap(find.byType(FSwitch));
     await tester.pumpAndSettle();
     expect(themeProvider.isDarkMode, isTrue);
 
-    // 切换强调色
+    // 向下滚动验证 Forui 进度条与强调色切换
+    await tester.scrollUntilVisible(
+      find.text('Forui (shadcn/ui) 组件实时预览'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.byType(FDeterminateProgress), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.text('元气暖黄'),
+      -200,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(find.text('元气暖黄'));
     await tester.pumpAndSettle();
     expect(themeProvider.accentHex, '#FFDA57');
+  });
+
+  testWidgets(
+      'QuizPage renders QuestionFigureCard diagram and advances directly to next gate on pass',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final cache = await GlobalCache.init();
+    final api = _FakeGuoguanlaApi();
+    final userProvider = UserProvider(storage: cache, api: api);
+    final themeProvider = ThemeProvider(cache);
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider<GlobalCache>.value(value: cache),
+          Provider<GuoguanlaApi>.value(value: api),
+          ChangeNotifierProvider<UserProvider>.value(value: userProvider),
+          ChangeNotifierProvider<ThemeProvider>.value(value: themeProvider),
+        ],
+        child: Consumer<ThemeProvider>(
+          builder: (context, theme, _) => WelkTheme(
+            data: theme.welkTheme,
+            child: MaterialApp(
+              theme: theme.materialTheme,
+              localizationsDelegates: FLocalizations.localizationsDelegates,
+              builder: (ctx, child) => FTheme(
+                data: theme.foruiTheme,
+                child: FToaster(child: child!),
+              ),
+              home: const QuizPage(
+                mode: QuizMode.gate,
+                gateId: 101,
+                gateSeq: 1,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Gate 1 displays geometry diagram card
+    expect(find.textContaining('第 1 关'), findsOneWidget);
+    expect(find.byType(QuestionFigureCard), findsOneWidget);
+
+    // Tap figure card to verify zoom dialog opens cleanly
+    await tester.tap(find.byType(QuestionFigureCard));
+    await tester.pumpAndSettle();
+    expect(find.byType(InteractiveViewer), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.close_rounded).last);
+    await tester.pumpAndSettle();
+
+    // Select option A -> check -> submit
+    await tester.tap(find.text('5'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('提交答案'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('完成交卷'));
+    await tester.pumpAndSettle();
+
+    // Settlement displays direct Next Gate button
+    expect(find.text('闯关成功！'), findsOneWidget);
+    expect(find.text('进入下一关 · 第 2 关'), findsOneWidget);
+
+    // Tap Next Gate -> immediately starts Gate 102 without popping back
+    await tester.tap(find.text('进入下一关 · 第 2 关'));
+    await tester.pumpAndSettle();
+    expect(api.startedGateIds, [101, 102]);
+    expect(find.textContaining('第 2 关'), findsOneWidget);
+    expect(find.textContaining('第二关题目'), findsOneWidget);
+  });
+
+  testWidgets(
+      'GglVideoControls renders zoom, speed, skip, fullscreen and horizontal swipe seek controls',
+      (WidgetTester tester) async {
+    final prevPlatform = VideoPlayerPlatform.instance;
+    final fakePlatform = _FakeVideoPlayerPlatform();
+    VideoPlayerPlatform.instance = fakePlatform;
+    addTearDown(() => VideoPlayerPlatform.instance = prevPlatform);
+
+    final videoCtrl = VideoPlayerController.networkUrl(
+      Uri.parse('https://example.com/demo.mp4'),
+    );
+    await videoCtrl.initialize();
+    videoCtrl.value = const VideoPlayerValue(
+      duration: Duration(minutes: 5),
+      position: Duration(seconds: 30),
+      size: Size(1280, 720),
+      isInitialized: true,
+    );
+    final transformCtrl = TransformationController();
+    final zoomNotifier = ValueNotifier<double>(1.0);
+    final brightnessNotifier = ValueNotifier<double>(1.0);
+    final chewieCtrl = ChewieController(
+      videoPlayerController: videoCtrl,
+      autoPlay: false,
+      looping: false,
+      transformationController: transformCtrl,
+    );
+    addTearDown(() {
+      chewieCtrl.dispose();
+      videoCtrl.dispose();
+      transformCtrl.dispose();
+      zoomNotifier.dispose();
+      brightnessNotifier.dispose();
+    });
+
+    var nextTapped = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 390,
+            height: 230,
+            child: ChewieControllerProvider(
+              controller: chewieCtrl,
+              child: GglVideoControls(
+                title: '第 1 节：勾股定理精讲',
+                accentColor: const Color(0xFF67C6FF),
+                transformationController: transformCtrl,
+                zoomNotifier: zoomNotifier,
+                brightnessNotifier: brightnessNotifier,
+                hasNextLesson: true,
+                onNextLesson: () => nextTapped = true,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('第 1 节：勾股定理精讲'), findsOneWidget);
+    expect(find.text('放大'), findsOneWidget);
+    expect(find.text('1.0x'), findsOneWidget);
+    expect(find.text('下一节'), findsOneWidget);
+    expect(find.byIcon(Icons.fullscreen_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.forward_10_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.replay_10_rounded), findsOneWidget);
+
+    // 点击「放大」按钮，画面缩放升级至 1.25x 并出现还原按钮
+    await tester.tap(find.text('放大'));
+    await tester.pump();
+    expect(zoomNotifier.value, closeTo(1.25, 0.01));
+    expect(find.text('1.25x · 还原'), findsOneWidget);
+
+    // 还原 1.0x 后验证右滑快进手势调用 seekTo
+    await tester.tap(find.text('1.25x · 还原'));
+    await tester.pump();
+    expect(zoomNotifier.value, closeTo(1.0, 0.01));
+
+    await tester.drag(find.byType(GglVideoControls), const Offset(120, 0));
+    await tester.pump();
+    expect(fakePlatform.lastSeekPosition, isNotNull);
+    expect(fakePlatform.lastSeekPosition!.inSeconds, greaterThan(30));
+
+    await tester.tap(find.text('下一节'));
+    await tester.pump();
+    expect(nextTapped, isTrue);
+
+    // 释放所有挂起的瞬时 HUD 定时器
+    await tester.pump(const Duration(seconds: 4));
   });
 
   testWidgets('LoginPage switches between login and register with grade picker',
@@ -761,6 +958,139 @@ class _FakeGuoguanlaApi extends GuoguanlaApi {
     );
   }
 
+  final List<int> startedGateIds = <int>[];
+
+  @override
+  Future<QuizStartResult> startGateQuiz({
+    required int gateId,
+    List<int>? guestPassedGateIds,
+  }) async {
+    startedGateIds.add(gateId);
+    if (gateId == 102) {
+      return const QuizStartResult(
+        sessionNo: 'QZ-GATE-102',
+        mode: 'GATE',
+        suppressedMode: false,
+        chapterId: 11,
+        chapterName: '第11章 三角形',
+        gateId: 102,
+        gateName: '进阶关',
+        star: 2,
+        passCount: 1,
+        totalCount: 1,
+        guestMode: true,
+        items: [
+          ClientQuestionItem(
+            itemIndex: 0,
+            questionFormat: 'SINGLE_CHOICE',
+            stem: '第二关题目：等腰三角形顶角为 80°，底角为多少？',
+            options: ['50°', '40°', '80°', '60°'],
+          ),
+        ],
+      );
+    }
+    return const QuizStartResult(
+      sessionNo: 'QZ-GATE-101',
+      mode: 'GATE',
+      suppressedMode: false,
+      chapterId: 11,
+      chapterName: '第11章 三角形',
+      gateId: 101,
+      gateName: '基础关',
+      star: 1,
+      passCount: 1,
+      totalCount: 1,
+      guestMode: true,
+      items: [
+        ClientQuestionItem(
+          itemIndex: 0,
+          questionFormat: 'SINGLE_CHOICE',
+          stem: '如图，在 Rt△ABC 中，∠C=90°，AC=3，BC=4，则 AB=',
+          options: ['5', '6', '7', '25'],
+          diagram: BoardDiagramSpec(
+            title: '直角三角形 Rt△ABC',
+            width: 300,
+            height: 190,
+            primitives: [
+              DiagramPrimitive(
+                type: 'polygon',
+                points: [
+                  [60, 150],
+                  [230, 150],
+                  [60, 40],
+                ],
+                fillColor: '#38BDF8',
+              ),
+              DiagramPrimitive(
+                type: 'rightangle',
+                vx: 60,
+                vy: 150,
+                ax: 230,
+                ay: 150,
+                bx: 60,
+                by: 40,
+                size: 14,
+              ),
+              DiagramPrimitive(
+                type: 'arc',
+                cx: 230,
+                cy: 150,
+                r: 22,
+                startAngle: 180,
+                sweepAngle: 33,
+                color: '#DC2626',
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Future<CheckItemResult> checkItem({
+    required String sessionNo,
+    required int itemIndex,
+    int? selectedIndex,
+    String? answerText,
+    String? answerImageKey,
+    bool? selfCorrect,
+  }) async {
+    return CheckItemResult(
+      itemIndex: itemIndex,
+      questionFormat: 'SINGLE_CHOICE',
+      correct: selectedIndex == 0,
+      correctIndex: 0,
+      pendingReview: false,
+      analysis: '由勾股定理可得 AB = 5',
+    );
+  }
+
+  @override
+  Future<SubmitResult> submitGateQuiz({
+    required String sessionNo,
+    required List<AnswerSubmitPayload> answers,
+  }) async {
+    return SubmitResult(
+      sessionNo: sessionNo,
+      mode: 'GATE',
+      totalCount: 1,
+      correctCount: 1,
+      passCount: 1,
+      passed: true,
+      newlyPassed: true,
+      totalPassedGates: 1,
+      wrongItems: const [],
+      masteredCount: 0,
+      nextGateId: sessionNo == 'QZ-GATE-101' ? 102 : null,
+      nextGateIndex: sessionNo == 'QZ-GATE-101' ? 1 : null,
+      nextGateName: sessionNo == 'QZ-GATE-101' ? '进阶关' : null,
+      nextChapterId: 11,
+      nextChapterName: '第11章 三角形',
+      nextGateCrossChapter: false,
+    );
+  }
+
   @override
   Future<List<ChapterCard>> getChaptersByRealm(
     String realmCode, {
@@ -911,4 +1241,54 @@ class _FakeGuoguanlaApi extends GuoguanlaApi {
       suppressed: false,
     ),
   ];
+}
+
+class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
+  Duration? lastSeekPosition;
+
+  @override
+  Future<void> init() async {}
+
+  @override
+  Future<int?> createWithOptions(VideoCreationOptions options) async => 1;
+
+  @override
+  Future<void> dispose(int playerId) async {}
+
+  @override
+  Future<void> setLooping(int playerId, bool looping) async {}
+
+  @override
+  Future<void> play(int playerId) async {}
+
+  @override
+  Future<void> pause(int playerId) async {}
+
+  @override
+  Future<void> setVolume(int playerId, double volume) async {}
+
+  @override
+  Future<void> setPlaybackSpeed(int playerId, double speed) async {}
+
+  @override
+  Future<void> seekTo(int playerId, Duration position) async {
+    lastSeekPosition = position;
+  }
+
+  @override
+  Future<Duration> getPosition(int playerId) async =>
+      lastSeekPosition ?? const Duration(seconds: 30);
+
+  @override
+  Stream<VideoEvent> videoEventsFor(int playerId) => Stream<VideoEvent>.value(
+        VideoEvent(
+          eventType: VideoEventType.initialized,
+          duration: const Duration(minutes: 5),
+          size: const Size(1280, 720),
+        ),
+      );
+
+  @override
+  Widget buildViewWithOptions(VideoViewOptions options) =>
+      const SizedBox.shrink();
 }

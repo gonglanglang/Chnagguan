@@ -16,6 +16,7 @@ import '../../widgets/ggl_skeleton.dart';
 import '../../widgets/ggl_skin_widgets.dart';
 import '../../widgets/image_preview_page.dart';
 import '../../widgets/math_text.dart';
+import '../../widgets/question_figure_card.dart';
 import '../draw_answer/draw_answer_page.dart';
 
 enum QuizMode { gate, wrongRedo, advanceExam }
@@ -49,6 +50,8 @@ class _QuizPageState extends State<QuizPage> {
   bool _submitting = false;
 
   QuizStartResult? _startData;
+  int? _activeGateId;
+  int? _activeGateSeq;
   int _currentIdx = 0;
   final Map<int, int> _selectedMap = <int, int>{};
   final Map<int, String> _essayTextMap = <int, String>{};
@@ -63,6 +66,8 @@ class _QuizPageState extends State<QuizPage> {
   @override
   void initState() {
     super.initState();
+    _activeGateId = widget.gateId;
+    _activeGateSeq = widget.gateSeq;
     WidgetsBinding.instance.addPostFrameCallback((_) => _initQuiz());
   }
 
@@ -105,7 +110,7 @@ class _QuizPageState extends State<QuizPage> {
     final name = (_startData?.gateName.isNotEmpty ?? false)
         ? _startData!.gateName
         : '关卡挑战';
-    return widget.gateSeq != null ? '第 ${widget.gateSeq} 关 · $name' : name;
+    return _activeGateSeq != null ? '第 $_activeGateSeq 关 · $name' : name;
   }
 
   void _startTimer() {
@@ -155,9 +160,9 @@ class _QuizPageState extends State<QuizPage> {
           chapterId: widget.chapterId,
           limit: 5,
         );
-      } else if (widget.gateId != null) {
+      } else if (_activeGateId != null) {
         res = await api.startGateQuiz(
-          gateId: widget.gateId!,
+          gateId: _activeGateId!,
           guestPassedGateIds: user.activeGuestIds,
         );
       } else {
@@ -253,6 +258,8 @@ class _QuizPageState extends State<QuizPage> {
           itemIndex: item.itemIndex,
           stem: item.stem,
           initialAnswerText: (_essayTextMap[item.itemIndex] ?? '').trim(),
+          diagram: item.diagram,
+          imageUrl: item.imageUrl,
         ),
       ),
     );
@@ -324,16 +331,15 @@ class _QuizPageState extends State<QuizPage> {
       }
 
       _stopTimer();
-      if (mounted) {
-        setState(() => _submitResult = res);
-      }
 
       if (res.passed &&
-          res.newlyPassed &&
           widget.mode == QuizMode.gate &&
           !user.isAuthenticated &&
           start.gateId != null) {
         await user.recordGuestPassedGate(start.gateId!);
+      }
+      if (mounted) {
+        setState(() => _submitResult = res);
       }
       if (user.isAuthenticated) {
         unawaited(user.loadHomeSummary());
@@ -346,6 +352,15 @@ class _QuizPageState extends State<QuizPage> {
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
+  }
+
+  Future<void> _goNextGate(SubmitResult res) async {
+    if (!res.hasNextGate) return;
+    _activeGateId = res.nextGateId;
+    _activeGateSeq = res.nextGateIndex != null
+        ? res.nextGateIndex! + 1
+        : ((_activeGateSeq ?? 0) + 1);
+    await _initQuiz();
   }
 
   Future<void> _handleExit() async {
@@ -419,15 +434,7 @@ class _QuizPageState extends State<QuizPage> {
             if (_startData != null && _submitResult == null)
               Container(
                 padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-                decoration: BoxDecoration(
-                  color: colors.paper,
-                  border: Border(
-                    bottom: BorderSide(
-                      color: colors.outline,
-                      width: colors.borderWidth,
-                    ),
-                  ),
-                ),
+                decoration: AppTheme.barDecoration(context, bottomBorder: true),
                 child: Column(
                   children: [
                     Row(
@@ -595,6 +602,13 @@ class _QuizPageState extends State<QuizPage> {
                   height: 1.65,
                 ),
               ),
+              if (item.hasFigure) ...[
+                const SizedBox(height: 12),
+                QuestionFigureCard(
+                  diagram: item.diagram,
+                  imageUrl: item.imageUrl,
+                ),
+              ],
             ],
           ),
         ),
@@ -1025,6 +1039,57 @@ class _QuizPageState extends State<QuizPage> {
             ),
           ),
         ],
+        if (widget.mode == QuizMode.gate && res.hasNextGate) ...[
+          const SizedBox(height: 14),
+          GglComicPanel(
+            color: colors.info.withValues(alpha: colors.isDark ? 0.16 : 0.2),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            onTap: () => _goNextGate(res),
+            child: Row(
+              children: [
+                Icon(
+                  res.nextGateCrossChapter
+                      ? Icons.auto_awesome_rounded
+                      : Icons.flag_circle_rounded,
+                  color: colors.ink,
+                  size: 24,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        res.nextGateCrossChapter
+                            ? '本章已通关！即将开启下一章'
+                            : '下一关已解锁，趁热打铁继续闯关',
+                        style: TextStyle(
+                          color: colors.ink,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        res.nextGateCrossChapter
+                            ? '${res.nextChapterName ?? '下一章节'} · 第 ${(res.nextGateIndex ?? 0) + 1} 关 ${res.nextGateName ?? ''}'
+                            : '第 ${(res.nextGateIndex ?? 0) + 1} 关 · ${res.nextGateName ?? ''}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: AppTheme.mutedText(context),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Icon(Icons.chevron_right_rounded, color: colors.ink),
+              ],
+            ),
+          ),
+        ],
         if (res.wrongItems.isNotEmpty) ...[
           const GglSectionLabel(title: '错题速览（已自动收录错题本）'),
           GglComicPanel(
@@ -1045,6 +1110,16 @@ class _QuizPageState extends State<QuizPage> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  if (res.wrongItems[i].diagram != null ||
+                      (res.wrongItems[i].imageUrl != null &&
+                          res.wrongItems[i].imageUrl!.trim().isNotEmpty)) ...[
+                    const SizedBox(height: 8),
+                    QuestionFigureCard(
+                      diagram: res.wrongItems[i].diagram,
+                      imageUrl: res.wrongItems[i].imageUrl,
+                      compact: true,
+                    ),
+                  ],
                   const SizedBox(height: 6),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1081,24 +1156,48 @@ class _QuizPageState extends State<QuizPage> {
     if (_loading) {
       child = const GglSkeletonBox(width: double.infinity, height: 48);
     } else if (_submitResult != null) {
-      child = Row(
+      final res = _submitResult!;
+      final canDirectNext = widget.mode == QuizMode.gate && res.hasNextGate;
+      final nextSeq = (res.nextGateIndex ?? 0) + 1;
+      final nextLabel = res.nextGateCrossChapter
+          ? '进入下一章 · 第 $nextSeq 关'
+          : '进入下一关 · 第 $nextSeq 关';
+
+      child = Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: GglBlockButton(
-              label: '再做一次',
-              variant: WelkButtonVariant.secondary,
-              size: WelkButtonSize.medium,
-              onPressed: _initQuiz,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: GglBlockButton(
-              label: '返回',
+          if (canDirectNext) ...[
+            GglBlockButton(
+              label: nextLabel,
+              icon: Icons.arrow_forward_rounded,
               variant: WelkButtonVariant.primary,
-              size: WelkButtonSize.medium,
-              onPressed: () => Navigator.of(context).pop(),
+              size: WelkButtonSize.large,
+              onPressed: () => _goNextGate(res),
             ),
+            const SizedBox(height: 10),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: GglBlockButton(
+                  label: '再做一次',
+                  variant: WelkButtonVariant.secondary,
+                  size: WelkButtonSize.medium,
+                  onPressed: _initQuiz,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: GglBlockButton(
+                  label: canDirectNext ? '返回地图' : '返回',
+                  variant: canDirectNext
+                      ? WelkButtonVariant.secondary
+                      : WelkButtonVariant.primary,
+                  size: WelkButtonSize.medium,
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
+            ],
           ),
         ],
       );
@@ -1143,12 +1242,7 @@ class _QuizPageState extends State<QuizPage> {
     return SafeArea(
       child: Container(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-        decoration: BoxDecoration(
-          color: colors.paper,
-          border: Border(
-            top: BorderSide(color: colors.outline, width: colors.borderWidth),
-          ),
-        ),
+        decoration: AppTheme.barDecoration(context, topBorder: true),
         child: child,
       ),
     );

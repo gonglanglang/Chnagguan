@@ -6,6 +6,8 @@ import {
   updateRealm,
   getConfigs,
   updateConfig,
+  getAdminDefaultTheme,
+  updateAdminDefaultTheme,
   getAiConfig,
   updateAiConfig,
   testAiConfig,
@@ -16,6 +18,7 @@ import {
   uploadAppApk,
   OssDirectNetworkError,
   type RealmConfig,
+  type AppDefaultThemeConfig,
   type AppVersionInfo,
   type AiConfigInfo,
   type AiTestResult
@@ -27,6 +30,7 @@ defineOptions({
 
 const loading = ref(false);
 const savingBasic = ref(false);
+const savingTheme = ref(false);
 const savingAi = ref(false);
 const testingAi = ref(false);
 const savingVersion = ref(false);
@@ -41,6 +45,49 @@ const aiTestResult = ref<AiTestResult | null>(null);
 const basicForm = reactive({
   guestMode: true,
   appNotice: ""
+});
+
+const skinOptions: Array<{
+  code: "welkui" | "skribble" | "forui";
+  title: string;
+  badge: string;
+  desc: string;
+}> = [
+  {
+    code: "welkui",
+    title: "WelkUI 漫画风",
+    badge: "经典活力",
+    desc: "2px 清晰黑描边与硬投影漫画卡片，高对比度辨识"
+  },
+  {
+    code: "skribble",
+    title: "Skribble 手绘风",
+    badge: "纸感轻盈",
+    desc: "铅笔草图线条与暖纸底色，像手写数学练习本"
+  },
+  {
+    code: "forui",
+    title: "Forui 现代极简",
+    badge: "shadcn/ui",
+    desc: "基于 forui.dev 现代克制设计，1px 细腻边框与通透留白"
+  }
+];
+
+const themeColorPresets = [
+  { hex: "#67C6FF", name: "天青漫画" },
+  { hex: "#0284C7", name: "晴空蓝" },
+  { hex: "#FFDA57", name: "元气暖黄" },
+  { hex: "#8DDD9B", name: "青岚薄荷" },
+  { hex: "#FFB366", name: "活力暖橙" },
+  { hex: "#C5A3FF", name: "丁香淡紫" }
+];
+
+const defaultThemeForm = reactive<AppDefaultThemeConfig>({
+  uiSkin: "welkui",
+  themeHex: "#67C6FF",
+  themeName: "天青漫画",
+  darkMode: false,
+  version: "1"
 });
 
 const aiForm = reactive({
@@ -68,11 +115,12 @@ const versionForm = reactive({
 async function fetchAll() {
   loading.value = true;
   try {
-    const [realmRes, cfgRes, verRes, aiRes] = await Promise.all([
+    const [realmRes, cfgRes, verRes, aiRes, themeRes] = await Promise.all([
       getRealms(),
       getConfigs(),
       getAdminAppVersion(false),
-      getAiConfig().catch(() => null)
+      getAiConfig().catch(() => null),
+      getAdminDefaultTheme().catch(() => null)
     ]);
     realms.value = realmRes.data;
     const cfgList = cfgRes.data || [];
@@ -81,6 +129,14 @@ async function fetchAll() {
       ? map.get("guest_mode_enabled") === "true"
       : true;
     basicForm.appNotice = map.get("app_notice") || "";
+
+    if (themeRes?.data) {
+      defaultThemeForm.uiSkin = themeRes.data.uiSkin || "welkui";
+      defaultThemeForm.themeHex = themeRes.data.themeHex || "#67C6FF";
+      defaultThemeForm.themeName = themeRes.data.themeName || "天青漫画";
+      defaultThemeForm.darkMode = Boolean(themeRes.data.darkMode);
+      defaultThemeForm.version = themeRes.data.version || "1";
+    }
 
     versionForm.githubRepo = map.get("github_release_repo") || "gonglanglang/Chnagguan";
     versionForm.latestVersion = map.get("app_latest_version") || "1.0.0";
@@ -177,6 +233,38 @@ async function saveRealmRow(row: RealmConfig) {
     examPassScore: row.examPassScore
   });
   ElMessage.success(`已保存「${row.realmName}」境界配置`);
+}
+
+function selectColorPreset(preset: { hex: string; name: string }) {
+  defaultThemeForm.themeHex = preset.hex;
+  defaultThemeForm.themeName = preset.name;
+}
+
+async function saveDefaultThemeSettings() {
+  const hex = defaultThemeForm.themeHex.trim().toUpperCase();
+  if (!/^#[0-9A-F]{6}$/.test(hex)) {
+    ElMessage.warning("请填写合法的 6 位十六进制主题色，例如 #67C6FF");
+    return;
+  }
+  savingTheme.value = true;
+  try {
+    const res = await updateAdminDefaultTheme({
+      uiSkin: defaultThemeForm.uiSkin,
+      themeHex: hex,
+      themeName: defaultThemeForm.themeName.trim() || "自定义主题",
+      darkMode: defaultThemeForm.darkMode
+    });
+    if (res.data) {
+      defaultThemeForm.uiSkin = res.data.uiSkin;
+      defaultThemeForm.themeHex = res.data.themeHex;
+      defaultThemeForm.themeName = res.data.themeName;
+      defaultThemeForm.darkMode = Boolean(res.data.darkMode);
+      defaultThemeForm.version = res.data.version;
+    }
+    ElMessage.success("学生端默认主题已保存，学生下次进入应用将自动生效");
+  } finally {
+    savingTheme.value = false;
+  }
 }
 
 async function saveBasicSettings() {
@@ -575,6 +663,118 @@ onMounted(fetchAll);
               测试模型连通性
             </el-button>
           </div>
+        </el-form-item>
+      </el-form>
+    </el-card>
+
+    <el-card shadow="never">
+      <template #header>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-gray-800">学生端默认主题与外观配置</span>
+            <el-tag type="primary" size="small">
+              {{ skinOptions.find(s => s.code === defaultThemeForm.uiSkin)?.title || defaultThemeForm.uiSkin }}
+            </el-tag>
+            <el-tag :type="defaultThemeForm.darkMode ? 'info' : 'warning'" size="small">
+              {{ defaultThemeForm.darkMode ? "默认暗黑" : "默认浅色" }}
+            </el-tag>
+          </div>
+          <span class="text-xs text-gray-500">配置版本：v{{ defaultThemeForm.version }}</span>
+        </div>
+      </template>
+
+      <el-alert
+        type="info"
+        :closable="false"
+        class="mb-4"
+        title="生效规则：保存后，学生端下次启动或重新进入应用时，将自动以此处配置的默认皮肤、主题色与明暗模式为准；学生在当前会话内仍可在「我的 → 主题设置」临时切换体验。"
+      />
+
+      <el-form label-width="140px" class="max-w-3xl">
+        <el-form-item label="默认界面风格">
+          <div class="grid w-full grid-cols-1 gap-3 sm:grid-cols-3">
+            <div
+              v-for="skin in skinOptions"
+              :key="skin.code"
+              class="cursor-pointer rounded-xl border-2 p-3 transition"
+              :class="
+                defaultThemeForm.uiSkin === skin.code
+                  ? 'border-sky-500 bg-sky-50/70 shadow-xs'
+                  : 'border-slate-200 bg-white hover:border-slate-300'
+              "
+              @click="defaultThemeForm.uiSkin = skin.code"
+            >
+              <div class="flex items-center justify-between gap-1">
+                <span class="text-sm font-bold text-slate-800">{{ skin.title }}</span>
+                <el-tag
+                  size="small"
+                  :type="defaultThemeForm.uiSkin === skin.code ? 'primary' : 'info'"
+                >
+                  {{ skin.badge }}
+                </el-tag>
+              </div>
+              <div class="mt-1.5 text-xs leading-relaxed text-slate-500">
+                {{ skin.desc }}
+              </div>
+            </div>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="默认主题强调色">
+          <div class="w-full space-y-2.5">
+            <div class="flex flex-wrap items-center gap-2">
+              <button
+                v-for="preset in themeColorPresets"
+                :key="preset.hex"
+                type="button"
+                class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition"
+                :class="
+                  defaultThemeForm.themeHex.toUpperCase() === preset.hex
+                    ? 'border-slate-900 bg-slate-900 text-white'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400'
+                "
+                @click="selectColorPreset(preset)"
+              >
+                <span
+                  class="inline-block h-3.5 w-3.5 rounded-full border border-black/15"
+                  :style="{ backgroundColor: preset.hex }"
+                />
+                <span>{{ preset.name }}</span>
+              </button>
+            </div>
+            <div class="flex flex-wrap items-center gap-2.5">
+              <el-color-picker
+                v-model="defaultThemeForm.themeHex"
+                @change="(v: string | null) => { if (v) defaultThemeForm.themeHex = v.toUpperCase(); }"
+              />
+              <el-input
+                v-model="defaultThemeForm.themeHex"
+                placeholder="#67C6FF"
+                style="width: 120px"
+              />
+              <el-input
+                v-model="defaultThemeForm.themeName"
+                placeholder="主题名称，如 天青漫画"
+                style="width: 180px"
+                maxlength="20"
+              />
+            </div>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="默认暗黑模式">
+          <div class="flex flex-wrap items-center gap-3">
+            <el-switch v-model="defaultThemeForm.darkMode" class="shrink-0" />
+            <span class="text-xs text-gray-500">
+              开启后，学生端下次进入默认使用深色护眼主题；关闭则默认浅色模式
+            </span>
+          </div>
+        </el-form-item>
+
+        <el-form-item>
+          <el-button type="primary" :loading="savingTheme" @click="saveDefaultThemeSettings">
+            保存默认主题配置
+          </el-button>
         </el-form-item>
       </el-form>
     </el-card>

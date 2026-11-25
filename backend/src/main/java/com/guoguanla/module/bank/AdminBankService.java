@@ -23,11 +23,13 @@ import com.guoguanla.module.bank.vo.GateVO;
 import com.guoguanla.module.bank.vo.QuestionVO;
 import com.guoguanla.module.engine.GeneratedQuestion;
 import com.guoguanla.module.engine.QuestionEngineService;
+import com.guoguanla.module.oss.AliyunOssService;
 import com.guoguanla.module.system.RealmHelperService;
 import com.guoguanla.module.system.entity.EduRealm;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -44,6 +46,7 @@ public class AdminBankService {
     private final EduQuestionMapper questionMapper;
     private final QuestionEngineService engineService;
     private final RealmHelperService realmHelper;
+    private final AliyunOssService ossService;
     private final ObjectMapper objectMapper;
 
     public List<EduGrade> listGrades() {
@@ -226,21 +229,33 @@ public class AdminBankService {
     }
 
     public PageResult<QuestionVO> pageQuestions(QuestionQueryReq req) {
+        return pageQuestions(req, "");
+    }
+
+    public PageResult<QuestionVO> pageQuestions(QuestionQueryReq req, String baseOrigin) {
         long pageNum = req.getPageNum() == null || req.getPageNum() < 1 ? 1L : req.getPageNum();
         long pageSize = req.getPageSize() == null || req.getPageSize() < 1 ? 10L : Math.min(req.getPageSize(), 100L);
 
         LambdaQueryWrapper<EduQuestion> wrapper = buildQuestionWrapper(req);
         Page<EduQuestion> page = questionMapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
-        List<QuestionVO> records = toQuestionVOs(page.getRecords());
+        List<QuestionVO> records = toQuestionVOs(page.getRecords(), baseOrigin);
         return PageResult.of(records, page.getTotal(), pageNum, pageSize);
     }
 
     public QuestionVO getQuestion(Long id) {
+        return getQuestion(id, "");
+    }
+
+    public QuestionVO getQuestion(Long id, String baseOrigin) {
         EduQuestion q = questionMapper.selectById(id);
         if (q == null) {
             throw new BizException(ErrorCode.NOT_FOUND, "题目不存在");
         }
-        return toQuestionVOs(List.of(q)).get(0);
+        return toQuestionVOs(List.of(q), baseOrigin).get(0);
+    }
+
+    public AliyunOssService.UploadResult uploadQuestionFigure(MultipartFile file, String baseOrigin) {
+        return ossService.uploadQuestionFigure(file, baseOrigin);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -303,6 +318,9 @@ public class AdminBankService {
             target.setStem(req.getStem());
             target.setTemplateRuleJson(writeJson(req.getTemplateRule()));
             target.setAnalysis(req.getAnalysis());
+            if (req.getExt() != null && !req.getExt().isEmpty()) {
+                target.setExtJson(writeJson(req.getExt()));
+            }
         }
         int cnt = req.getCount() == null ? 3 : req.getCount();
         return engineService.previewGenerate(target, cnt);
@@ -470,6 +488,10 @@ public class AdminBankService {
     }
 
     private List<QuestionVO> toQuestionVOs(List<EduQuestion> questions) {
+        return toQuestionVOs(questions, "");
+    }
+
+    private List<QuestionVO> toQuestionVOs(List<EduQuestion> questions, String baseOrigin) {
         if (questions.isEmpty()) {
             return List.of();
         }
@@ -486,6 +508,7 @@ public class AdminBankService {
         return questions.stream()
                 .map(q -> {
                     EduRealm realm = realmByGrade.get(q.getGradeCode());
+                    Map<String, Object> ext = resolveQuestionExt(readMap(q.getExtJson()), baseOrigin);
                     return QuestionVO.builder()
                             .id(q.getId())
                             .gradeCode(q.getGradeCode())
@@ -493,28 +516,44 @@ public class AdminBankService {
                             .realmCode(realm != null ? realm.getRealmCode() : "")
                             .realmName(realm != null ? realm.getRealmName() : "")
                             .chapterId(q.getChapterId())
-                        .chapterName(chapMap.getOrDefault(q.getChapterId(), ""))
-                        .gateId(q.getGateId())
-                        .gateName(gateMap.getOrDefault(q.getGateId(), ""))
-                        .questionMode(q.getQuestionMode())
-                        .questionFormat(q.getQuestionFormat())
-                        .stem(q.getStem())
-                        .options(readList(q.getOptionsJson()))
-                        .answer(readMap(q.getAnswerJson()))
-                        .analysis(q.getAnalysis())
-                        .generatorCode(q.getGeneratorCode())
-                        .templateRule(readMap(q.getTemplateRuleJson()))
-                        .difficulty(q.getDifficulty())
-                        .tags(readList(q.getTagsJson()))
-                        .ext(readMap(q.getExtJson()))
-                        .source(q.getSource())
-                        .version(q.getVersion())
+                            .chapterName(chapMap.getOrDefault(q.getChapterId(), ""))
+                            .gateId(q.getGateId())
+                            .gateName(gateMap.getOrDefault(q.getGateId(), ""))
+                            .questionMode(q.getQuestionMode())
+                            .questionFormat(q.getQuestionFormat())
+                            .stem(q.getStem())
+                            .options(readList(q.getOptionsJson()))
+                            .answer(readMap(q.getAnswerJson()))
+                            .analysis(q.getAnalysis())
+                            .generatorCode(q.getGeneratorCode())
+                            .templateRule(readMap(q.getTemplateRuleJson()))
+                            .difficulty(q.getDifficulty())
+                            .tags(readList(q.getTagsJson()))
+                            .ext(ext)
+                            .source(q.getSource())
+                            .version(q.getVersion())
                             .sortOrder(q.getSortOrder())
                             .enabled(q.getEnabled())
                             .updatedAt(q.getUpdatedAt())
                             .build();
                 })
                 .toList();
+    }
+
+    private Map<String, Object> resolveQuestionExt(Map<String, Object> raw, String baseOrigin) {
+        if (raw == null || raw.isEmpty()) {
+            return raw;
+        }
+        Map<String, Object> copy = new LinkedHashMap<>(raw);
+        Object imageKey = copy.get("imageKey");
+        Object imageUrl = copy.get("imageUrl");
+        String ref = (imageKey != null && !String.valueOf(imageKey).isBlank())
+                ? String.valueOf(imageKey).trim()
+                : (imageUrl != null ? String.valueOf(imageUrl).trim() : "");
+        if (!ref.isEmpty()) {
+            copy.put("imageUrl", ossService.resolveViewUrl(ref, baseOrigin));
+        }
+        return copy;
     }
 
     private Map<String, String> gradeNameMap() {

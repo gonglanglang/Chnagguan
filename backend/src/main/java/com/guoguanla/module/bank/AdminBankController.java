@@ -3,17 +3,21 @@ package com.guoguanla.module.bank;
 import com.guoguanla.common.annotation.OperLog;
 import com.guoguanla.common.result.PageResult;
 import com.guoguanla.common.result.Result;
+import com.guoguanla.common.util.ServletUrlHelper;
 import com.guoguanla.module.bank.dto.*;
 import com.guoguanla.module.bank.entity.EduGrade;
 import com.guoguanla.module.bank.vo.ChapterVO;
 import com.guoguanla.module.bank.vo.GateVO;
 import com.guoguanla.module.bank.vo.QuestionVO;
 import com.guoguanla.module.engine.GeneratedQuestion;
+import com.guoguanla.module.oss.AliyunOssService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -93,14 +97,24 @@ public class AdminBankController {
 
     @Operation(summary = "分页查询题目")
     @GetMapping("/questions")
-    public Result<PageResult<QuestionVO>> pageQuestions(QuestionQueryReq req) {
-        return Result.ok(bankService.pageQuestions(req));
+    public Result<PageResult<QuestionVO>> pageQuestions(QuestionQueryReq req, HttpServletRequest request) {
+        return Result.ok(bankService.pageQuestions(req, ServletUrlHelper.resolveBaseOrigin(request)));
     }
 
     @Operation(summary = "题目详情")
     @GetMapping("/questions/{id}")
-    public Result<QuestionVO> getQuestion(@PathVariable Long id) {
-        return Result.ok(bankService.getQuestion(id));
+    public Result<QuestionVO> getQuestion(@PathVariable Long id, HttpServletRequest request) {
+        return Result.ok(bankService.getQuestion(id, ServletUrlHelper.resolveBaseOrigin(request)));
+    }
+
+    @Operation(summary = "上传题目配图至阿里云 OSS（无 OSS 时本地降级）")
+    @OperLog(module = "QUESTION", action = "上传题目配图")
+    @PostMapping("/questions/upload-image")
+    public Result<AliyunOssService.UploadResult> uploadQuestionImage(
+            @RequestParam("file") MultipartFile file,
+            HttpServletRequest request
+    ) {
+        return Result.ok(bankService.uploadQuestionFigure(file, ServletUrlHelper.resolveBaseOrigin(request)));
     }
 
     @Operation(summary = "新增题目")

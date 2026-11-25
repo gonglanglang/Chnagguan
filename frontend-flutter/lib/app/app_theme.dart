@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:forui/forui.dart';
 import 'package:provider/provider.dart';
 import 'package:skribble/skribble.dart';
 import 'package:welkui_flutter/welkui_flutter.dart';
@@ -16,6 +17,11 @@ enum AppUiSkin {
     code: 'skribble',
     name: 'Skribble 手绘风',
     subtitle: 'skribble.dev 手绘素描线稿与暖纸墨迹组件库',
+  ),
+  forui(
+    code: 'forui',
+    name: 'Forui 现代极简',
+    subtitle: 'forui.dev shadcn/ui 风格，1px 细腻边框与通透现代排版',
   );
 
   const AppUiSkin({
@@ -29,7 +35,9 @@ enum AppUiSkin {
   final String subtitle;
 
   static AppUiSkin fromCode(String? raw) {
-    if (raw == 'skribble') return AppUiSkin.skribble;
+    final normalized = raw?.trim().toLowerCase();
+    if (normalized == 'skribble') return AppUiSkin.skribble;
+    if (normalized == 'forui') return AppUiSkin.forui;
     return AppUiSkin.welkui;
   }
 }
@@ -66,6 +74,8 @@ class AppTheme {
   static const Color darkCanvas = Color(0xFF1F1F22);
   static const Color skribbleLightCanvas = Color(0xFFFBF8F1);
   static const Color skribbleDarkCanvas = Color(0xFF1C1A1E);
+  static const Color foruiLightCanvas = Color(0xFFFAFAFA);
+  static const Color foruiDarkCanvas = Color(0xFF09090B);
 
   static const List<AppThemePreset> presets = <AppThemePreset>[
     AppThemePreset(
@@ -182,19 +192,63 @@ class AppTheme {
     );
   }
 
+  static FThemeData buildForuiTheme({
+    required bool isDark,
+    required Color accent,
+  }) {
+    final base = isDark ? FColors.neutralDark : FColors.neutralLight;
+    final primaryFg = accent.computeLuminance() > 0.52
+        ? const Color(0xFF09090B)
+        : const Color(0xFFFAFAFA);
+    final fColors = FColors(
+      brightness: base.brightness,
+      systemOverlayStyle: base.systemOverlayStyle,
+      barrier: base.barrier,
+      background: isDark ? foruiDarkCanvas : foruiLightCanvas,
+      foreground: base.foreground,
+      primary: accent,
+      primaryForeground: primaryFg,
+      secondary: base.secondary,
+      secondaryForeground: base.secondaryForeground,
+      muted: base.muted,
+      mutedForeground: base.mutedForeground,
+      destructive: base.destructive,
+      destructiveForeground: base.destructiveForeground,
+      error: base.error,
+      errorForeground: base.errorForeground,
+      card: isDark ? const Color(0xFF141417) : const Color(0xFFFFFFFF),
+      border: isDark ? const Color(0xFF27272A) : const Color(0xFFE4E4E7),
+    );
+    return FThemeData(
+      touch: true,
+      debugLabel: isDark ? 'Guoguanla Forui Dark' : 'Guoguanla Forui Light',
+      colors: fColors,
+    );
+  }
+
   static ThemeData buildMaterialTheme({
     required bool isDark,
     required WelkThemeData welk,
-    bool isSkribble = false,
+    AppUiSkin uiSkin = AppUiSkin.welkui,
   }) {
     final brightness = isDark ? Brightness.dark : Brightness.light;
-    final bg = isSkribble
-        ? (isDark ? skribbleDarkCanvas : skribbleLightCanvas)
-        : (isDark ? darkCanvas : lightCanvas);
-    final ink = isDark ? welk.darkInk : welk.ink;
-    final paper = isSkribble
-        ? (isDark ? const Color(0xFF28252C) : const Color(0xFFFFFDF8))
-        : (isDark ? welk.darkPaper : welk.paper);
+    final bg = switch (uiSkin) {
+      AppUiSkin.forui => isDark ? foruiDarkCanvas : foruiLightCanvas,
+      AppUiSkin.skribble => isDark ? skribbleDarkCanvas : skribbleLightCanvas,
+      AppUiSkin.welkui => isDark ? darkCanvas : lightCanvas,
+    };
+    final ink = switch (uiSkin) {
+      AppUiSkin.forui =>
+        isDark ? const Color(0xFFFAFAFA) : const Color(0xFF09090B),
+      _ => isDark ? welk.darkInk : welk.ink,
+    };
+    final paper = switch (uiSkin) {
+      AppUiSkin.forui =>
+        isDark ? const Color(0xFF141417) : const Color(0xFFFFFFFF),
+      AppUiSkin.skribble =>
+        isDark ? const Color(0xFF28252C) : const Color(0xFFFFFDF8),
+      AppUiSkin.welkui => isDark ? welk.darkPaper : welk.paper,
+    };
 
     final baseText = ThemeData(brightness: brightness).textTheme.apply(
           bodyColor: ink,
@@ -219,28 +273,71 @@ class AppTheme {
         foregroundColor: ink,
         elevation: 0,
       ),
-      dividerColor: isDark ? const Color(0xFF45454C) : const Color(0xFFE2DED2),
+      dividerColor: uiSkin == AppUiSkin.forui
+          ? (isDark ? const Color(0xFF27272A) : const Color(0xFFE4E4E7))
+          : (isDark ? const Color(0xFF45454C) : const Color(0xFFE2DED2)),
     );
   }
 
-  static bool isSkribble(BuildContext context, {bool listen = true}) {
+  static AppUiSkin uiSkinOf(BuildContext context, {bool listen = true}) {
     try {
-      return Provider.of<ThemeProvider>(context, listen: listen).isSkribble;
+      return Provider.of<ThemeProvider>(context, listen: listen).uiSkin;
     } catch (_) {
-      return false;
+      return AppUiSkin.welkui;
     }
+  }
+
+  static bool isSkribble(BuildContext context, {bool listen = true}) {
+    return uiSkinOf(context, listen: listen) == AppUiSkin.skribble;
+  }
+
+  static bool isForui(BuildContext context, {bool listen = true}) {
+    return uiSkinOf(context, listen: listen) == AppUiSkin.forui;
   }
 
   static Color pageBackground(BuildContext context) {
     final isDark = WelkTheme.of(context).resolveDarkMode(context);
-    if (isSkribble(context)) {
-      return isDark ? skribbleDarkCanvas : skribbleLightCanvas;
-    }
-    return isDark ? darkCanvas : lightCanvas;
+    final skin = uiSkinOf(context);
+    return switch (skin) {
+      AppUiSkin.forui => isDark ? foruiDarkCanvas : foruiLightCanvas,
+      AppUiSkin.skribble => isDark ? skribbleDarkCanvas : skribbleLightCanvas,
+      AppUiSkin.welkui => isDark ? darkCanvas : lightCanvas,
+    };
   }
 
   static Color mutedText(BuildContext context) {
+    if (isForui(context)) {
+      return FTheme.of(context).colors.mutedForeground;
+    }
     final colors = WelkTheme.of(context).resolveColors(context);
     return colors.ink.withValues(alpha: colors.isDark ? 0.68 : 0.62);
+  }
+
+  /// 供页眉/底栏/信息条等容器使用，在 Forui 下渲染现代 1px 柔和边框，在 WelkUI 下保留漫画粗描边。
+  static BoxDecoration barDecoration(
+    BuildContext context, {
+    bool topBorder = false,
+    bool bottomBorder = false,
+  }) {
+    if (isForui(context)) {
+      final fColors = FTheme.of(context).colors;
+      final side = BorderSide(color: fColors.border, width: 1);
+      return BoxDecoration(
+        color: fColors.card,
+        border: Border(
+          top: topBorder ? side : BorderSide.none,
+          bottom: bottomBorder ? side : BorderSide.none,
+        ),
+      );
+    }
+    final colors = WelkTheme.of(context).resolveColors(context);
+    final side = BorderSide(color: colors.outline, width: colors.borderWidth);
+    return BoxDecoration(
+      color: colors.paper,
+      border: Border(
+        top: topBorder ? side : BorderSide.none,
+        bottom: bottomBorder ? side : BorderSide.none,
+      ),
+    );
   }
 }

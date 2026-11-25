@@ -9,6 +9,7 @@ import '../../app/app_theme.dart';
 import '../../core/cache/global_cache.dart';
 import '../../core/utils/format_utils.dart';
 import '../../models/models.dart';
+import '../../providers/theme_provider.dart';
 import '../../providers/update_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../services/guoguanla_api.dart';
@@ -81,6 +82,15 @@ class _HomeTabPageState extends State<HomeTabPage> {
     }
     try {
       await user.loadHomeSummary();
+      final serverTheme = user.homeSummary?.defaultTheme;
+      if (serverTheme != null && mounted) {
+        unawaited(
+          context.read<ThemeProvider>().applyServerDefaultTheme(
+                serverTheme,
+                isAppLaunch: false,
+              ),
+        );
+      }
     } catch (_) {
       // Keep cached summary
     } finally {

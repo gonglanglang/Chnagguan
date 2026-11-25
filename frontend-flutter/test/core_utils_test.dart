@@ -1,9 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:guoguanla_app/app/app_theme.dart';
 import 'package:guoguanla_app/core/cache/global_cache.dart';
 import 'package:guoguanla_app/core/utils/format_utils.dart';
 import 'package:guoguanla_app/core/utils/math_parser.dart';
 import 'package:guoguanla_app/core/utils/update_utils.dart';
 import 'package:guoguanla_app/models/models.dart';
+import 'package:guoguanla_app/providers/theme_provider.dart';
 import 'package:guoguanla_app/widgets/smart_board/board_handwriting_validator.dart';
 import 'package:guoguanla_app/widgets/smart_board/board_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -456,6 +458,136 @@ void main() {
       final restoredShape = BoardShape.fromJson(shape.toJson());
       expect(restoredShape, isNotNull);
       expect(restoredShape!.kind, BoardShapeKind.dashedLine);
+    });
+  });
+
+  group('TASK-20261126-001 Theme, Diagrams & Next Gate Models', () {
+    test('GlobalCache persists serverDefaultTheme and ThemeProvider enforces it on next launch',
+        () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final cache = await GlobalCache.init();
+      final provider = ThemeProvider(cache);
+
+      // Simulate server configured Forui dark theme as default
+      const serverCfg = AppDefaultTheme(
+        uiSkin: 'forui',
+        themeHex: '#0EA5E9',
+        themeName: '晴空蓝',
+        darkMode: true,
+        version: '100',
+      );
+      await provider.applyServerDefaultTheme(serverCfg, isAppLaunch: true);
+      expect(provider.isForui, isTrue);
+      expect(provider.isDarkMode, isTrue);
+      expect(provider.accentHex, '#0EA5E9');
+      expect(cache.serverDefaultTheme?.uiSkin, 'forui');
+      expect(cache.snapshot()['serverDefaultTheme'], isNotNull);
+
+      // User temporarily switches to Skribble in-session
+      await provider.setUiSkin(AppUiSkin.skribble);
+      await provider.setDarkMode(false);
+      expect(provider.isSkribble, isTrue);
+
+      // Same-version refresh during same session keeps user's temporary pick
+      await provider.applyServerDefaultTheme(serverCfg, isAppLaunch: false);
+      expect(provider.isSkribble, isTrue);
+
+      // Clearing temporary cache preserves serverDefaultTheme
+      await cache.clearTemporaryCache();
+      expect(cache.serverDefaultTheme?.uiSkin, 'forui');
+
+      // On NEXT app launch (fresh ThemeProvider), backend default takes precedence
+      final relaunched = ThemeProvider(cache);
+      expect(relaunched.isForui, isTrue);
+      expect(relaunched.isDarkMode, isTrue);
+      expect(relaunched.accentHex, '#0EA5E9');
+
+      // Admin updates default theme version -> applies immediately mid-session
+      const updatedCfg = AppDefaultTheme(
+        uiSkin: 'welkui',
+        themeHex: '#FFDA57',
+        themeName: '元气暖黄',
+        darkMode: false,
+        version: '101',
+      );
+      await provider.applyServerDefaultTheme(updatedCfg, isAppLaunch: false);
+      expect(provider.uiSkin, AppUiSkin.welkui);
+      expect(provider.accentHex, '#FFDA57');
+      expect(provider.isDarkMode, isFalse);
+
+      // Manual switch + resetToDefault restores latest server default
+      await provider.setUiSkin(AppUiSkin.forui);
+      await provider.resetToDefault();
+      expect(provider.uiSkin, AppUiSkin.welkui);
+      expect(provider.accentHex, '#FFDA57');
+    });
+
+    test('SubmitResult parses nextGate fields and ClientQuestionItem parses arc/rightAngle diagram',
+        () {
+      final submit = SubmitResult.fromJson({
+        'sessionNo': 'QZ123',
+        'mode': 'GATE',
+        'totalCount': 3,
+        'correctCount': 3,
+        'passCount': 2,
+        'passed': true,
+        'newlyPassed': true,
+        'totalPassedGates': 4,
+        'wrongItems': const [],
+        'masteredCount': 0,
+        'nextGateId': 9,
+        'nextGateIndex': 0,
+        'nextGateName': '基础关',
+        'nextChapterId': 2,
+        'nextChapterName': '第2章 整式的加减',
+        'nextGateCrossChapter': true,
+      });
+      expect(submit.hasNextGate, isTrue);
+      expect(submit.nextGateId, 9);
+      expect(submit.nextGateIndex, 0);
+      expect(submit.nextChapterName, '第2章 整式的加减');
+      expect(submit.nextGateCrossChapter, isTrue);
+
+      final item = ClientQuestionItem.fromJson({
+        'itemIndex': 0,
+        'questionFormat': 'SINGLE_CHOICE',
+        'stem': '如图，Rt△ABC 中 ∠C=90°',
+        'options': ['3', '4', '5', '6'],
+        'diagram': {
+          'title': '直角三角形',
+          'width': 300,
+          'height': 180,
+          'primitives': [
+            {
+              'type': 'rightAngle',
+              'vx': 60,
+              'vy': 140,
+              'ax': 220,
+              'ay': 140,
+              'bx': 60,
+              'by': 40,
+              'size': 12,
+            },
+            {
+              'type': 'arc',
+              'cx': 220,
+              'cy': 140,
+              'r': 24,
+              'startAngle': 180,
+              'sweepAngle': 35,
+              'color': '#DC2626',
+            },
+          ],
+        },
+        'imageUrl': 'https://example.com/tri.png',
+      });
+      expect(item.hasFigure, isTrue);
+      expect(item.diagram?.primitives.length, 2);
+      expect(item.diagram?.primitives[0].type, 'rightangle');
+      expect(item.diagram?.primitives[0].vx, 60);
+      expect(item.diagram?.primitives[1].type, 'arc');
+      expect(item.diagram?.primitives[1].sweepAngle, 35);
+      expect(item.imageUrl, 'https://example.com/tri.png');
     });
   });
 }

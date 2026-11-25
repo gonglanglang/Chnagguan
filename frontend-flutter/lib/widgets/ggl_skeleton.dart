@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:forui/forui.dart';
 import 'package:welkui_flutter/welkui_flutter.dart';
 
+import '../app/app_theme.dart';
 import 'ggl_comic_panel.dart';
 
 class GglSkeletonBox extends StatefulWidget {
@@ -36,11 +38,14 @@ class _GglSkeletonBoxState extends State<GglSkeletonBox>
 
   @override
   Widget build(BuildContext context) {
+    final isForui = AppTheme.isForui(context);
     final colors = WelkTheme.of(context).resolveColors(context);
-    final base = colors.muted;
-    final highlight = colors.isDark
-        ? const Color(0xFF4C4C54)
-        : const Color(0xFFE3DFD3);
+    final base = isForui ? FTheme.of(context).colors.muted : colors.muted;
+    final highlight = isForui
+        ? FTheme.of(context).colors.secondary
+        : (colors.isDark
+            ? const Color(0xFF4C4C54)
+            : const Color(0xFFE3DFD3));
 
     return AnimatedBuilder(
       animation: _controller,
@@ -54,10 +59,12 @@ class _GglSkeletonBoxState extends State<GglSkeletonBox>
             shape: widget.circle ? BoxShape.circle : BoxShape.rectangle,
             borderRadius:
                 widget.circle ? null : BorderRadius.circular(widget.borderRadius),
-            border: Border.all(
-              color: colors.outline.withValues(alpha: 0.2),
-              width: 1,
-            ),
+            border: isForui
+                ? null
+                : Border.all(
+                    color: colors.outline.withValues(alpha: 0.2),
+                    width: 1,
+                  ),
           ),
         );
       },

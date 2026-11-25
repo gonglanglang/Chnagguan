@@ -273,6 +273,16 @@ export interface GeneratedSample {
   analysis: string;
   questionFormat?: string;
   referenceAnswer?: string;
+  diagram?: Record<string, any> | null;
+  imageUrl?: string | null;
+}
+
+export interface AppDefaultThemeConfig {
+  uiSkin: "welkui" | "skribble" | "forui";
+  themeHex: string;
+  themeName: string;
+  darkMode: boolean;
+  version: string;
 }
 
 export interface SysConfigItem {
@@ -339,6 +349,16 @@ export const updateConfig = (configKey: string, configValue: string) =>
   http.request<ApiResult<void>>("put", "/configs", {
     data: { configKey, configValue }
   });
+
+export const getAdminDefaultTheme = () =>
+  http.get<ApiResult<AppDefaultThemeConfig>, any>("/theme/default");
+
+export const updateAdminDefaultTheme = (data: {
+  uiSkin: "welkui" | "skribble" | "forui";
+  themeHex: string;
+  themeName: string;
+  darkMode: boolean;
+}) => http.request<ApiResult<AppDefaultThemeConfig>>("put", "/theme/default", { data });
 
 export const getAiConfig = () =>
   http.get<ApiResult<AiConfigInfo>, any>("/ai/config");
@@ -505,6 +525,16 @@ export const previewGenerateQuestion = (data: Record<string, any>) =>
   http.post<ApiResult<GeneratedSample[]>, any>("/questions/preview-generate", {
     data
   });
+
+export const uploadQuestionImage = (formData: FormData) =>
+  http.post<ApiResult<{ objectKey: string; previewUrl: string; storageType: string }>, any>(
+    "/questions/upload-image",
+    {
+      data: formData,
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 120000
+    }
+  );
 
 // 6. 教学视频管理
 export const getVideoSeriesPage = (params?: Record<string, any>) =>

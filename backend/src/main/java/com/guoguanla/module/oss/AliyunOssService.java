@@ -190,6 +190,10 @@ public class AliyunOssService {
         return uploadImageFile(file, "video-covers", "cover", baseOrigin);
     }
 
+    public UploadResult uploadQuestionFigure(MultipartFile file, String baseOrigin) {
+        return uploadImageFile(file, "question-figures", "qfig", baseOrigin);
+    }
+
     public UploadResult uploadCourseVideo(MultipartFile file, String baseOrigin) {
         if (file == null || file.isEmpty()) {
             throw new BizException(ErrorCode.BAD_REQUEST, "请先选择要上传的视频文件");

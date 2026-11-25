@@ -16,6 +16,7 @@ import '../../widgets/ggl_comic_panel.dart';
 import '../../widgets/ggl_feedback.dart';
 import '../../widgets/ggl_skin_widgets.dart';
 import '../../widgets/math_text.dart';
+import '../../widgets/question_figure_card.dart';
 import '../../widgets/smart_board/board_models.dart';
 import '../../widgets/smart_board/smart_board_painter.dart';
 
@@ -44,12 +45,16 @@ class DrawAnswerPage extends StatefulWidget {
     required this.itemIndex,
     required this.stem,
     this.initialAnswerText = '',
+    this.diagram,
+    this.imageUrl,
   });
 
   final String sessionNo;
   final int itemIndex;
   final String stem;
   final String initialAnswerText;
+  final BoardDiagramSpec? diagram;
+  final String? imageUrl;
 
   @override
   State<DrawAnswerPage> createState() => _DrawAnswerPageState();
@@ -509,7 +514,22 @@ class _DrawAnswerPageState extends State<DrawAnswerPage> {
       closeLabel: '收起',
       builder: (_) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
-        child: MathText(widget.stem),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            MathText(widget.stem),
+            if (widget.diagram != null ||
+                (widget.imageUrl != null &&
+                    widget.imageUrl!.trim().isNotEmpty)) ...[
+              const SizedBox(height: 12),
+              QuestionFigureCard(
+                diagram: widget.diagram,
+                imageUrl: widget.imageUrl,
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:forui/forui.dart';
 import 'package:provider/provider.dart';
 import 'package:skribble/skribble.dart';
 import 'package:welkui_flutter/welkui_flutter.dart';
@@ -58,6 +59,7 @@ class _MainShellPageState extends State<MainShellPage> {
     final wrongCount = context.watch<UserProvider>().wrongCount;
     final colors = WelkTheme.of(context).resolveColors(context);
     final isSkribble = AppTheme.isSkribble(context);
+    final isForui = AppTheme.isForui(context);
 
     Widget? wrongBadge;
     if (wrongCount > 0) {
@@ -82,7 +84,78 @@ class _MainShellPageState extends State<MainShellPage> {
     }
 
     final Widget bottomBar;
-    if (isSkribble) {
+    if (isForui) {
+      final fColors = FTheme.of(context).colors;
+      Widget buildForuiWrongIcon() {
+        final baseIcon = Icon(
+          _currentIndex == 2
+              ? Icons.menu_book_rounded
+              : Icons.menu_book_outlined,
+        );
+        if (wrongCount <= 0) return baseIcon;
+        final label = wrongCount > 99 ? '99+' : '$wrongCount';
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            baseIcon,
+            Positioned(
+              right: -12,
+              top: -6,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                decoration: BoxDecoration(
+                  color: fColors.destructive,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: fColors.destructiveForeground,
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w700,
+                    height: 1.1,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      }
+
+      bottomBar = FBottomNavigationBar(
+        index: _currentIndex,
+        onChange: _onTabTap,
+        safeAreaBottom: true,
+        children: [
+          FBottomNavigationBarItem(
+            icon: Icon(
+              _currentIndex == 0 ? Icons.flag_rounded : Icons.flag_outlined,
+            ),
+            label: const Text('闯关'),
+          ),
+          FBottomNavigationBarItem(
+            icon: Icon(
+              _currentIndex == 1
+                  ? Icons.play_circle_rounded
+                  : Icons.play_circle_outline_rounded,
+            ),
+            label: const Text('课堂'),
+          ),
+          FBottomNavigationBarItem(
+            icon: buildForuiWrongIcon(),
+            label: const Text('错题本'),
+          ),
+          FBottomNavigationBarItem(
+            icon: Icon(
+              _currentIndex == 3
+                  ? Icons.person_rounded
+                  : Icons.person_outline_rounded,
+            ),
+            label: const Text('我的'),
+          ),
+        ],
+      );
+    } else if (isSkribble) {
       final wired = WiredTheme.of(context);
       bottomBar = Container(
         color: wired.fillColor,

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ElMessage } from "element-plus";
+import { ElMessage, type UploadRequestOptions } from "element-plus";
 import MathFormulaText from "@/components/MathFormulaText.vue";
 import MathFormulaDialog from "@/components/MathFormulaDialog.vue";
+import QuestionDiagram, { type DiagramSpec } from "@/components/QuestionDiagram.vue";
 import GglIcon from "@/components/GglIcon/index.vue";
 import {
   getRealms,
@@ -13,6 +14,7 @@ import {
   createQuestion,
   updateQuestion,
   previewGenerateQuestion,
+  uploadQuestionImage,
   type RealmConfig,
   type ChapterItem,
   type GateItem,
@@ -77,6 +79,191 @@ const paramRule = reactive({
 const jsSource = ref("");
 const previewLoading = ref(false);
 const previewSamples = ref<GeneratedSample[]>([]);
+
+// 题目配图（矢量几何图 + 上传图片）
+const extraExtBase = ref<Record<string, any>>({});
+const figureDiagram = ref<DiagramSpec | null>(null);
+const figureDiagramJson = ref("");
+const figureDiagramJsonError = ref("");
+const figureImageKey = ref("");
+const figureImageUrl = ref("");
+const uploadingFigure = ref(false);
+const showDiagramJson = ref(false);
+
+const diagramPresets: Array<{ label: string; spec: DiagramSpec }> = [
+  {
+    label: "一般三角形",
+    spec: {
+      title: "三角形 ABC",
+      width: 300,
+      height: 190,
+      primitives: [
+        { type: "polygon", points: [[52, 154], [248, 154], [136, 36]], color: "#1E293B", fillColor: "#38BDF8" },
+        { type: "point", x: 136, y: 36, label: "A" },
+        { type: "point", x: 52, y: 154, label: "B" },
+        { type: "point", x: 248, y: 154, label: "C" }
+      ]
+    }
+  },
+  {
+    label: "直角三角形",
+    spec: {
+      title: "直角三角形 Rt△ABC",
+      width: 300,
+      height: 190,
+      primitives: [
+        { type: "polygon", points: [[64, 154], [244, 154], [64, 42]], color: "#1E293B", fillColor: "#38BDF8" },
+        { type: "rightAngle", vx: 64, vy: 154, ax: 244, ay: 154, bx: 64, by: 42, size: 14, color: "#0284C7" },
+        { type: "point", x: 64, y: 42, label: "A" },
+        { type: "point", x: 64, y: 154, label: "C" },
+        { type: "point", x: 244, y: 154, label: "B" }
+      ]
+    }
+  },
+  {
+    label: "等腰三角形",
+    spec: {
+      title: "等腰三角形 AB=AC",
+      width: 300,
+      height: 190,
+      primitives: [
+        { type: "polygon", points: [[62, 154], [238, 154], [150, 34]], color: "#1E293B", fillColor: "#34D399" },
+        { type: "line", x1: 150, y1: 34, x2: 150, y2: 154, color: "#0284C7", dashed: true },
+        { type: "rightAngle", vx: 150, vy: 154, ax: 238, ay: 154, bx: 150, by: 34, size: 11, color: "#0284C7" },
+        { type: "point", x: 150, y: 34, label: "A" },
+        { type: "point", x: 62, y: 154, label: "B" },
+        { type: "point", x: 238, y: 154, label: "C" },
+        { type: "point", x: 150, y: 154, label: "D" }
+      ]
+    }
+  },
+  {
+    label: "平行线截角",
+    spec: {
+      title: "平行线与截线",
+      width: 300,
+      height: 190,
+      primitives: [
+        { type: "line", x1: 32, y1: 62, x2: 268, y2: 62, color: "#1E293B" },
+        { type: "line", x1: 32, y1: 132, x2: 268, y2: 132, color: "#1E293B" },
+        { type: "line", x1: 96, y1: 22, x2: 198, y2: 170, color: "#0284C7" },
+        { type: "arc", cx: 124, cy: 62, r: 18, startAngle: 0, sweepAngle: 55, color: "#DC2626" },
+        { type: "arc", cx: 172, cy: 132, r: 18, startAngle: 180, sweepAngle: 55, color: "#059669" },
+        { type: "text", x: 146, y: 66, text: "∠1", color: "#DC2626" },
+        { type: "text", x: 134, y: 114, text: "∠2", color: "#059669" },
+        { type: "text", x: 256, y: 44, text: "a", color: "#1E293B" },
+        { type: "text", x: 256, y: 114, text: "b", color: "#1E293B" }
+      ]
+    }
+  },
+  {
+    label: "圆与垂径",
+    spec: {
+      title: "圆 O 与弦 AB",
+      width: 300,
+      height: 190,
+      primitives: [
+        { type: "circle", cx: 150, cy: 96, r: 70, color: "#1E293B" },
+        { type: "line", x1: 92, y1: 134, x2: 208, y2: 134, color: "#0284C7" },
+        { type: "line", x1: 150, y1: 96, x2: 150, y2: 134, color: "#DC2626", dashed: true },
+        { type: "line", x1: 150, y1: 96, x2: 92, y2: 134, color: "#059669" },
+        { type: "rightAngle", vx: 150, vy: 134, ax: 208, ay: 134, bx: 150, by: 96, size: 10, color: "#DC2626" },
+        { type: "point", x: 150, y: 96, label: "O" },
+        { type: "point", x: 92, y: 134, label: "A" },
+        { type: "point", x: 208, y: 134, label: "B" },
+        { type: "point", x: 150, y: 134, label: "M" }
+      ]
+    }
+  },
+  {
+    label: "二次函数抛物线",
+    spec: {
+      title: "二次函数图像",
+      width: 300,
+      height: 190,
+      primitives: [
+        { type: "arrow", x1: 28, y1: 122, x2: 274, y2: 122, color: "#64748B" },
+        { type: "arrow", x1: 150, y1: 176, x2: 150, y2: 18, color: "#64748B" },
+        { type: "text", x: 266, y: 126, text: "x", color: "#64748B" },
+        { type: "text", x: 156, y: 14, text: "y", color: "#64748B" },
+        { type: "text", x: 136, y: 126, text: "O", color: "#64748B" },
+        {
+          type: "polyline",
+          points: [[68, 36], [90, 86], [112, 122], [134, 146], [150, 152], [166, 146], [188, 122], [210, 86], [232, 36]],
+          color: "#0284C7"
+        }
+      ]
+    }
+  }
+];
+
+function applyDiagramPreset(preset: { label: string; spec: DiagramSpec }) {
+  const cloned = JSON.parse(JSON.stringify(preset.spec)) as DiagramSpec;
+  figureDiagram.value = cloned;
+  figureDiagramJson.value = JSON.stringify(cloned, null, 2);
+  figureDiagramJsonError.value = "";
+}
+
+function onDiagramJsonInput(val: string) {
+  figureDiagramJson.value = val;
+  if (!val.trim()) {
+    figureDiagram.value = null;
+    figureDiagramJsonError.value = "";
+    return;
+  }
+  try {
+    const parsed = JSON.parse(val);
+    if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.primitives)) {
+      figureDiagramJsonError.value = "需包含 primitives 数组";
+      return;
+    }
+    figureDiagram.value = parsed as DiagramSpec;
+    figureDiagramJsonError.value = "";
+  } catch (err: any) {
+    figureDiagramJsonError.value = `JSON 格式错误：${err?.message || "无法解析"}`;
+  }
+}
+
+function clearFigureDiagram() {
+  figureDiagram.value = null;
+  figureDiagramJson.value = "";
+  figureDiagramJsonError.value = "";
+}
+
+function clearFigureImage() {
+  figureImageKey.value = "";
+  figureImageUrl.value = "";
+}
+
+async function handleFigureImageUpload(options: UploadRequestOptions) {
+  uploadingFigure.value = true;
+  try {
+    const fd = new FormData();
+    fd.append("file", options.file);
+    const res = await uploadQuestionImage(fd);
+    figureImageKey.value = res.data.objectKey;
+    figureImageUrl.value = res.data.previewUrl;
+    ElMessage.success("题目配图已上传");
+  } finally {
+    uploadingFigure.value = false;
+  }
+}
+
+function buildExtPayload(): Record<string, any> | null {
+  const next: Record<string, any> = { ...extraExtBase.value };
+  if (figureDiagram.value && Array.isArray(figureDiagram.value.primitives) && figureDiagram.value.primitives.length > 0) {
+    next.diagram = figureDiagram.value;
+  } else {
+    delete next.diagram;
+  }
+  if (figureImageKey.value.trim()) {
+    next.imageKey = figureImageKey.value.trim();
+  } else {
+    delete next.imageKey;
+  }
+  delete next.imageUrl;
+  return Object.keys(next).length > 0 ? next : null;
+}
 
 const selectedRealm = computed(
   () => realms.value.find(r => r.gradeCode === form.gradeCode) || null
@@ -338,6 +525,7 @@ async function runDynamicPreview() {
       stem: paramRule.stemTpl.trim() || form.stem.trim(),
       analysis: form.analysis,
       templateRule: rule,
+      ext: buildExtPayload(),
       count: 3
     });
     previewSamples.value = res.data;
@@ -389,6 +577,7 @@ async function handleSave() {
     answer: isEssay ? { text: form.essayAnswerText.trim() } : { index: form.answerIndex },
     analysis: form.analysis.trim(),
     templateRule: templateRulePayload,
+    ext: buildExtPayload(),
     enabled: form.enabled,
     syncGateCount: form.syncGateCount
   };
@@ -425,6 +614,19 @@ function fillFromDetail(row: QuestionItem) {
   form.essayAnswerText = String(row.answer?.text ?? "");
   form.analysis = row.analysis || "";
   form.enabled = row.enabled;
+
+  // 回填题目配图（矢量图 & 上传图片）
+  const rawExt = row.ext && typeof row.ext === "object" ? { ...row.ext } : {};
+  const loadedDiagram = rawExt.diagram && typeof rawExt.diagram === "object" ? (rawExt.diagram as DiagramSpec) : null;
+  figureDiagram.value = loadedDiagram;
+  figureDiagramJson.value = loadedDiagram ? JSON.stringify(loadedDiagram, null, 2) : "";
+  figureDiagramJsonError.value = "";
+  figureImageKey.value = typeof rawExt.imageKey === "string" ? rawExt.imageKey : "";
+  figureImageUrl.value = typeof rawExt.imageUrl === "string" ? rawExt.imageUrl : "";
+  delete rawExt.diagram;
+  delete rawExt.imageKey;
+  delete rawExt.imageUrl;
+  extraExtBase.value = rawExt;
 
   const rule = row.templateRule;
   if (rule && rule.type === "PROTOTYPE_JS_EXPR") {
@@ -495,6 +697,20 @@ const phoneAnalysis = computed(() => {
     return currentSample.value.analysis || "";
   }
   return form.analysis || "";
+});
+
+const phoneDiagram = computed<DiagramSpec | null>(() => {
+  if (form.questionMode === "DYNAMIC_TEMPLATE" && currentSample.value?.diagram) {
+    return currentSample.value.diagram as DiagramSpec;
+  }
+  return figureDiagram.value;
+});
+
+const phoneImageUrl = computed(() => {
+  if (form.questionMode === "DYNAMIC_TEMPLATE" && currentSample.value?.imageUrl) {
+    return currentSample.value.imageUrl;
+  }
+  return figureImageUrl.value || "";
 });
 
 onMounted(async () => {
@@ -774,6 +990,88 @@ onMounted(async () => {
                 </div>
               </template>
             </div>
+
+            <!-- 题目配图配置（矢量几何图 / 上传图片，静态题与动态题通用） -->
+            <div class="mt-5 space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-semibold text-slate-800">题目配图（几何图 / 函数图 / 图片）</span>
+                  <el-tag v-if="figureDiagram" size="small" type="primary">矢量图已配</el-tag>
+                  <el-tag v-if="figureImageUrl || figureImageKey" size="small" type="success">图片已上传</el-tag>
+                </div>
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <el-upload
+                    :show-file-list="false"
+                    accept="image/*"
+                    :http-request="handleFigureImageUpload"
+                  >
+                    <el-button size="small" type="primary" plain :loading="uploadingFigure">
+                      上传题目图片
+                    </el-button>
+                  </el-upload>
+                  <el-button
+                    size="small"
+                    plain
+                    @click="showDiagramJson = !showDiagramJson"
+                  >
+                    {{ showDiagramJson ? "收起矢量 JSON" : "编辑矢量 JSON" }}
+                  </el-button>
+                  <el-button
+                    v-if="figureDiagram"
+                    size="small"
+                    type="danger"
+                    plain
+                    @click="clearFigureDiagram"
+                  >
+                    清除矢量图
+                  </el-button>
+                  <el-button
+                    v-if="figureImageKey || figureImageUrl"
+                    size="small"
+                    type="danger"
+                    plain
+                    @click="clearFigureImage"
+                  >
+                    清除图片
+                  </el-button>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span class="text-xs text-slate-500">快速套用几何模板：</span>
+                <el-button
+                  v-for="preset in diagramPresets"
+                  :key="preset.label"
+                  size="small"
+                  plain
+                  @click="applyDiagramPreset(preset)"
+                >
+                  {{ preset.label }}
+                </el-button>
+              </div>
+
+              <QuestionDiagram
+                v-if="figureDiagram || figureImageUrl"
+                :diagram="figureDiagram"
+                :image-url="figureImageUrl"
+              />
+
+              <div v-if="showDiagramJson" class="space-y-1.5">
+                <el-input
+                  :model-value="figureDiagramJson"
+                  type="textarea"
+                  :rows="6"
+                  placeholder='{"title":"三角形","width":300,"height":190,"primitives":[...]}（动态题标注支持 {{变量名}}）'
+                  @update:model-value="onDiagramJsonInput"
+                />
+                <div v-if="figureDiagramJsonError" class="text-xs text-red-600">
+                  {{ figureDiagramJsonError }}
+                </div>
+                <div v-else class="text-xs text-slate-400">
+                  支持图元：line / arrow / circle / arc / rightAngle / polygon / polyline / point / text；动态题文本中可使用 &#123;&#123;变量&#125;&#125;。
+                </div>
+              </div>
+            </div>
           </el-tab-pane>
 
           <!-- Tab 2: 参考答案 -->
@@ -974,6 +1272,13 @@ onMounted(async () => {
               <div class="mt-2.5 text-[15px] font-medium leading-relaxed text-slate-800">
                 <MathFormulaText :text="phoneStem" />
               </div>
+              <QuestionDiagram
+                v-if="phoneDiagram || phoneImageUrl"
+                :diagram="phoneDiagram"
+                :image-url="phoneImageUrl"
+                compact
+                class="mt-2.5"
+              />
             </div>
 
             <!-- 选择题选项 -->

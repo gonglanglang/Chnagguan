@@ -4,10 +4,12 @@ import com.guoguanla.common.annotation.OperLog;
 import com.guoguanla.common.result.PageResult;
 import com.guoguanla.common.result.Result;
 import com.guoguanla.module.oss.AliyunOssService;
+import com.guoguanla.module.system.dto.AppDefaultThemeReq;
 import com.guoguanla.module.system.dto.RealmConfigReq;
 import com.guoguanla.module.system.entity.EduLevelRule;
 import com.guoguanla.module.system.entity.SysConfig;
 import com.guoguanla.module.system.entity.SysOperLog;
+import com.guoguanla.module.system.vo.AppDefaultThemeVO;
 import com.guoguanla.module.system.vo.AppVersionVO;
 import com.guoguanla.module.system.vo.RealmConfigVO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -72,6 +74,19 @@ public class AdminSystemController {
     public Result<Void> updateConfig(@RequestBody Map<String, String> body) {
         systemService.updateConfig(body.get("configKey"), body.get("configValue"));
         return Result.ok();
+    }
+
+    @Operation(summary = "读取学生端默认主题配置")
+    @GetMapping("/theme/default")
+    public Result<AppDefaultThemeVO> getDefaultTheme() {
+        return Result.ok(systemService.getDefaultTheme());
+    }
+
+    @Operation(summary = "更新学生端默认主题配置（下次进入生效）")
+    @OperLog(module = "SYSTEM", action = "修改学生端默认主题")
+    @PutMapping("/theme/default")
+    public Result<AppDefaultThemeVO> updateDefaultTheme(@Valid @RequestBody AppDefaultThemeReq req) {
+        return Result.ok(systemService.updateDefaultTheme(req));
     }
 
     @Operation(summary = "检测并刷新 App 最新版本（含 GitHub Releases）")

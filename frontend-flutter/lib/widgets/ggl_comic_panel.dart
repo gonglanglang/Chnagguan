@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:forui/forui.dart';
 import 'package:skribble/skribble.dart';
 import 'package:welkui_flutter/welkui_flutter.dart';
 
@@ -45,9 +46,57 @@ class _GglComicPanelState extends State<GglComicPanel> {
 
   @override
   Widget build(BuildContext context) {
+    final isForui = AppTheme.isForui(context);
     final isSkribble = AppTheme.isSkribble(context);
     final colors = WelkTheme.of(context).resolveColors(context);
     final interactive = widget.onTap != null;
+
+    if (isForui) {
+      final fColors = FTheme.of(context).colors;
+      final fill = widget.color ?? fColors.card;
+      final borderColor = widget.borderColor ?? fColors.border;
+      final radius = widget.borderRadius ?? BorderRadius.circular(12);
+
+      Widget card = AnimatedOpacity(
+        duration: const Duration(milliseconds: 90),
+        opacity: _pressed && interactive ? 0.88 : 1.0,
+        child: Container(
+          margin: widget.margin,
+          child: FCard(
+            clipBehavior: widget.clipBehavior,
+            style: FCardStyleDelta.delta(
+              decoration: DecorationDelta.value(
+                BoxDecoration(
+                  color: fill,
+                  borderRadius: radius,
+                  border: Border.all(color: borderColor, width: 1),
+                  boxShadow: fColors.brightness == Brightness.light
+                      ? const [
+                          BoxShadow(
+                            color: Color(0x0A000000),
+                            blurRadius: 6,
+                            offset: Offset(0, 1),
+                          ),
+                        ]
+                      : const [],
+                ),
+              ),
+            ),
+            child: Padding(padding: widget.padding, child: widget.child),
+          ),
+        ),
+      );
+
+      if (!interactive) return card;
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTapCancel: () => setState(() => _pressed = false),
+        child: card,
+      );
+    }
 
     if (isSkribble) {
       final wired = WiredTheme.of(context);
@@ -160,6 +209,31 @@ class GglProgressBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final clamped = percent.clamp(0.0, 1.0);
+    if (AppTheme.isForui(context)) {
+      final fColors = FTheme.of(context).colors;
+      final trackHeight = (height - 2).clamp(6.0, 14.0);
+      return SizedBox(
+        height: trackHeight,
+        child: FDeterminateProgress(
+          value: clamped,
+          style: FDeterminateProgressStyleDelta.delta(
+            constraints: BoxConstraints.tightFor(height: trackHeight),
+            trackDecoration: DecorationDelta.value(
+              BoxDecoration(
+                color: fColors.secondary,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            fillDecoration: DecorationDelta.value(
+              BoxDecoration(
+                color: fillColor ?? fColors.primary,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     if (AppTheme.isSkribble(context)) {
       final wired = WiredTheme.of(context);
       return WiredThemeScope(
@@ -226,6 +300,52 @@ class GglPillChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = WelkTheme.of(context).resolveColors(context);
+    if (AppTheme.isForui(context)) {
+      final fColors = FTheme.of(context).colors;
+      final fill = selected
+          ? (selectedColor ?? fColors.primary)
+          : fColors.card;
+      final fg = selected
+          ? (selectedColor != null
+              ? colors.onFill(selectedColor!)
+              : fColors.primaryForeground)
+          : fColors.foreground;
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+          decoration: BoxDecoration(
+            color: fill,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: selected ? fill : fColors.border,
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (leading != null) ...[
+                leading!,
+                const SizedBox(width: 6),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  color: fg,
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  fontFamilyFallback: AppTheme.cjkFontFallback,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     final isSkribble = AppTheme.isSkribble(context);
     if (isSkribble) {
       final wired = WiredTheme.of(context);
@@ -347,6 +467,76 @@ class GglStatusTag extends StatelessWidget {
           };
     final fg = neutral ? colors.ink : colors.onFill(fill);
 
+    if (AppTheme.isForui(context)) {
+      final fColors = FTheme.of(context).colors;
+      final fVariant = neutral
+          ? FBadgeVariant.secondary
+          : switch (variant) {
+              WelkBadgeVariant.defaultStyle => FBadgeVariant.primary,
+              WelkBadgeVariant.info => FBadgeVariant.outline,
+              WelkBadgeVariant.success => FBadgeVariant.secondary,
+              WelkBadgeVariant.warning => FBadgeVariant.secondary,
+              WelkBadgeVariant.error => FBadgeVariant.destructive,
+            };
+      final customBg = neutral
+          ? fColors.secondary
+          : switch (variant) {
+              WelkBadgeVariant.defaultStyle => fColors.primary,
+              WelkBadgeVariant.info => const Color(0xFF0EA5E9).withValues(
+                  alpha: fColors.brightness == Brightness.dark ? 0.22 : 0.14,
+                ),
+              WelkBadgeVariant.success => const Color(0xFF10B981).withValues(
+                  alpha: fColors.brightness == Brightness.dark ? 0.22 : 0.14,
+                ),
+              WelkBadgeVariant.warning => const Color(0xFFF59E0B).withValues(
+                  alpha: fColors.brightness == Brightness.dark ? 0.24 : 0.16,
+                ),
+              WelkBadgeVariant.error => fColors.destructive,
+            };
+      final customFg = neutral
+          ? fColors.secondaryForeground
+          : switch (variant) {
+              WelkBadgeVariant.defaultStyle => fColors.primaryForeground,
+              WelkBadgeVariant.info => fColors.brightness == Brightness.dark
+                  ? const Color(0xFF7DD3FC)
+                  : const Color(0xFF0369A1),
+              WelkBadgeVariant.success => fColors.brightness == Brightness.dark
+                  ? const Color(0xFF6EE7B7)
+                  : const Color(0xFF047857),
+              WelkBadgeVariant.warning => fColors.brightness == Brightness.dark
+                  ? const Color(0xFFFCD34D)
+                  : const Color(0xFFB45309),
+              WelkBadgeVariant.error => fColors.destructiveForeground,
+            };
+      return FBadge(
+        variant: fVariant,
+        style: FBadgeStyleDelta.delta(
+          decoration: DecorationDelta.value(
+            BoxDecoration(
+              color: customBg,
+              borderRadius: BorderRadius.circular(999),
+              border: variant == WelkBadgeVariant.info || neutral
+                  ? Border.all(color: fColors.border, width: 1)
+                  : null,
+            ),
+          ),
+          padding: EdgeInsetsGeometryDelta.value(
+            const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          ),
+          labelTextStyle: TextStyleDelta.value(
+            TextStyle(
+              color: customFg,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              height: 1.2,
+              fontFamilyFallback: AppTheme.cjkFontFallback,
+            ),
+          ),
+        ),
+        child: Text(label),
+      );
+    }
+
     if (AppTheme.isSkribble(context)) {
       final wired = WiredTheme.of(context);
       final skFill = neutral ? wired.fillColor : fill;
@@ -417,6 +607,38 @@ class GglSectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (AppTheme.isForui(context)) {
+      final fColors = FTheme.of(context).colors;
+      return Padding(
+        padding: padding,
+        child: Row(
+          children: [
+            Container(
+              width: 3,
+              height: 15,
+              decoration: BoxDecoration(
+                color: fColors.primary,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  color: fColors.foreground,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.2,
+                  fontFamilyFallback: AppTheme.cjkFontFallback,
+                ),
+              ),
+            ),
+            ?trailing,
+          ],
+        ),
+      );
+    }
     final colors = WelkTheme.of(context).resolveColors(context);
     return Padding(
       padding: padding,
@@ -471,6 +693,45 @@ class GglBlockButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (AppTheme.isForui(context)) {
+      final fVariant = switch (variant) {
+        WelkButtonVariant.primary => FButtonVariant.primary,
+        WelkButtonVariant.secondary => FButtonVariant.outline,
+        WelkButtonVariant.info => FButtonVariant.secondary,
+        WelkButtonVariant.success => FButtonVariant.primary,
+        WelkButtonVariant.warning => FButtonVariant.secondary,
+        WelkButtonVariant.error => FButtonVariant.destructive,
+        WelkButtonVariant.ghost => FButtonVariant.ghost,
+      };
+      final fSize = switch (size) {
+        WelkButtonSize.small => FButtonSizeVariant.sm,
+        WelkButtonSize.medium => FButtonSizeVariant.md,
+        WelkButtonSize.large => FButtonSizeVariant.lg,
+      };
+      return FButton(
+        variant: fVariant,
+        size: fSize,
+        mainAxisSize: MainAxisSize.max,
+        onPress: loading ? null : onPressed,
+        prefix: loading
+            ? const SizedBox(
+                width: 15,
+                height: 15,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : (icon != null ? Icon(icon, size: 17) : null),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontFamilyFallback: AppTheme.cjkFontFallback,
+          ),
+        ),
+      );
+    }
+
     final isSkribble = AppTheme.isSkribble(context);
     final colors = WelkTheme.of(context).resolveColors(context);
 

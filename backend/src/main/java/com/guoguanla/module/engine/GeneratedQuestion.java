@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
+import java.util.Map;
 
 @Data
 @NoArgsConstructor
@@ -17,6 +18,8 @@ public class GeneratedQuestion {
     private String analysis;
     private String questionFormat;
     private String referenceAnswer;
+    private Map<String, Object> diagram;
+    private String imageKey;
 
     public GeneratedQuestion(String stem, List<String> options, Integer answerIndex, String analysis) {
         this.stem = stem;
@@ -27,5 +30,15 @@ public class GeneratedQuestion {
         this.referenceAnswer = (options != null && answerIndex != null && answerIndex >= 0 && answerIndex < options.size())
                 ? options.get(answerIndex)
                 : "";
+    }
+
+    public GeneratedQuestion(String stem, List<String> options, Integer answerIndex, String analysis,
+                             String questionFormat, String referenceAnswer) {
+        this.stem = stem;
+        this.options = options;
+        this.answerIndex = answerIndex;
+        this.analysis = analysis;
+        this.questionFormat = questionFormat;
+        this.referenceAnswer = referenceAnswer;
     }
 }

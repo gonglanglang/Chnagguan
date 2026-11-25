@@ -106,8 +106,11 @@ public class QuestionEngineService {
 
     public GeneratedQuestion generateOne(EduQuestion question) {
         String format = normalizeFormat(question.getQuestionFormat());
+        Map<String, Object> ext = JsonHelper.readMap(objectMapper, question.getExtJson());
         if ("STATIC".equalsIgnoreCase(question.getQuestionMode())) {
-            return fromStatic(question, format);
+            GeneratedQuestion gen = fromStatic(question, format);
+            attachFigure(gen, ext, null);
+            return gen;
         }
         String ruleJson = question.getTemplateRuleJson();
         if (ruleJson == null || ruleJson.isBlank()) {
@@ -118,10 +121,12 @@ public class QuestionEngineService {
             String type = ruleNode.path("type").asText("PARAM_TEMPLATE");
             if ("PROTOTYPE_JS_EXPR".equalsIgnoreCase(type)) {
                 String source = ruleNode.path("source").asText("");
-                return executeSandboxedJs(source, question.getAnalysis(), format);
+                GeneratedQuestion gen = executeSandboxedJs(source, question.getAnalysis(), format);
+                attachFigure(gen, ext, null);
+                return gen;
             }
             if ("PARAM_TEMPLATE".equalsIgnoreCase(type)) {
-                return executeParamTemplate(ruleNode, question.getAnalysis(), format);
+                return executeParamTemplate(ruleNode, question.getAnalysis(), format, ext);
             }
             throw new BizException(ErrorCode.QUESTION_RULE_INVALID, "不支持的动态模板类型: " + type);
         } catch (BizException e) {
@@ -189,7 +194,7 @@ public class QuestionEngineService {
         }
     }
 
-    private GeneratedQuestion executeParamTemplate(JsonNode rule, String analysis, String format) {
+    private GeneratedQuestion executeParamTemplate(JsonNode rule, String analysis, String format, Map<String, Object> ext) {
         Map<String, Number> vars = new LinkedHashMap<>();
         JsonNode varsNode = rule.path("vars");
         if (varsNode.isObject()) {
@@ -223,7 +228,9 @@ public class QuestionEngineService {
 
         if ("ESSAY".equalsIgnoreCase(format)) {
             String refAns = renderEssayAnswer(ansExpr, vars);
-            return new GeneratedQuestion(stem, List.of(), 0, renderedAnalysis, "ESSAY", refAns);
+            GeneratedQuestion gen = new GeneratedQuestion(stem, List.of(), 0, renderedAnalysis, "ESSAY", refAns);
+            attachFigure(gen, ext, vars);
+            return gen;
         }
 
         if (ansExpr.isBlank()) {
@@ -275,7 +282,57 @@ public class QuestionEngineService {
         }
         Collections.shuffle(options);
         int ansIndex = options.indexOf(ans);
-        return new GeneratedQuestion(stem, options, ansIndex, renderedAnalysis, format, ans);
+        GeneratedQuestion gen = new GeneratedQuestion(stem, options, ansIndex, renderedAnalysis, format, ans);
+        attachFigure(gen, ext, vars);
+        return gen;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void attachFigure(GeneratedQuestion gen, Map<String, Object> ext, Map<String, Number> vars) {
+        if (ext == null || ext.isEmpty()) {
+            return;
+        }
+        Object imgKeyObj = ext.get("imageKey");
+        if (imgKeyObj == null || String.valueOf(imgKeyObj).isBlank()) {
+            imgKeyObj = ext.get("imageUrl");
+        }
+        if (imgKeyObj != null && !String.valueOf(imgKeyObj).isBlank()) {
+            gen.setImageKey(String.valueOf(imgKeyObj).trim());
+        }
+        Object diagObj = ext.get("diagram");
+        if (diagObj instanceof Map<?, ?> rawMap && !rawMap.isEmpty()) {
+            Map<String, Object> cloned = (Map<String, Object>) renderDiagramNode(rawMap, vars);
+            gen.setDiagram(cloned);
+        }
+    }
+
+    private Object renderDiagramNode(Object node, Map<String, Number> vars) {
+        if (node == null) return null;
+        if (node instanceof String str) {
+            if (vars != null && !vars.isEmpty() && str.contains("{{")) {
+                try {
+                    return renderTemplate(str, vars);
+                } catch (Exception ignored) {
+                    return str;
+                }
+            }
+            return str;
+        }
+        if (node instanceof Map<?, ?> map) {
+            Map<String, Object> copy = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                copy.put(String.valueOf(entry.getKey()), renderDiagramNode(entry.getValue(), vars));
+            }
+            return copy;
+        }
+        if (node instanceof List<?> list) {
+            List<Object> copy = new ArrayList<>(list.size());
+            for (Object item : list) {
+                copy.add(renderDiagramNode(item, vars));
+            }
+            return copy;
+        }
+        return node;
     }
 
     private String renderEssayAnswer(String ansExpr, Map<String, Number> vars) {

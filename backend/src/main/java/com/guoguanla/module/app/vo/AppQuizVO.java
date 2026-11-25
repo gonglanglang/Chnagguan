@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 public class AppQuizVO {
 
@@ -36,6 +37,8 @@ public class AppQuizVO {
         private String questionFormat;
         private String stem;
         private List<String> options;
+        private Map<String, Object> diagram;
+        private String imageUrl;
     }
 
     @Data
@@ -79,6 +82,13 @@ public class AppQuizVO {
         private AppUserProfileVO.RealmItemVO promotedRealm;
         private List<WrongReviewItem> wrongItems;
         private int masteredCount;
+        /** 通关后可直接进入的下一关信息（支持同章下一关及本章全通后进入下一章第1关） */
+        private Long nextGateId;
+        private Integer nextGateIndex;
+        private String nextGateName;
+        private Long nextChapterId;
+        private String nextChapterName;
+        private boolean nextGateCrossChapter;
     }
 
     @Data
@@ -88,6 +98,8 @@ public class AppQuizVO {
         private String questionFormat;
         private String correctAnswer;
         private String analysis;
+        private Map<String, Object> diagram;
+        private String imageUrl;
     }
 
     @Data
@@ -107,6 +119,8 @@ public class AppQuizVO {
         private String referenceAnswer;
         private String lastAnswerImageUrl;
         private String analysis;
+        private Map<String, Object> diagram;
+        private String imageUrl;
         private Integer wrongCount;
         private LocalDateTime lastWrongAt;
     }
@@ -123,6 +137,8 @@ public class AppQuizVO {
         private Long gateId;
         private String gateName;
         private String stem;
+        private Map<String, Object> diagram;
+        private String imageUrl;
         private String referenceAnswer;
         private String answerText;
         private String answerImageUrl;

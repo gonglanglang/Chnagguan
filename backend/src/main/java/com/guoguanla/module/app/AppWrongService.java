@@ -12,6 +12,8 @@ import com.guoguanla.common.security.StpAppUtil;
 import com.guoguanla.common.util.JsonHelper;
 import com.guoguanla.module.app.dto.AppQuizDTO;
 import com.guoguanla.module.app.vo.AppQuizVO;
+import com.guoguanla.module.bank.entity.EduQuestion;
+import com.guoguanla.module.bank.mapper.EduQuestionMapper;
 import com.guoguanla.module.oss.AliyunOssService;
 import com.guoguanla.module.progress.entity.UserQuizRecord;
 import com.guoguanla.module.progress.entity.UserWrongQuestion;
@@ -33,6 +35,7 @@ public class AppWrongService {
 
     private final UserWrongQuestionMapper wrongMapper;
     private final UserQuizRecordMapper quizRecordMapper;
+    private final EduQuestionMapper questionMapper;
     private final AppQuizService quizService;
     private final RealmHelperService realmHelper;
     private final AliyunOssService ossService;
@@ -66,10 +69,12 @@ public class AppWrongService {
                 .collect(Collectors.toMap(EduRealm::getGradeCode, r -> r, (a, b) -> a));
 
         Page<UserWrongQuestion> page = wrongMapper.selectPage(new Page<>(p, s), wrapper);
+        Map<Long, EduQuestion> qMap = loadQuestionMap(page.getRecords());
         List<AppQuizVO.WrongQuestionVO> items = page.getRecords().stream()
                 .map(w -> {
                     EduRealm realm = realmByGrade.get(w.getGradeCode());
                     String fmt = normalizeFormat(w.getQuestionFormat());
+                    FigureData fig = extractFigure(qMap.get(w.getQuestionId()), baseOrigin);
                     return AppQuizVO.WrongQuestionVO.builder()
                             .id(w.getId())
                             .gradeCode(w.getGradeCode())
@@ -85,6 +90,8 @@ public class AppWrongService {
                             .referenceAnswer(parseReferenceAnswer(w.getAnswerJson()))
                             .lastAnswerImageUrl(ossService.resolveViewUrl(w.getLastAnswerImageKey(), baseOrigin))
                             .analysis(w.getAnalysis())
+                            .diagram(fig.diagram())
+                            .imageUrl(fig.imageUrl())
                             .wrongCount(w.getWrongCount())
                             .lastWrongAt(w.getLastWrongAt())
                             .build();
@@ -95,6 +102,11 @@ public class AppWrongService {
 
     @Transactional(rollbackFor = Exception.class)
     public AppQuizVO.StartVO startRedo(AppQuizDTO.RedoStartReq req) {
+        return startRedo(req, "");
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public AppQuizVO.StartVO startRedo(AppQuizDTO.RedoStartReq req, String baseOrigin) {
         Long userId = StpAppUtil.getLoginIdAsLong();
         int limit = req.getLimit() == null ? 5 : Math.max(1, Math.min(req.getLimit(), 10));
 
@@ -118,6 +130,7 @@ public class AppWrongService {
             throw new BizException(ErrorCode.NOT_FOUND, "暂无待消灭的错题");
         }
 
+        Map<Long, EduQuestion> qMap = loadQuestionMap(wrongs);
         List<AppQuizService.SnapshotItem> snapshots = new ArrayList<>(wrongs.size());
         List<AppQuizVO.ClientQuestionItem> clientItems = new ArrayList<>(wrongs.size());
         for (int i = 0; i < wrongs.size(); i++) {
@@ -128,6 +141,7 @@ public class AppWrongService {
             String refAns = "ESSAY".equals(fmt)
                     ? parseReferenceAnswer(w.getAnswerJson())
                     : ((ansIdx >= 0 && ansIdx < opts.size()) ? opts.get(ansIdx) : "");
+            FigureData fig = extractFigure(qMap.get(w.getQuestionId()), baseOrigin);
 
             AppQuizService.SnapshotItem snap = new AppQuizService.SnapshotItem();
             snap.setItemIndex(i);
@@ -141,6 +155,8 @@ public class AppWrongService {
             snap.setAnswerIndex(ansIdx);
             snap.setReferenceAnswer(refAns);
             snap.setAnalysis(w.getAnalysis());
+            snap.setDiagram(fig.diagram());
+            snap.setImageKey(fig.imageKey());
             snapshots.add(snap);
 
             clientItems.add(AppQuizVO.ClientQuestionItem.builder()
@@ -148,6 +164,8 @@ public class AppWrongService {
                     .questionFormat(fmt)
                     .stem(w.getStem())
                     .options(opts)
+                    .diagram(fig.diagram())
+                    .imageUrl(fig.imageUrl())
                     .build());
         }
 
@@ -268,6 +286,40 @@ public class AppWrongService {
                 .eq(UserWrongQuestion::getIsMastered, 0)
                 .set(UserWrongQuestion::getIsMastered, 1)
                 .set(UserWrongQuestion::getMasteredAt, LocalDateTime.now()));
+    }
+
+    private record FigureData(Map<String, Object> diagram, String imageKey, String imageUrl) {}
+
+    private Map<Long, EduQuestion> loadQuestionMap(List<UserWrongQuestion> list) {
+        if (list == null || list.isEmpty()) return Map.of();
+        Set<Long> qIds = list.stream()
+                .map(UserWrongQuestion::getQuestionId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (qIds.isEmpty()) return Map.of();
+        return questionMapper.selectBatchIds(qIds).stream()
+                .collect(Collectors.toMap(EduQuestion::getId, q -> q, (a, b) -> a));
+    }
+
+    @SuppressWarnings("unchecked")
+    private FigureData extractFigure(EduQuestion q, String baseOrigin) {
+        if (q == null || q.getExtJson() == null || q.getExtJson().isBlank()) {
+            return new FigureData(null, "", "");
+        }
+        Map<String, Object> ext = JsonHelper.readMap(objectMapper, q.getExtJson());
+        if (ext == null || ext.isEmpty()) {
+            return new FigureData(null, "", "");
+        }
+        Map<String, Object> diagram = ext.get("diagram") instanceof Map<?, ?> m && !m.isEmpty()
+                ? (Map<String, Object>) m
+                : null;
+        Object rawImg = ext.get("imageKey");
+        if (rawImg == null || String.valueOf(rawImg).isBlank()) {
+            rawImg = ext.get("imageUrl");
+        }
+        String imgKey = rawImg == null ? "" : String.valueOf(rawImg).trim();
+        String imgUrl = imgKey.isEmpty() ? "" : ossService.resolveViewUrl(imgKey, baseOrigin);
+        return new FigureData(diagram, imgKey, imgUrl);
     }
 
     private String normalizeFormat(String format) {

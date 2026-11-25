@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:forui/forui.dart';
 import 'package:skribble/skribble.dart';
 import 'package:welkui_flutter/welkui_flutter.dart';
 
@@ -16,6 +17,41 @@ class GglFeedback {
     WelkSnackBarVariant variant = WelkSnackBarVariant.info,
     Duration duration = const Duration(milliseconds: 2400),
   }) {
+    if (AppTheme.isForui(context, listen: false)) {
+      final fColors = FTheme.of(context).colors;
+      final (IconData iconData, Color iconColor) = switch (variant) {
+        WelkSnackBarVariant.success => (
+          Icons.check_circle_rounded,
+          const Color(0xFF10B981),
+        ),
+        WelkSnackBarVariant.warning => (
+          Icons.warning_amber_rounded,
+          const Color(0xFFF59E0B),
+        ),
+        WelkSnackBarVariant.error => (
+          Icons.error_rounded,
+          fColors.destructive,
+        ),
+        _ => (Icons.info_rounded, fColors.primary),
+      };
+      if (context.findAncestorStateOfType<FToasterState>() != null) {
+        showFToast(
+          context: context,
+          alignment: FToastAlignment.topCenter,
+          duration: duration,
+          icon: Icon(iconData, size: 18, color: iconColor),
+          title: Text(
+            message,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              fontFamilyFallback: AppTheme.cjkFontFallback,
+            ),
+          ),
+        );
+        return;
+      }
+    }
+
     if (AppTheme.isSkribble(context, listen: false)) {
       ScaffoldMessenger.maybeOf(context)?.hideCurrentSnackBar();
       final colors = WelkTheme.of(context).resolveColors(context);
@@ -92,6 +128,70 @@ class GglFeedback {
     String noText = '取消',
     WelkDialogVariant variant = WelkDialogVariant.warning,
   }) async {
+    if (AppTheme.isForui(context, listen: false)) {
+      final result = await showFDialog<bool>(
+        context: context,
+        builder: (dialogCtx, style, animation) {
+          final fColors = FTheme.of(dialogCtx).colors;
+          return FDialog(
+            animation: animation,
+            builder: (ctx, _) => Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: fColors.foreground,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      fontFamilyFallback: AppTheme.cjkFontFallback,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    content,
+                    style: TextStyle(
+                      color: fColors.mutedForeground,
+                      fontSize: 14,
+                      height: 1.5,
+                      fontFamilyFallback: AppTheme.cjkFontFallback,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      FButton(
+                        variant: FButtonVariant.outline,
+                        size: FButtonSizeVariant.sm,
+                        mainAxisSize: MainAxisSize.min,
+                        onPress: () => Navigator.of(ctx).pop(false),
+                        child: Text(noText),
+                      ),
+                      const SizedBox(width: 10),
+                      FButton(
+                        variant: variant == WelkDialogVariant.error
+                            ? FButtonVariant.destructive
+                            : FButtonVariant.primary,
+                        size: FButtonSizeVariant.sm,
+                        mainAxisSize: MainAxisSize.min,
+                        onPress: () => Navigator.of(ctx).pop(true),
+                        child: Text(yesText),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+      return result == true;
+    }
+
     if (AppTheme.isSkribble(context, listen: false)) {
       final result = await showDialog<bool>(
         context: context,
@@ -174,6 +274,58 @@ class GglFeedback {
     String buttonText = '知道了',
     WelkDialogVariant variant = WelkDialogVariant.info,
   }) async {
+    if (AppTheme.isForui(context, listen: false)) {
+      await showFDialog<void>(
+        context: context,
+        builder: (dialogCtx, style, animation) {
+          final fColors = FTheme.of(dialogCtx).colors;
+          return FDialog(
+            animation: animation,
+            builder: (ctx, _) => Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: fColors.foreground,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      fontFamilyFallback: AppTheme.cjkFontFallback,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    content,
+                    style: TextStyle(
+                      color: fColors.mutedForeground,
+                      fontSize: 14,
+                      height: 1.5,
+                      fontFamilyFallback: AppTheme.cjkFontFallback,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: FButton(
+                      variant: FButtonVariant.primary,
+                      size: FButtonSizeVariant.sm,
+                      mainAxisSize: MainAxisSize.min,
+                      onPress: () => Navigator.of(ctx).pop(),
+                      child: Text(buttonText),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+      return;
+    }
+
     if (AppTheme.isSkribble(context, listen: false)) {
       await showDialog<void>(
         context: context,

@@ -8,10 +8,12 @@ import { G9_CHAPTERS } from './data/bank-g9.mjs';
 import { H1_CHAPTERS } from './data/bank-h1.mjs';
 import { H2_CHAPTERS } from './data/bank-h2.mjs';
 import { H3_CHAPTERS } from './data/bank-h3.mjs';
+import { resolveDiagramForQuestion } from './question_diagrams.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const OUTPUT_DIR = path.join(__dirname, 'output');
+const BACKEND_DB_RESOURCE_DIR = path.join(__dirname, '..', 'backend', 'src', 'main', 'resources', 'db');
 const BATCH_TAG = 'TASK-20261122-002';
 
 const ALL_CHAPTERS = [
@@ -397,6 +399,38 @@ function validateAll() {
         }
 
         const mergedTags = Array.from(new Set([...(q.tags || []), BATCH_TAG]));
+        const diagram = resolveDiagramForQuestion(ch.chapterCode, gi, qi, q);
+        if (/如图/.test(q.stem || '') && !diagram) {
+          issues.push(`${qTag}: 题干含“如图”但未匹配到配图`);
+        }
+        if (diagram) {
+          if (!Array.isArray(diagram.primitives) || diagram.primitives.length === 0) {
+            issues.push(`${qTag}: diagram.primitives 为空`);
+          }
+          // 校验动态题图元中的 {{expr}} 占位符在任意参数下都能求值
+          const diagTexts = [
+            diagram.title || '',
+            ...diagram.primitives.map((p) => p.text || ''),
+            ...diagram.primitives.map((p) => p.label || ''),
+          ].filter((t) => t.includes('{{'));
+          if (diagTexts.length > 0) {
+            if (q.questionMode !== 'DYNAMIC_TEMPLATE') {
+              issues.push(`${qTag}: 静态题配图包含动态占位符 ${diagTexts.join(', ')}`);
+            } else {
+              const sampleEnv = {};
+              for (const [k, rng] of Object.entries(q.templateRule?.vars || {})) {
+                sampleEnv[k] = Array.isArray(rng) ? rng[0] : rng;
+              }
+              for (const dt of diagTexts) {
+                try {
+                  renderTemplate(dt, sampleEnv);
+                } catch (err) {
+                  issues.push(`${qTag}: diagram 文本 "${dt}" 求值失败: ${err.message}`);
+                }
+              }
+            }
+          }
+        }
         flatQuestions.push({
           gradeCode: ch.gradeCode,
           chapterCode: ch.chapterCode,
@@ -416,6 +450,7 @@ function validateAll() {
           generatorCode: null,
           templateRule: q.questionMode === 'DYNAMIC_TEMPLATE' ? q.templateRule : null,
           tags: mergedTags,
+          ext: diagram ? { diagram } : null,
         });
       }
     }
@@ -474,7 +509,7 @@ function buildSql(flatQuestions) {
         `INSERT INTO edu_question (grade_code, chapter_id, gate_id, question_mode, question_format, stem, options_json, answer_json, analysis, generator_code, template_rule_json, difficulty, tags_json, ext_json, source, version, sort_order, enabled, created_by, deleted)`,
       );
       lines.push(
-        `SELECT ${sqlString(q.gradeCode)}, @ch_id, @gt_id, ${sqlString(q.questionMode)}, ${sqlString(q.questionFormat)}, ${sqlString(q.stem)}, ${sqlJson(q.options)}, ${sqlJson(q.answer)}, ${sqlString(q.analysis)}, NULL, ${sqlJson(q.templateRule)}, ${q.difficulty}, ${sqlJson(q.tags)}, NULL, 'ADMIN', 1, ${q.sortOrder}, 1, NULL, 0 FROM DUAL`,
+        `SELECT ${sqlString(q.gradeCode)}, @ch_id, @gt_id, ${sqlString(q.questionMode)}, ${sqlString(q.questionFormat)}, ${sqlString(q.stem)}, ${sqlJson(q.options)}, ${sqlJson(q.answer)}, ${sqlString(q.analysis)}, NULL, ${sqlJson(q.templateRule)}, ${q.difficulty}, ${sqlJson(q.tags)}, ${sqlJson(q.ext)}, 'ADMIN', 1, ${q.sortOrder}, 1, NULL, 0 FROM DUAL`,
       );
       lines.push(
         `WHERE @ch_id IS NOT NULL AND @gt_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM edu_question WHERE gate_id = @gt_id AND deleted = 0 AND sort_order = ${q.sortOrder} AND JSON_CONTAINS(tags_json, '"${BATCH_TAG}"'));`,
@@ -531,12 +566,52 @@ fs.writeFileSync(
 
 fs.writeFileSync(sqlPath, buildSql(flatQuestions), 'utf8');
 
+// 导出后端自动回填与增量 SQL 所需的精简配图清单
+const diagramEntries = flatQuestions
+  .filter((q) => q.ext && q.ext.diagram)
+  .map((q) => ({
+    key: `${q.chapterCode}:${q.gateIndex}:${q.sortOrder}`,
+    chapterCode: q.chapterCode,
+    gateIndex: q.gateIndex,
+    sortOrder: q.sortOrder,
+    stem: q.stem,
+    diagram: q.ext.diagram,
+  }));
+
+fs.mkdirSync(BACKEND_DB_RESOURCE_DIR, { recursive: true });
+const backendDiagramsPath = path.join(BACKEND_DB_RESOURCE_DIR, 'question-diagrams.json');
+fs.writeFileSync(
+  backendDiagramsPath,
+  JSON.stringify({ version: '20261126-001', count: diagramEntries.length, items: diagramEntries }),
+  'utf8',
+);
+
+const diagramSqlLines = [
+  '-- 「过关啦」存量题库几何/函数矢量配图幂等补全脚本 (TASK-20261126-001)',
+  `-- 共覆盖 ${diagramEntries.length} 道几何/图形/函数题（仅在 ext_json 尚未配置 diagram 或 imageUrl 时写入）`,
+  'SET NAMES utf8mb4;',
+  'START TRANSACTION;',
+  '',
+];
+for (const entry of diagramEntries) {
+  const extJsonVal = sqlJson({ diagram: entry.diagram });
+  diagramSqlLines.push(
+    `UPDATE edu_question q JOIN edu_chapter c ON q.chapter_id = c.id JOIN edu_gate g ON q.gate_id = g.id SET q.ext_json = ${extJsonVal} WHERE c.chapter_code = ${sqlString(entry.chapterCode)} AND g.gate_index = ${entry.gateIndex} AND q.sort_order = ${entry.sortOrder} AND q.deleted = 0 AND (q.ext_json IS NULL OR (JSON_EXTRACT(q.ext_json, '$.diagram') IS NULL AND JSON_EXTRACT(q.ext_json, '$.imageUrl') IS NULL));`,
+  );
+}
+diagramSqlLines.push('', 'COMMIT;', '');
+const diagramSqlPath = path.join(OUTPUT_DIR, 'update-question-diagrams-20261126.sql');
+fs.writeFileSync(diagramSqlPath, diagramSqlLines.join('\n'), 'utf8');
+
 const modeBreakdown = flatQuestions.reduce((acc, q) => {
   const k = `${q.questionMode}:${q.questionFormat}`;
   acc[k] = (acc[k] || 0) + 1;
   return acc;
 }, {});
 console.log('题型分布:', modeBreakdown);
+console.log('已补充矢量配图题目数:', diagramEntries.length, '/', flatQuestions.length);
 console.log('校验 100% 通过！已导出:');
 console.log(' - JSON:', jsonPath);
 console.log(' - SQL :', sqlPath);
+console.log(' - 配图资源:', backendDiagramsPath);
+console.log(' - 配图 SQL:', diagramSqlPath);

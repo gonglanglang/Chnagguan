@@ -18,6 +18,7 @@ import '../../widgets/ggl_comic_panel.dart';
 import '../../widgets/ggl_feedback.dart';
 import '../../widgets/ggl_skeleton.dart';
 import '../../widgets/ggl_skin_widgets.dart';
+import '../../widgets/ggl_video_player.dart';
 import '../../widgets/image_preview_page.dart';
 import '../../widgets/math_text.dart';
 import '../login/login_page.dart';
@@ -45,6 +46,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   VideoPlayerController? _playerController;
   bool _playerReady = false;
   bool _playerError = false;
+  bool _playerAutoPlay = false;
 
   @override
   void initState() {
@@ -113,6 +115,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     setState(() {
       _playerReady = false;
       _playerError = false;
+      _playerAutoPlay = autoPlay;
     });
     try {
       final controller = VideoPlayerController.networkUrl(
@@ -122,14 +125,22 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       await controller.initialize();
       if (!mounted || _playerController != controller) return;
       setState(() => _playerReady = true);
-      if (autoPlay) {
-        await controller.play();
-      }
     } catch (_) {
       if (mounted) {
         setState(() => _playerError = true);
       }
     }
+  }
+
+  VideoLessonItem? get _nextLesson {
+    final lessons = _detail?.lessons;
+    final active = _activeLesson;
+    if (lessons == null || active == null) return null;
+    final idx = lessons.indexWhere((e) => e.id == active.id);
+    if (idx >= 0 && idx + 1 < lessons.length) {
+      return lessons[idx + 1];
+    }
+    return null;
   }
 
   Future<void> _selectLesson(VideoLessonItem lesson) async {
@@ -487,13 +498,18 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     }
 
     final controller = _playerController;
+    final nextLesson = _nextLesson;
+    final isForui = AppTheme.isForui(context);
     return Container(
       width: double.infinity,
-      height: 220,
+      height: 232,
       decoration: BoxDecoration(
         color: const Color(0xFF0F172A),
         border: Border(
-          bottom: BorderSide(color: colors.outline, width: colors.borderWidth),
+          bottom: BorderSide(
+            color: isForui ? const Color(0xFF27272A) : colors.outline,
+            width: isForui ? 1 : colors.borderWidth,
+          ),
         ),
       ),
       child: _playerError
@@ -517,125 +533,16 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
               ? const Center(
                   child: CircularProgressIndicator(color: Colors.white),
                 )
-              : Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Center(
-                      child: AspectRatio(
-                        aspectRatio: controller.value.aspectRatio > 0
-                            ? controller.value.aspectRatio
-                            : 16 / 9,
-                        child: VideoPlayer(controller),
-                      ),
-                    ),
-                    ValueListenableBuilder<VideoPlayerValue>(
-                      valueListenable: controller,
-                      builder: (context, value, _) {
-                        return Positioned.fill(
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.translucent,
-                            onTap: () {
-                              if (value.isPlaying) {
-                                controller.pause();
-                              } else {
-                                controller.play();
-                              }
-                            },
-                            child: Stack(
-                              children: [
-                                if (!value.isPlaying)
-                                  Center(
-                                    child: Container(
-                                      width: 56,
-                                      height: 56,
-                                      decoration: BoxDecoration(
-                                        color: colors.accent,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(
-                                          color: colors.outline,
-                                          width: 2,
-                                        ),
-                                      ),
-                                      child: Icon(
-                                        Icons.play_arrow_rounded,
-                                        size: 34,
-                                        color: colors.onFill(colors.accent),
-                                      ),
-                                    ),
-                                  ),
-                                Positioned(
-                                  left: 0,
-                                  right: 0,
-                                  bottom: 0,
-                                  child: Container(
-                                    padding: const EdgeInsets.fromLTRB(
-                                      10,
-                                      6,
-                                      10,
-                                      6,
-                                    ),
-                                    color: const Color(0x88000000),
-                                    child: Row(
-                                      children: [
-                                        IconButton(
-                                          visualDensity: VisualDensity.compact,
-                                          icon: Icon(
-                                            value.isPlaying
-                                                ? Icons.pause_rounded
-                                                : Icons.play_arrow_rounded,
-                                            color: Colors.white,
-                                          ),
-                                          onPressed: () {
-                                            if (value.isPlaying) {
-                                              controller.pause();
-                                            } else {
-                                              controller.play();
-                                            }
-                                          },
-                                        ),
-                                        Text(
-                                          FormatUtils.formatDuration(
-                                              value.position.inSeconds),
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 11.5,
-                                          ),
-                                        ),
-                                        Expanded(
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                            ),
-                                            child: VideoProgressIndicator(
-                                              controller,
-                                              allowScrubbing: true,
-                                              colors: VideoProgressColors(
-                                                playedColor: colors.accent,
-                                                bufferedColor: Colors.white38,
-                                                backgroundColor: Colors.white24,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        Text(
-                                          FormatUtils.formatDuration(
-                                              value.duration.inSeconds),
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 11.5,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
+              : GglVideoPlayer(
+                  key: ValueKey<int>(lesson.id),
+                  videoController: controller,
+                  title: lesson.title,
+                  accentColor: colors.accent,
+                  autoPlay: _playerAutoPlay,
+                  hasNextLesson: nextLesson != null,
+                  onNextLesson: nextLesson != null
+                      ? () => unawaited(_selectLesson(nextLesson))
+                      : null,
                 ),
     );
   }

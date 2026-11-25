@@ -13,5 +13,6 @@ public class QuestionPreviewReq {
     private String stem;
     private Map<String, Object> templateRule;
     private String analysis;
+    private Map<String, Object> ext;
     private Integer count = 3;
 }

@@ -6,6 +6,7 @@ import com.guoguanla.common.util.ServletUrlHelper;
 import com.guoguanla.module.app.dto.AppLoginReq;
 import com.guoguanla.module.app.vo.AppQuizVO;
 import com.guoguanla.module.app.vo.AppUserProfileVO;
+import com.guoguanla.module.system.vo.AppDefaultThemeVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -28,10 +29,16 @@ public class AppHomeController {
     private final AppBankService bankService;
     private final AppQuizService quizService;
 
-    @Operation(summary = "首页概览（修仙境界列表、公告与当前学生状态）")
+    @Operation(summary = "首页概览（修仙境界列表、公告、默认主题与当前学生状态）")
     @GetMapping("/home/summary")
     public Result<AppUserProfileVO.HomeSummaryVO> homeSummary(@RequestParam(required = false) String guestPassedIds) {
         return Result.ok(bankService.homeSummary(parseIds(guestPassedIds)));
+    }
+
+    @Operation(summary = "获取后台配置的学生端默认主题（公开接口，用于启动自动同步）")
+    @GetMapping("/theme/default")
+    public Result<AppDefaultThemeVO> defaultTheme() {
+        return Result.ok(bankService.getDefaultTheme());
     }
 
     @Operation(summary = "获取全部修仙境界与解锁状态")

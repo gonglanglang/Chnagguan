@@ -32,9 +32,16 @@ class BoardDiagramPainter {
   static void paintDiagram(
     Canvas canvas,
     BoardDiagramSpec spec,
-    Rect targetRect,
-  ) {
-    paintDiagramProgressive(canvas, spec, targetRect, progress: 1.0);
+    Rect targetRect, {
+    bool showFrame = true,
+  }) {
+    paintDiagramProgressive(
+      canvas,
+      spec,
+      targetRect,
+      progress: 1.0,
+      showFrame: showFrame,
+    );
   }
 
   /// 坐标级逐笔绘制矢量示意图（progress: 0.0 -> 1.0），返回当前绘制笔尖的世界坐标
@@ -43,23 +50,29 @@ class BoardDiagramPainter {
     BoardDiagramSpec spec,
     Rect targetRect, {
     double progress = 1.0,
+    bool showFrame = true,
   }) {
     final clamped = progress.clamp(0.0, 1.0);
     if (clamped <= 0.0001) return null;
 
-    // 极简白板参考框（淡虚线轮廓，无厚重花哨背景）
-    final borderPaint = Paint()
-      ..color = const Color(0xFFCBD5E1).withValues(alpha: 0.65)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-    drawDashedLine(canvas, targetRect.topLeft, targetRect.topRight, borderPaint,
-        dashLen: 5, gapLen: 4);
-    drawDashedLine(canvas, targetRect.topRight, targetRect.bottomRight, borderPaint,
-        dashLen: 5, gapLen: 4);
-    drawDashedLine(canvas, targetRect.bottomRight, targetRect.bottomLeft, borderPaint,
-        dashLen: 5, gapLen: 4);
-    drawDashedLine(canvas, targetRect.bottomLeft, targetRect.topLeft, borderPaint,
-        dashLen: 5, gapLen: 4);
+    if (showFrame) {
+      // 极简白板参考框（淡虚线轮廓，无厚重花哨背景）
+      final borderPaint = Paint()
+        ..color = const Color(0xFFCBD5E1).withValues(alpha: 0.65)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0;
+      drawDashedLine(canvas, targetRect.topLeft, targetRect.topRight, borderPaint,
+          dashLen: 5, gapLen: 4);
+      drawDashedLine(
+          canvas, targetRect.topRight, targetRect.bottomRight, borderPaint,
+          dashLen: 5, gapLen: 4);
+      drawDashedLine(
+          canvas, targetRect.bottomRight, targetRect.bottomLeft, borderPaint,
+          dashLen: 5, gapLen: 4);
+      drawDashedLine(
+          canvas, targetRect.bottomLeft, targetRect.topLeft, borderPaint,
+          dashLen: 5, gapLen: 4);
+    }
 
     var plotRect = targetRect.deflate(8);
     if (spec.title.isNotEmpty) {
@@ -195,6 +208,77 @@ class BoardDiagramPainter {
               tip = Offset(c.dx + r * math.cos(ang), c.dy + r * math.sin(ang));
             }
           }
+        case 'arc':
+          if (p.cx != null && p.cy != null && p.r != null && p.r! > 0) {
+            final c = mapPt(p.cx!, p.cy!);
+            final r = p.r! * scale;
+            final startRad = (p.startAngle ?? 0) * math.pi / 180.0;
+            final fullSweepRad = (p.sweepAngle ?? 90) * math.pi / 180.0;
+            final sweepRad = fullSweepRad * localT;
+            final rect = Rect.fromCircle(center: c, radius: r);
+            if (localT >= 0.999 &&
+                p.fillColor != null &&
+                p.fillColor!.isNotEmpty) {
+              canvas.drawArc(
+                rect,
+                startRad,
+                fullSweepRad,
+                true,
+                Paint()
+                  ..color = parseColor(p.fillColor).withValues(alpha: 0.18)
+                  ..style = PaintingStyle.fill,
+              );
+            }
+            if (p.dashed) {
+              drawDashedArc(canvas, c, r, startRad, sweepRad, strokePaint);
+            } else {
+              canvas.drawArc(rect, startRad, sweepRad, false, strokePaint);
+            }
+            if (localT < 0.999) {
+              final ang = startRad + sweepRad;
+              tip = Offset(c.dx + r * math.cos(ang), c.dy + r * math.sin(ang));
+            }
+          }
+        case 'rightangle':
+        case 'right_angle':
+          if (p.vx != null &&
+              p.vy != null &&
+              p.ax != null &&
+              p.ay != null &&
+              p.bx != null &&
+              p.by != null) {
+            final v = mapPt(p.vx!, p.vy!);
+            final a = mapPt(p.ax!, p.ay!);
+            final b = mapPt(p.bx!, p.by!);
+            final va = a - v;
+            final vb = b - v;
+            final lenA = va.distance;
+            final lenB = vb.distance;
+            if (lenA > 0.1 && lenB > 0.1) {
+              final s = (p.size ?? 12.0) * scale;
+              final u = Offset(va.dx / lenA * s, va.dy / lenA * s);
+              final w = Offset(vb.dx / lenB * s, vb.dy / lenB * s);
+              final p1 = v + u;
+              final p2 = v + u + w;
+              final p3 = v + w;
+              final raPath = Path()
+                ..moveTo(p1.dx, p1.dy)
+                ..lineTo(p2.dx, p2.dy)
+                ..lineTo(p3.dx, p3.dy);
+              final raPaint = Paint()
+                ..color = strokeColor
+                ..strokeWidth = math.max(1.3, 1.6 * scale)
+                ..strokeCap = StrokeCap.square
+                ..strokeJoin = StrokeJoin.miter
+                ..isAntiAlias = true
+                ..style = PaintingStyle.stroke;
+              if (localT >= 0.999) {
+                canvas.drawPath(raPath, raPaint);
+              } else {
+                tip = _drawPartialPath(canvas, raPath, raPaint, localT);
+              }
+            }
+          }
         case 'polygon':
           if (p.points.length >= 3) {
             final path = Path();
@@ -295,6 +379,11 @@ class BoardDiagramPainter {
         return math.max(20.0, p.points.length * 7.0);
       case 'circle':
         return 22.0;
+      case 'arc':
+        return 14.0;
+      case 'rightangle':
+      case 'right_angle':
+        return 8.0;
       case 'line':
       case 'arrow':
         return 14.0;

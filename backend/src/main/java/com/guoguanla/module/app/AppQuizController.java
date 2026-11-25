@@ -22,8 +22,11 @@ public class AppQuizController {
 
     @Operation(summary = "开始关卡答题（服务端动态生成题目，不返回答案）")
     @PostMapping("/start")
-    public Result<AppQuizVO.StartVO> start(@Valid @RequestBody AppQuizDTO.StartReq req) {
-        return Result.ok(quizService.startGateQuiz(req));
+    public Result<AppQuizVO.StartVO> start(
+            @Valid @RequestBody AppQuizDTO.StartReq req,
+            HttpServletRequest request
+    ) {
+        return Result.ok(quizService.startGateQuiz(req, ServletUrlHelper.resolveBaseOrigin(request)));
     }
 
     @Operation(summary = "上传解答题绘制图片至阿里云OSS")
@@ -60,9 +63,12 @@ public class AppQuizController {
         return Result.ok(quizService.gradeEssayItem(req, ServletUrlHelper.resolveBaseOrigin(request)));
     }
 
-    @Operation(summary = "整关交卷结算（更新进度、判断段位晋升与错题入库）")
+    @Operation(summary = "整关交卷结算（更新进度、判断段位晋升、返回下一关信息与错题入库）")
     @PostMapping("/submit")
-    public Result<AppQuizVO.SubmitResultVO> submit(@Valid @RequestBody AppQuizDTO.SubmitReq req) {
-        return Result.ok(quizService.submitGateQuiz(req));
+    public Result<AppQuizVO.SubmitResultVO> submit(
+            @Valid @RequestBody AppQuizDTO.SubmitReq req,
+            HttpServletRequest request
+    ) {
+        return Result.ok(quizService.submitGateQuiz(req, ServletUrlHelper.resolveBaseOrigin(request)));
     }
 }

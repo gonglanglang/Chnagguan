@@ -111,7 +111,16 @@ enum GlobalCacheKey {
   uiSkin(
     GlobalCacheEntryMeta(
       storageKey: 'ggl_ui_skin',
-      description: '界面 UI 组件库皮肤（welkui / skribble）',
+      description: '界面 UI 组件库皮肤（welkui / skribble / forui）',
+      category: GlobalCacheCategory.preference,
+      preserveOnAppUpdate: true,
+      preserveOnCacheClear: true,
+    ),
+  ),
+  serverDefaultTheme(
+    GlobalCacheEntryMeta(
+      storageKey: 'ggl_server_default_theme',
+      description: '后端下发的学生端默认主题配置快照（下次冷启动进入时优先生效）',
       category: GlobalCacheCategory.preference,
       preserveOnAppUpdate: true,
       preserveOnCacheClear: true,
@@ -302,6 +311,30 @@ class GlobalCache {
 
   Future<void> setUiSkin(String skin) =>
       _prefs.setString(GlobalCacheKey.uiSkin.storageKey, skin);
+
+  AppDefaultTheme? get serverDefaultTheme {
+    final raw =
+        _prefs.getString(GlobalCacheKey.serverDefaultTheme.storageKey);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        return AppDefaultTheme.fromJson(decoded);
+      }
+    } catch (_) {
+      // 忽略损坏缓存
+    }
+    return null;
+  }
+
+  Future<void> setServerDefaultTheme(AppDefaultTheme? theme) async {
+    final key = GlobalCacheKey.serverDefaultTheme.storageKey;
+    if (theme == null) {
+      await _prefs.remove(key);
+    } else {
+      await _prefs.setString(key, jsonEncode(theme.toJson()));
+    }
+  }
 
   String? get customApiBaseUrl {
     final v = _prefs.getString(GlobalCacheKey.customApiBaseUrl.storageKey);
@@ -506,6 +539,7 @@ class GlobalCache {
       'themeHex': themeHex,
       'themeName': themeName,
       'uiSkin': uiSkin,
+      'serverDefaultTheme': serverDefaultTheme?.toJson(),
       'customApiBaseUrl': customApiBaseUrl,
       'lastWatchedVideoLessons': lastWatchedVideoLessons,
       'lastAnnouncementVersion': lastAnnouncementVersion,

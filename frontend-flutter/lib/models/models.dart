@@ -459,11 +459,46 @@ class GradeItem {
   ];
 }
 
+class AppDefaultTheme {
+  const AppDefaultTheme({
+    required this.uiSkin,
+    required this.themeHex,
+    required this.themeName,
+    required this.darkMode,
+    required this.version,
+  });
+
+  final String uiSkin;
+  final String themeHex;
+  final String themeName;
+  final bool darkMode;
+  final String version;
+
+  factory AppDefaultTheme.fromJson(Map<String, dynamic> json) {
+    return AppDefaultTheme(
+      uiSkin: _asString(json['uiSkin'], 'welkui').toLowerCase(),
+      themeHex: _asString(json['themeHex'], '#67C6FF').toUpperCase(),
+      themeName: _asString(json['themeName'], '天青漫画'),
+      darkMode: _asBool(json['darkMode']),
+      version: _asString(json['version'], '1'),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'uiSkin': uiSkin,
+        'themeHex': themeHex,
+        'themeName': themeName,
+        'darkMode': darkMode,
+        'version': version,
+      };
+}
+
 class HomeSummary {
   const HomeSummary({
     required this.guestModeEnabled,
     required this.appNotice,
     this.profile,
+    this.defaultTheme,
     required this.grades,
     required this.realms,
   });
@@ -471,6 +506,7 @@ class HomeSummary {
   final bool guestModeEnabled;
   final String appNotice;
   final AppUserProfile? profile;
+  final AppDefaultTheme? defaultTheme;
   final List<GradeItem> grades;
   final List<RealmItem> realms;
 
@@ -482,6 +518,11 @@ class HomeSummary {
       appNotice: _asString(json['appNotice']),
       profile: json['profile'] is Map<String, dynamic>
           ? AppUserProfile.fromJson(json['profile'] as Map<String, dynamic>)
+          : null,
+      defaultTheme: json['defaultTheme'] is Map<String, dynamic>
+          ? AppDefaultTheme.fromJson(
+              json['defaultTheme'] as Map<String, dynamic>,
+            )
           : null,
       grades: gradesRaw
           .whereType<Map<String, dynamic>>()
@@ -598,14 +639,21 @@ class ClientQuestionItem {
     required this.questionFormat,
     required this.stem,
     required this.options,
+    this.diagram,
+    this.imageUrl,
   });
 
   final int itemIndex;
   final String questionFormat;
   final String stem;
   final List<String> options;
+  final BoardDiagramSpec? diagram;
+  final String? imageUrl;
 
   bool get isEssay => questionFormat == 'ESSAY';
+  bool get hasFigure =>
+      (diagram != null && diagram!.primitives.isNotEmpty) ||
+      (imageUrl != null && imageUrl!.trim().isNotEmpty);
 
   factory ClientQuestionItem.fromJson(Map<String, dynamic> json) {
     return ClientQuestionItem(
@@ -613,6 +661,10 @@ class ClientQuestionItem {
       questionFormat: _asString(json['questionFormat'], 'SINGLE_CHOICE'),
       stem: _asString(json['stem']),
       options: _asStringList(json['options']),
+      diagram: json['diagram'] is Map<String, dynamic>
+          ? BoardDiagramSpec.fromJson(json['diagram'] as Map<String, dynamic>)
+          : null,
+      imageUrl: _asNullableString(json['imageUrl']),
     );
   }
 }
@@ -754,6 +806,8 @@ class EssayAnswerRecord {
     this.gateId,
     required this.gateName,
     required this.stem,
+    this.diagram,
+    this.imageUrl,
     required this.referenceAnswer,
     required this.answerText,
     required this.answerImageUrl,
@@ -774,6 +828,8 @@ class EssayAnswerRecord {
   final int? gateId;
   final String gateName;
   final String stem;
+  final BoardDiagramSpec? diagram;
+  final String? imageUrl;
   final String referenceAnswer;
   final String answerText;
   final String answerImageUrl;
@@ -795,6 +851,10 @@ class EssayAnswerRecord {
       gateId: _asNullableInt(json['gateId']),
       gateName: _asString(json['gateName']),
       stem: _asString(json['stem']),
+      diagram: json['diagram'] is Map<String, dynamic>
+          ? BoardDiagramSpec.fromJson(json['diagram'] as Map<String, dynamic>)
+          : null,
+      imageUrl: _asNullableString(json['imageUrl']),
       referenceAnswer: _asString(json['referenceAnswer']),
       answerText: _asString(json['answerText']),
       answerImageUrl: _asString(json['answerImageUrl']),
@@ -978,12 +1038,16 @@ class WrongReviewItem {
     this.questionFormat,
     required this.correctAnswer,
     required this.analysis,
+    this.diagram,
+    this.imageUrl,
   });
 
   final String stem;
   final String? questionFormat;
   final String correctAnswer;
   final String analysis;
+  final BoardDiagramSpec? diagram;
+  final String? imageUrl;
 
   factory WrongReviewItem.fromJson(Map<String, dynamic> json) {
     return WrongReviewItem(
@@ -991,6 +1055,10 @@ class WrongReviewItem {
       questionFormat: _asNullableString(json['questionFormat']),
       correctAnswer: _asString(json['correctAnswer']),
       analysis: _asString(json['analysis']),
+      diagram: json['diagram'] is Map<String, dynamic>
+          ? BoardDiagramSpec.fromJson(json['diagram'] as Map<String, dynamic>)
+          : null,
+      imageUrl: _asNullableString(json['imageUrl']),
     );
   }
 }
@@ -1012,6 +1080,12 @@ class SubmitResult {
     this.promotedRealm,
     required this.wrongItems,
     required this.masteredCount,
+    this.nextGateId,
+    this.nextGateIndex,
+    this.nextGateName,
+    this.nextChapterId,
+    this.nextChapterName,
+    this.nextGateCrossChapter = false,
   });
 
   final String sessionNo;
@@ -1029,6 +1103,14 @@ class SubmitResult {
   final RealmItem? promotedRealm;
   final List<WrongReviewItem> wrongItems;
   final int masteredCount;
+  final int? nextGateId;
+  final int? nextGateIndex;
+  final String? nextGateName;
+  final int? nextChapterId;
+  final String? nextChapterName;
+  final bool nextGateCrossChapter;
+
+  bool get hasNextGate => nextGateId != null && nextGateId! > 0;
 
   factory SubmitResult.fromJson(Map<String, dynamic> json) {
     final wrongsRaw = json['wrongItems'] as List<dynamic>? ?? const [];
@@ -1055,6 +1137,12 @@ class SubmitResult {
           .map(WrongReviewItem.fromJson)
           .toList(),
       masteredCount: _asInt(json['masteredCount']),
+      nextGateId: _asNullableInt(json['nextGateId']),
+      nextGateIndex: _asNullableInt(json['nextGateIndex']),
+      nextGateName: _asNullableString(json['nextGateName']),
+      nextChapterId: _asNullableInt(json['nextChapterId']),
+      nextChapterName: _asNullableString(json['nextChapterName']),
+      nextGateCrossChapter: _asBool(json['nextGateCrossChapter']),
     );
   }
 }
@@ -1070,6 +1158,8 @@ class WrongQuestionItem {
     required this.gateName,
     this.questionFormat,
     required this.stem,
+    this.diagram,
+    this.imageUrl,
     required this.options,
     required this.answerIndex,
     this.referenceAnswer,
@@ -1088,6 +1178,8 @@ class WrongQuestionItem {
   final String gateName;
   final String? questionFormat;
   final String stem;
+  final BoardDiagramSpec? diagram;
+  final String? imageUrl;
   final List<String> options;
   final int answerIndex;
   final String? referenceAnswer;
@@ -1125,6 +1217,10 @@ class WrongQuestionItem {
       gateName: _asString(json['gateName']),
       questionFormat: _asNullableString(json['questionFormat']),
       stem: _asString(json['stem']),
+      diagram: json['diagram'] is Map<String, dynamic>
+          ? BoardDiagramSpec.fromJson(json['diagram'] as Map<String, dynamic>)
+          : null,
+      imageUrl: _asNullableString(json['imageUrl']),
       options: _asStringList(json['options']),
       answerIndex: _asInt(json['answerIndex']),
       referenceAnswer: _asNullableString(json['referenceAnswer']),
@@ -1256,6 +1352,15 @@ class DiagramPrimitive {
     this.cx,
     this.cy,
     this.r,
+    this.startAngle,
+    this.sweepAngle,
+    this.vx,
+    this.vy,
+    this.ax,
+    this.ay,
+    this.bx,
+    this.by,
+    this.size,
     this.x,
     this.y,
     this.points = const [],
@@ -1274,6 +1379,15 @@ class DiagramPrimitive {
   final double? cx;
   final double? cy;
   final double? r;
+  final double? startAngle;
+  final double? sweepAngle;
+  final double? vx;
+  final double? vy;
+  final double? ax;
+  final double? ay;
+  final double? bx;
+  final double? by;
+  final double? size;
   final double? x;
   final double? y;
   final List<List<double>> points;
@@ -1304,13 +1418,23 @@ class DiagramPrimitive {
       cx: _asNullableDouble(json['cx']),
       cy: _asNullableDouble(json['cy']),
       r: _asNullableDouble(json['r']),
+      startAngle: _asNullableDouble(json['startAngle']),
+      sweepAngle: _asNullableDouble(json['sweepAngle']),
+      vx: _asNullableDouble(json['vx']),
+      vy: _asNullableDouble(json['vy']),
+      ax: _asNullableDouble(json['ax']),
+      ay: _asNullableDouble(json['ay']),
+      bx: _asNullableDouble(json['bx']),
+      by: _asNullableDouble(json['by']),
+      size: _asNullableDouble(json['size']),
       x: _asNullableDouble(json['x']),
       y: _asNullableDouble(json['y']),
       points: pts,
       label: _asNullableString(json['label']),
       text: _asNullableString(json['text']),
       color: _asString(json['color'], '#1E293B'),
-      fillColor: _asNullableString(json['fillColor']),
+      fillColor: _asNullableString(json['fillColor']) ??
+          _asNullableString(json['fill']),
       dashed: _asBool(json['dashed']),
     );
   }
@@ -1324,6 +1448,15 @@ class DiagramPrimitive {
         if (cx != null) 'cx': cx,
         if (cy != null) 'cy': cy,
         if (r != null) 'r': r,
+        if (startAngle != null) 'startAngle': startAngle,
+        if (sweepAngle != null) 'sweepAngle': sweepAngle,
+        if (vx != null) 'vx': vx,
+        if (vy != null) 'vy': vy,
+        if (ax != null) 'ax': ax,
+        if (ay != null) 'ay': ay,
+        if (bx != null) 'bx': bx,
+        if (by != null) 'by': by,
+        if (size != null) 'size': size,
         if (x != null) 'x': x,
         if (y != null) 'y': y,
         if (points.isNotEmpty) 'points': points,

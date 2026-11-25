@@ -71,6 +71,7 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
         upgradeNoticeCopy();
         ensureAppVersionConfigs();
         ensureAiConfigs();
+        ensureDefaultThemeConfigs();
     }
 
     private void ensureEduRealmTable() {
@@ -330,6 +331,14 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
         ensureConfig("ai_max_tokens", "4096", "AI 单次最大输出 Token 数");
         ensureConfig("ai_timeout_sec", "90", "AI 上游请求超时时间（秒）");
         ensureConfig("ai_system_prompt", "", "自定义 AI 数学助教系统提示词（留空使用内置教研提示词）");
+    }
+
+    private void ensureDefaultThemeConfigs() {
+        ensureConfig("app_default_ui_skin", "welkui", "学生端默认 UI 组件皮肤（welkui / skribble / forui）");
+        ensureConfig("app_default_theme_hex", "#67C6FF", "学生端默认主题强调色 HEX");
+        ensureConfig("app_default_theme_name", "天青漫画", "学生端默认主题强调色名称");
+        ensureConfig("app_default_dark_mode", "false", "学生端默认是否启用暗黑模式");
+        ensureConfig("app_default_theme_version", "1", "学生端默认主题配置版本号（后台保存时自动更新）");
     }
 
     private void ensureConfig(String key, String value, String desc) {
