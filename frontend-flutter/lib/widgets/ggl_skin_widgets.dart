@@ -123,7 +123,110 @@ class GglIconButton extends StatelessWidget {
   }
 }
 
-/// 皮肤自适应按钮：WelkUI -> [WelkButton]，Skribble -> [WiredElevatedButton] / [WiredButton]。
+/// 皮肤自适应头像：WelkUI -> [WelkAvatar]，Skribble -> [WiredAvatar]。
+class GglAvatar extends StatelessWidget {
+  const GglAvatar({
+    super.key,
+    required this.alt,
+    this.image,
+    this.size = WelkAvatarSize.large,
+  });
+
+  final String alt;
+  final ImageProvider? image;
+  final WelkAvatarSize size;
+
+  @override
+  Widget build(BuildContext context) {
+    if (AppTheme.isSkribble(context)) {
+      final wired = WiredTheme.of(context);
+      final radius = switch (size) {
+        WelkAvatarSize.small => 18.0,
+        WelkAvatarSize.medium => 24.0,
+        WelkAvatarSize.large => 28.0,
+      };
+      final initial = alt.trim().isNotEmpty ? alt.trim().substring(0, 1) : '学';
+      return WiredAvatar(
+        radius: radius,
+        backgroundImage: image,
+        backgroundColor: wired.markerColor.withValues(alpha: 0.45),
+        foregroundColor: wired.textColor,
+        child: image == null
+            ? Text(
+                initial,
+                style: TextStyle(
+                  color: wired.textColor,
+                  fontWeight: FontWeight.w800,
+                ),
+              )
+            : null,
+      );
+    }
+
+    return WelkAvatar(
+      alt: alt,
+      size: size,
+      image: image,
+    );
+  }
+}
+
+/// 皮肤自适应复选框：WelkUI -> [WelkCheckBox]，Skribble -> [WiredCheckbox]。
+class GglCheckbox extends StatelessWidget {
+  const GglCheckbox({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.label,
+  });
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final String? label;
+
+  @override
+  Widget build(BuildContext context) {
+    if (AppTheme.isSkribble(context)) {
+      final wired = WiredTheme.of(context);
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => onChanged(!value),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            WiredCheckbox(
+              value: value,
+              semanticLabel: label,
+              onChanged: (v) => onChanged(v ?? false),
+            ),
+            if (label != null && label!.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Text(
+                label!,
+                style: TextStyle(
+                  color: wired.textColor,
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  fontFamilyFallback: AppTheme.cjkFontFallback,
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    return WelkCheckBox(
+      value: value,
+      label: label ?? '',
+      onChanged: onChanged,
+    );
+  }
+}
+
+/// 皮肤自适应按钮：
+/// - `welkui` 皮肤渲染 [WelkButton] / 扁平漫画紧凑按钮；
+/// - `skribble` 皮肤渲染 [WiredElevatedButton] / [WiredButton]（手绘抖动描边 + 素描影线质感）。
 class GglButton extends StatelessWidget {
   const GglButton({
     super.key,
@@ -133,6 +236,7 @@ class GglButton extends StatelessWidget {
     this.size = WelkButtonSize.small,
     this.icon,
     this.compact = false,
+    this.loading = false,
   });
 
   final String label;
@@ -141,17 +245,26 @@ class GglButton extends StatelessWidget {
   final WelkButtonSize size;
   final IconData? icon;
   final bool compact;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
     final isSkribble = AppTheme.isSkribble(context);
     final colors = WelkTheme.of(context).resolveColors(context);
+    final effectiveTap = loading ? null : onPressed;
 
     final content = Row(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        if (icon != null) ...[
+        if (loading) ...[
+          const SizedBox(
+            width: 13,
+            height: 13,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 5),
+        ] else if (icon != null) ...[
           Icon(icon, size: compact ? 14 : 16),
           SizedBox(width: compact ? 3 : 5),
         ],
@@ -172,7 +285,8 @@ class GglButton extends StatelessWidget {
 
     if (isSkribble) {
       final wired = WiredTheme.of(context);
-      final isPrimary = variant == WelkButtonVariant.primary;
+      final isFilledVariant = variant != WelkButtonVariant.secondary &&
+          variant != WelkButtonVariant.ghost;
       final tint = switch (variant) {
         WelkButtonVariant.primary => wired.markerColor,
         WelkButtonVariant.secondary => wired.fillColor,
@@ -182,60 +296,84 @@ class GglButton extends StatelessWidget {
         WelkButtonVariant.error => colors.error,
         WelkButtonVariant.ghost => wired.fillColor,
       };
-      final textColor = (variant == WelkButtonVariant.secondary ||
-              variant == WelkButtonVariant.ghost)
-          ? wired.textColor
-          : colors.onFill(tint);
+      final textColor = isFilledVariant ? colors.onFill(tint) : wired.textColor;
 
       if (compact) {
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: onPressed,
+          onTap: effectiveTap,
           child: Opacity(
-            opacity: onPressed == null ? 0.45 : 1.0,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-              decoration: RoughBoxDecoration(
-                drawConfig: wired.drawConfig,
-                shape: RoughBoxShape.roundedRectangle,
-                borderRadius: BorderRadius.circular(8),
-                borderStyle: RoughDrawingStyle(
-                  width: 1.7,
-                  color: wired.borderColor,
+            opacity: effectiveTap == null ? 0.45 : 1.0,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                if (isFilledVariant)
+                  Positioned(
+                    left: 2,
+                    top: 2,
+                    right: -2,
+                    bottom: -2,
+                    child: Container(
+                      decoration: RoughBoxDecoration(
+                        drawConfig: wired.drawConfig,
+                        shape: RoughBoxShape.roundedRectangle,
+                        borderRadius: BorderRadius.circular(7),
+                        borderStyle: RoughDrawingStyle(
+                          width: 0.7,
+                          color: wired.borderColor,
+                        ),
+                        fillStyle: RoughDrawingStyle(color: wired.borderColor),
+                        filler: HachureFiller(FillerConfig.build(hachureGap: 2.5)),
+                      ),
+                    ),
+                  ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  decoration: RoughBoxDecoration(
+                    drawConfig: wired.drawConfig,
+                    shape: RoughBoxShape.roundedRectangle,
+                    borderRadius: BorderRadius.circular(7),
+                    borderStyle: RoughDrawingStyle(
+                      width: wired.strokeWidth * 0.85,
+                      color: wired.borderColor,
+                    ),
+                    fillStyle: RoughDrawingStyle(color: tint),
+                    filler: isFilledVariant
+                        ? HachureFiller(FillerConfig.build(hachureGap: 2.6))
+                        : SolidFiller(FillerConfig.build()),
+                  ),
+                  child: DefaultTextStyle.merge(
+                    style: TextStyle(color: textColor),
+                    child: IconTheme.merge(
+                      data: IconThemeData(color: textColor),
+                      child: content,
+                    ),
+                  ),
                 ),
-                fillStyle: RoughDrawingStyle(color: tint),
-                filler: SolidFiller(FillerConfig.build()),
-              ),
-              child: DefaultTextStyle.merge(
-                style: TextStyle(color: textColor),
-                child: IconTheme.merge(
-                  data: IconThemeData(color: textColor),
-                  child: content,
-                ),
-              ),
+              ],
             ),
           ),
         );
       }
 
-      final themed = WiredThemeScope(
+      return WiredThemeScope(
         data: wired.copyWith(
           fillColor: tint,
           textColor: textColor,
         ),
-        child: isPrimary
+        child: isFilledVariant
             ? WiredElevatedButton(
-                onPressed: onPressed,
+                onPressed: effectiveTap,
                 semanticLabel: label,
                 child: content,
               )
             : WiredButton(
-                onPressed: onPressed,
+                onPressed: effectiveTap,
                 semanticLabel: label,
                 child: content,
               ),
       );
-      return themed;
     }
 
     if (compact) {
@@ -254,9 +392,9 @@ class GglButton extends StatelessWidget {
           : colors.onFill(bg);
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: onPressed,
+        onTap: effectiveTap,
         child: Opacity(
-          opacity: onPressed == null ? 0.45 : 1.0,
+          opacity: effectiveTap == null ? 0.45 : 1.0,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
             decoration: BoxDecoration(
@@ -279,7 +417,7 @@ class GglButton extends StatelessWidget {
     return WelkButton(
       variant: variant,
       size: size,
-      onPressed: onPressed,
+      onPressed: effectiveTap,
       child: content,
     );
   }
@@ -354,7 +492,7 @@ class GglSwitch extends StatelessWidget {
   }
 }
 
-/// 皮肤自适应输入框：WelkUI -> [WelkInput]，Skribble -> [WiredInput]。
+/// 皮肤自适应单行输入框：WelkUI -> [WelkInput]，Skribble -> [WiredInput]。
 class GglInput extends StatefulWidget {
   const GglInput({
     super.key,
@@ -364,6 +502,7 @@ class GglInput extends StatefulWidget {
     this.placeholder,
     this.keyboardType,
     this.obscureText = false,
+    this.onToggleObscure,
     this.allowClear = true,
   });
 
@@ -373,6 +512,7 @@ class GglInput extends StatefulWidget {
   final String? placeholder;
   final TextInputType? keyboardType;
   final bool obscureText;
+  final VoidCallback? onToggleObscure;
   final bool allowClear;
 
   @override
@@ -426,6 +566,20 @@ class _GglInputState extends State<GglInput> {
                   ),
                 ),
               ),
+              if (widget.onToggleObscure != null)
+                GestureDetector(
+                  onTap: widget.onToggleObscure,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: Icon(
+                      widget.obscureText
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                      size: 18,
+                      color: wired.disabledTextColor,
+                    ),
+                  ),
+                ),
               if (widget.allowClear && widget.value.isNotEmpty)
                 GestureDetector(
                   onTap: () {
@@ -467,14 +621,120 @@ class _GglInputState extends State<GglInput> {
       label: widget.label,
       value: widget.value,
       placeholder: widget.placeholder,
+      type: widget.obscureText ? WelkInputType.password : WelkInputType.text,
       onChanged: widget.onChanged,
-      endAction: widget.allowClear && widget.value.isNotEmpty
+      endAction: widget.onToggleObscure != null
           ? WelkInputAction(
-              icon: const Icon(Icons.close_rounded),
-              label: '清空${widget.label}',
-              onPressed: () => widget.onChanged(''),
+              icon: Icon(
+                widget.obscureText
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+              ),
+              label: widget.obscureText ? '显示密码' : '隐藏密码',
+              onPressed: widget.onToggleObscure!,
             )
-          : null,
+          : (widget.allowClear && widget.value.isNotEmpty
+              ? WelkInputAction(
+                  icon: const Icon(Icons.close_rounded),
+                  label: '清空${widget.label}',
+                  onPressed: () => widget.onChanged(''),
+                )
+              : null),
+    );
+  }
+}
+
+/// 皮肤自适应多行文本域：WelkUI -> 粗描边漫画文本域，Skribble -> [WiredTextArea]。
+class GglTextArea extends StatelessWidget {
+  const GglTextArea({
+    super.key,
+    required this.controller,
+    this.label,
+    this.hintText,
+    this.minLines = 4,
+    this.maxLines = 7,
+    this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final String? label;
+  final String? hintText;
+  final int minLines;
+  final int maxLines;
+  final ValueChanged<String>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = WelkTheme.of(context).resolveColors(context);
+    final isSkribble = AppTheme.isSkribble(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (label != null && label!.isNotEmpty) ...[
+          Text(
+            label!,
+            style: TextStyle(
+              color: isSkribble ? WiredTheme.of(context).textColor : colors.ink,
+              fontSize: 13.5,
+              fontWeight: FontWeight.w800,
+              fontFamilyFallback: AppTheme.cjkFontFallback,
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
+        if (isSkribble)
+          WiredTextArea(
+            controller: controller,
+            hintText: hintText,
+            minLines: minLines,
+            maxLines: maxLines,
+            semanticLabel: label,
+            style: TextStyle(
+              color: WiredTheme.of(context).textColor,
+              fontSize: 14,
+              height: 1.5,
+              fontFamilyFallback: AppTheme.cjkFontFallback,
+            ),
+            onChanged: onChanged,
+          )
+        else
+          Container(
+            decoration: BoxDecoration(
+              color: colors.paper,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: colors.outline,
+                width: colors.borderWidth,
+              ),
+            ),
+            child: TextField(
+              controller: controller,
+              minLines: minLines,
+              maxLines: maxLines,
+              onChanged: onChanged,
+              style: TextStyle(
+                color: colors.ink,
+                fontSize: 14,
+                height: 1.5,
+                fontFamilyFallback: AppTheme.cjkFontFallback,
+              ),
+              decoration: InputDecoration(
+                hintText: hintText,
+                hintStyle: TextStyle(
+                  color: AppTheme.mutedText(context),
+                  fontSize: 13.5,
+                ),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -491,49 +751,53 @@ Future<T?> showGglBottomSheet<T>({
       context: context,
       builder: (sheetCtx) {
         final wired = WiredTheme.of(sheetCtx);
+        final maxSheetHeight = MediaQuery.sizeOf(sheetCtx).height * 0.82;
         return Container(
           color: wired.fillColor,
           child: SafeArea(
             top: false,
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                4,
-                16,
-                16 + MediaQuery.of(sheetCtx).viewInsets.bottom,
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            title,
-                            style: TextStyle(
-                              color: wired.textColor,
-                              fontSize: 16.5,
-                              fontWeight: FontWeight.w800,
-                              fontFamilyFallback: AppTheme.cjkFontFallback,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: maxSheetHeight),
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  4,
+                  16,
+                  16 + MediaQuery.of(sheetCtx).viewInsets.bottom,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              title,
+                              style: TextStyle(
+                                color: wired.textColor,
+                                fontSize: 16.5,
+                                fontWeight: FontWeight.w800,
+                                fontFamilyFallback: AppTheme.cjkFontFallback,
+                              ),
                             ),
                           ),
-                        ),
-                        GglButton(
-                          label: closeLabel,
-                          variant: WelkButtonVariant.secondary,
-                          compact: true,
-                          onPressed: () => Navigator.of(sheetCtx).pop(),
-                        ),
-                      ],
-                    ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8),
-                      child: WiredDivider(),
-                    ),
-                    builder(sheetCtx),
-                  ],
+                          GglButton(
+                            label: closeLabel,
+                            variant: WelkButtonVariant.secondary,
+                            compact: true,
+                            onPressed: () => Navigator.of(sheetCtx).pop(),
+                          ),
+                        ],
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: WiredDivider(),
+                      ),
+                      builder(sheetCtx),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -547,11 +811,24 @@ Future<T?> showGglBottomSheet<T>({
     context: context,
     position: WelkDrawerPosition.bottom,
     closeOnTapOutside: true,
-    builder: (drawerCtx) => WelkDrawer(
-      title: Text(title),
-      closeLabel: closeLabel,
-      onClose: () => Navigator.of(drawerCtx).pop(),
-      child: builder(drawerCtx),
-    ),
+    builder: (drawerCtx) {
+      final maxBodyHeight = MediaQuery.sizeOf(drawerCtx).height * 0.72;
+      return WelkDrawer(
+        title: Text(title),
+        closeLabel: closeLabel,
+        onClose: () => Navigator.of(drawerCtx).pop(),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxBodyHeight),
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(drawerCtx).viewInsets.bottom,
+            ),
+            child: SingleChildScrollView(
+              child: builder(drawerCtx),
+            ),
+          ),
+        ),
+      );
+    },
   );
 }

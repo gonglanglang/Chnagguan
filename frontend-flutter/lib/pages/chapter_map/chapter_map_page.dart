@@ -226,7 +226,7 @@ class _ChapterMapPageState extends State<ChapterMapPage> {
                       ),
                     ],
                     const SizedBox(height: 16),
-                    const WelkDivider(variant: WelkDividerVariant.dashed),
+                    const GglDivider(verticalPadding: 0),
                     const SizedBox(height: 14),
                     Row(
                       children: [

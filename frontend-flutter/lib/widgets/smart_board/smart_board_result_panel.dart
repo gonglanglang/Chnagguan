@@ -34,6 +34,8 @@ class SmartBoardResultPanel extends StatefulWidget {
     required this.onEditProblem,
     required this.onRecropFigure,
     required this.onCloseActiveTab,
+    this.onClearHandwritingToSolve,
+    this.showClearHandwritingAction = false,
     this.problem,
     this.ideas,
     this.diagnosis,
@@ -57,9 +59,11 @@ class SmartBoardResultPanel extends StatefulWidget {
   final ValueChanged<Offset> onPositionChanged;
   final ValueChanged<BoardResultTab> onTabChanged;
   final VoidCallback onToggleCollapsed;
-  final VoidCallback onEditProblem;
-  final VoidCallback onRecropFigure;
-  final VoidCallback onCloseActiveTab;
+  final VoidCallback? onEditProblem;
+  final VoidCallback? onRecropFigure;
+  final VoidCallback? onCloseActiveTab;
+  final VoidCallback? onClearHandwritingToSolve;
+  final bool showClearHandwritingAction;
 
   final AiRecognizeResult? problem;
   final AiBoardGuidance? ideas;
@@ -400,6 +404,16 @@ class _SmartBoardResultPanelState extends State<SmartBoardResultPanel> {
                 ],
               ),
             ),
+            if (widget.showClearHandwritingAction &&
+                widget.onClearHandwritingToSolve != null) ...[
+              GglButton(
+                label: '清笔迹作答',
+                compact: true,
+                variant: WelkButtonVariant.warning,
+                onPressed: widget.onClearHandwritingToSolve,
+              ),
+              const SizedBox(width: 5),
+            ],
             GglButton(
               label: '编辑',
               compact: true,

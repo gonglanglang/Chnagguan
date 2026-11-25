@@ -252,43 +252,31 @@ class _LoginPageState extends State<LoginPage> {
                           GglComicPanel(
                             child: Column(
                               children: [
-                                WelkInput(
+                                GglInput(
                                   label: '用户名',
                                   value: _loginAccount,
                                   placeholder: '请输入用户名',
                                   onChanged: (v) =>
                                       setState(() => _loginAccount = v),
-                                  textInputAction: TextInputAction.next,
                                 ),
                                 const SizedBox(height: 14),
-                                WelkInput(
+                                GglInput(
                                   label: '密码',
                                   value: _loginPassword,
-                                  type: _showLoginPwd
-                                      ? WelkInputType.text
-                                      : WelkInputType.password,
+                                  obscureText: !_showLoginPwd,
+                                  onToggleObscure: () => setState(
+                                    () => _showLoginPwd = !_showLoginPwd,
+                                  ),
                                   placeholder: '请输入密码',
                                   onChanged: (v) =>
                                       setState(() => _loginPassword = v),
-                                  onSubmitted: (_) => _handleLogin(),
-                                  endAction: WelkInputAction(
-                                    icon: Icon(
-                                      _showLoginPwd
-                                          ? Icons.visibility_off_rounded
-                                          : Icons.visibility_rounded,
-                                    ),
-                                    label: _showLoginPwd ? '隐藏密码' : '显示密码',
-                                    onPressed: () => setState(
-                                      () => _showLoginPwd = !_showLoginPwd,
-                                    ),
-                                  ),
                                 ),
                                 const SizedBox(height: 8),
                                 Row(
                                   mainAxisAlignment:
                                       MainAxisAlignment.spaceBetween,
                                   children: [
-                                    WelkCheckBox(
+                                    GglCheckbox(
                                       value: _rememberAccount,
                                       label: '记住用户名',
                                       onChanged: (v) =>
@@ -322,47 +310,32 @@ class _LoginPageState extends State<LoginPage> {
                           GglComicPanel(
                             child: Column(
                               children: [
-                                WelkInput(
+                                GglInput(
                                   label: '用户名 *',
                                   value: _regUsername,
                                   placeholder: '3~16 位字母或数字',
-                                  isRequired: true,
                                   onChanged: (v) =>
                                       setState(() => _regUsername = v),
-                                  textInputAction: TextInputAction.next,
                                 ),
                                 const SizedBox(height: 14),
-                                WelkInput(
+                                GglInput(
                                   label: '昵称 *',
                                   value: _regNickname,
                                   placeholder: '闯关时显示的名字',
-                                  isRequired: true,
                                   onChanged: (v) =>
                                       setState(() => _regNickname = v),
-                                  textInputAction: TextInputAction.next,
                                 ),
                                 const SizedBox(height: 14),
-                                WelkInput(
+                                GglInput(
                                   label: '密码 *',
                                   value: _regPassword,
-                                  type: _showRegisterPwd
-                                      ? WelkInputType.text
-                                      : WelkInputType.password,
+                                  obscureText: !_showRegisterPwd,
+                                  onToggleObscure: () => setState(
+                                    () => _showRegisterPwd = !_showRegisterPwd,
+                                  ),
                                   placeholder: '至少 6 位',
-                                  isRequired: true,
                                   onChanged: (v) =>
                                       setState(() => _regPassword = v),
-                                  endAction: WelkInputAction(
-                                    icon: Icon(
-                                      _showRegisterPwd
-                                          ? Icons.visibility_off_rounded
-                                          : Icons.visibility_rounded,
-                                    ),
-                                    label: _showRegisterPwd ? '隐藏密码' : '显示密码',
-                                    onPressed: () => setState(
-                                      () => _showRegisterPwd = !_showRegisterPwd,
-                                    ),
-                                  ),
                                 ),
                               ],
                             ),

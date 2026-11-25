@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../core/utils/math_parser.dart';
 import '../../models/models.dart';
 
 enum BoardToolMode {
@@ -365,6 +366,202 @@ class SmartBoardCardState {
       ideasWidth: ideasWidth ?? this.ideasWidth,
       diagnosisWidth: diagnosisWidth ?? this.diagnosisWidth,
       solutionWidth: solutionWidth ?? this.solutionWidth,
+    );
+  }
+}
+
+/// 完整画板持久化记录：自动以题目为标题保存画板全部信息（笔迹、几何、视口、原题与配图、AI 思路/诊断/解题、面板位置）。
+class SavedSmartBoardRecord {
+  const SavedSmartBoardRecord({
+    required this.id,
+    required this.title,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+    this.strokes = const [],
+    this.shapes = const [],
+    this.paperStyle = BoardPaperStyle.dots,
+    this.panX = 0,
+    this.panY = 0,
+    this.zoom = 1.0,
+    this.problem,
+    this.ideas,
+    this.diagnosis,
+    this.solution,
+    this.photoB64,
+    this.purifyFigures = true,
+    this.activeResultTabName,
+    this.resultCollapsed = false,
+    this.resultPanelPos,
+  });
+
+  final String id;
+  final String title;
+  final int createdAtMs;
+  final int updatedAtMs;
+  final List<BoardStroke> strokes;
+  final List<BoardShape> shapes;
+  final BoardPaperStyle paperStyle;
+  final double panX;
+  final double panY;
+  final double zoom;
+  final AiRecognizeResult? problem;
+  final AiBoardGuidance? ideas;
+  final AiBoardGuidance? diagnosis;
+  final AiBoardGuidance? solution;
+  final String? photoB64;
+  final bool purifyFigures;
+  final String? activeResultTabName;
+  final bool resultCollapsed;
+  final Offset? resultPanelPos;
+
+  bool get hasMeaningfulContent =>
+      strokes.isNotEmpty ||
+      shapes.isNotEmpty ||
+      problem != null ||
+      ideas != null ||
+      diagnosis != null ||
+      solution != null;
+
+  /// 根据题目自动提取规范标题（优先题干概要/题目标题，自动去除 LaTeX 符号噪音）。
+  static String deriveTitle(
+    AiRecognizeResult? problem, {
+    String fallback = '未命名画板',
+  }) {
+    if (problem == null) return fallback;
+    final rawTitle = problem.title.trim();
+    final isGenericTitle = rawTitle.isEmpty ||
+        rawTitle == '数学解答题' ||
+        rawTitle == '手动输入题目' ||
+        rawTitle == '手写数学题';
+
+    String candidate = '';
+    if (!isGenericTitle) {
+      candidate = MathParser.renderPlainText(rawTitle);
+    }
+    if (candidate.trim().isEmpty && problem.problemText.trim().isNotEmpty) {
+      final firstLine = problem.problemText
+          .trim()
+          .split(RegExp(r'\r?\n'))
+          .firstWhere((e) => e.trim().isNotEmpty, orElse: () => '');
+      candidate = MathParser.renderPlainText(firstLine);
+    }
+    if (candidate.trim().isEmpty && rawTitle.isNotEmpty) {
+      candidate = MathParser.renderPlainText(rawTitle);
+    }
+    candidate = candidate.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (candidate.isEmpty) return fallback;
+    if (candidate.length > 28) {
+      return '${candidate.substring(0, 28)}…';
+    }
+    return candidate;
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'createdAtMs': createdAtMs,
+        'updatedAtMs': updatedAtMs,
+        'paper': paperStyle.name,
+        'panX': double.parse(panX.toStringAsFixed(1)),
+        'panY': double.parse(panY.toStringAsFixed(1)),
+        'zoom': double.parse(zoom.toStringAsFixed(3)),
+        'strokes': strokes.map((s) => s.toJson()).toList(),
+        'shapes': shapes.map((s) => s.toJson()).toList(),
+        if (problem != null) 'problem': problem!.toJson(),
+        if (ideas != null) 'ideas': ideas!.toJson(),
+        if (diagnosis != null) 'diagnosis': diagnosis!.toJson(),
+        if (solution != null) 'solution': solution!.toJson(),
+        if (photoB64 != null && photoB64!.isNotEmpty) 'photoB64': photoB64,
+        'purifyFigures': purifyFigures,
+        if (activeResultTabName != null && activeResultTabName!.isNotEmpty)
+          'activeTab': activeResultTabName,
+        'resultCollapsed': resultCollapsed,
+        if (resultPanelPos != null)
+          'resultPanelPos': [
+            double.parse(resultPanelPos!.dx.toStringAsFixed(1)),
+            double.parse(resultPanelPos!.dy.toStringAsFixed(1)),
+          ],
+      };
+
+  static SavedSmartBoardRecord? fromJson(Map<String, dynamic> json) {
+    final id = json['id']?.toString().trim() ?? '';
+    if (id.isEmpty) return null;
+
+    final rawStrokes = json['strokes'] as List<dynamic>? ?? const [];
+    final strokes = rawStrokes
+        .whereType<Map>()
+        .map((e) => BoardStroke.fromJson(Map<String, dynamic>.from(e)))
+        .whereType<BoardStroke>()
+        .toList();
+
+    final rawShapes = json['shapes'] as List<dynamic>? ?? const [];
+    final shapes = rawShapes
+        .whereType<Map>()
+        .map((e) => BoardShape.fromJson(Map<String, dynamic>.from(e)))
+        .whereType<BoardShape>()
+        .toList();
+
+    final paperName = json['paper']?.toString() ?? 'dots';
+    final paperStyle = BoardPaperStyle.values.firstWhere(
+      (p) => p.name == paperName,
+      orElse: () => BoardPaperStyle.dots,
+    );
+
+    final problemMap = json['problem'];
+    final problem = problemMap is Map
+        ? AiRecognizeResult.fromJson(Map<String, dynamic>.from(problemMap))
+        : null;
+
+    final ideasMap = json['ideas'];
+    final ideas = ideasMap is Map
+        ? AiBoardGuidance.fromJson(Map<String, dynamic>.from(ideasMap))
+        : null;
+
+    final diagnosisMap = json['diagnosis'];
+    final diagnosis = diagnosisMap is Map
+        ? AiBoardGuidance.fromJson(Map<String, dynamic>.from(diagnosisMap))
+        : null;
+
+    final solutionMap = json['solution'];
+    final solution = solutionMap is Map
+        ? AiBoardGuidance.fromJson(Map<String, dynamic>.from(solutionMap))
+        : null;
+
+    Offset? panelPos;
+    final rawPos = json['resultPanelPos'];
+    if (rawPos is List && rawPos.length >= 2) {
+      final px = (rawPos[0] as num?)?.toDouble();
+      final py = (rawPos[1] as num?)?.toDouble();
+      if (px != null && py != null) {
+        panelPos = Offset(px, py);
+      }
+    }
+
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final rawTitle = json['title']?.toString().trim() ?? '';
+    final resolvedTitle =
+        rawTitle.isNotEmpty ? rawTitle : deriveTitle(problem);
+
+    return SavedSmartBoardRecord(
+      id: id,
+      title: resolvedTitle,
+      createdAtMs: (json['createdAtMs'] as num?)?.toInt() ?? nowMs,
+      updatedAtMs: (json['updatedAtMs'] as num?)?.toInt() ?? nowMs,
+      strokes: strokes,
+      shapes: shapes,
+      paperStyle: paperStyle,
+      panX: (json['panX'] as num?)?.toDouble() ?? 0,
+      panY: (json['panY'] as num?)?.toDouble() ?? 0,
+      zoom: ((json['zoom'] as num?)?.toDouble() ?? 1.0).clamp(0.25, 3.0),
+      problem: problem,
+      ideas: ideas,
+      diagnosis: diagnosis,
+      solution: solution,
+      photoB64: json['photoB64']?.toString(),
+      purifyFigures: json['purifyFigures'] != false,
+      activeResultTabName: json['activeTab']?.toString(),
+      resultCollapsed: json['resultCollapsed'] == true,
+      resultPanelPos: panelPos,
     );
   }
 }

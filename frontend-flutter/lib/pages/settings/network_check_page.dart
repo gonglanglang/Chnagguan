@@ -171,7 +171,7 @@ class _NetworkCheckPageState extends State<NetworkCheckPage> {
                   ),
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 12),
-                    child: WelkDivider(variant: WelkDividerVariant.dashed),
+                    child: GglDivider(verticalPadding: 0),
                   ),
                   _ResultLine(
                     label: '接口服务',

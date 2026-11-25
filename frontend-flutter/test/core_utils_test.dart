@@ -4,6 +4,7 @@ import 'package:guoguanla_app/core/utils/format_utils.dart';
 import 'package:guoguanla_app/core/utils/math_parser.dart';
 import 'package:guoguanla_app/core/utils/update_utils.dart';
 import 'package:guoguanla_app/models/models.dart';
+import 'package:guoguanla_app/widgets/smart_board/board_handwriting_validator.dart';
 import 'package:guoguanla_app/widgets/smart_board/board_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -233,6 +234,196 @@ void main() {
       await cache.clearTemporaryCache();
       expect(cache.smartBoardPrefs['paper'], 'grid');
       expect(cache.smartBoardDraft, isNull);
+    });
+
+    test('persists smartBoardRecords and preserves them across cache clear',
+        () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final cache = await GlobalCache.init();
+
+      final rec = SavedSmartBoardRecord(
+        id: 'sb_1001',
+        title: SavedSmartBoardRecord.deriveTitle(
+          const AiRecognizeResult(
+            title: '数学解答题',
+            problemText: '（1）\$\\dfrac{x^2}{2}+y^2=1\$',
+            subjectTag: '高中数学',
+            questionType: '解答题',
+            difficulty: '压轴',
+          ),
+        ),
+        createdAtMs: 1700000000000,
+        updatedAtMs: 1700000005000,
+        strokes: [
+          BoardStroke(
+            colorValue: 0xFF111827,
+            width: 3.4,
+            points: const [Offset(10, 20), Offset(60, 25)],
+          ),
+        ],
+        paperStyle: BoardPaperStyle.grid,
+        panX: -40,
+        panY: -12,
+        zoom: 1.25,
+        problem: const AiRecognizeResult(
+          title: '椭圆综合题',
+          problemText: '（1）\$\\dfrac{x^2}{2}+y^2=1\$',
+          subjectTag: '高中数学',
+          questionType: '解答题',
+          difficulty: '压轴',
+        ),
+        activeResultTabName: 'problem',
+        resultCollapsed: false,
+        resultPanelPos: const Offset(18, 24),
+      );
+      expect(rec.title, '（1）x²/2+y²=1');
+
+      await cache.setSmartBoardRecords([rec.toJson()]);
+      await cache.clearTemporaryCache();
+
+      expect(cache.smartBoardRecords.length, 1);
+      final restored =
+          SavedSmartBoardRecord.fromJson(cache.smartBoardRecords.first);
+      expect(restored, isNotNull);
+      expect(restored!.id, 'sb_1001');
+      expect(restored.paperStyle, BoardPaperStyle.grid);
+      expect(restored.zoom, 1.25);
+      expect(restored.strokes.length, 1);
+      expect(restored.problem?.title, '椭圆综合题');
+      expect(restored.resultPanelPos, const Offset(18, 24));
+    });
+  });
+
+  group('BoardHandwritingValidator', () {
+    test('rejects empty board, too few strokes, tiny marks, and wild scribbles',
+        () {
+      // 1. Empty board
+      expect(BoardHandwritingValidator.validate(const [], const []).valid,
+          isFalse);
+
+      // 2. Too few strokes
+      final twoStrokes = [
+        BoardStroke(
+          colorValue: 0xFF111827,
+          width: 3,
+          points: const [Offset(10, 10), Offset(40, 10)],
+        ),
+        BoardStroke(
+          colorValue: 0xFF111827,
+          width: 3,
+          points: const [Offset(50, 10), Offset(80, 10)],
+        ),
+      ];
+      expect(
+          BoardHandwritingValidator.validate(twoStrokes, const []).valid,
+          isFalse);
+
+      // 3. Tiny cluster
+      final tinyStrokes = List.generate(
+        5,
+        (i) => BoardStroke(
+          colorValue: 0xFF111827,
+          width: 3,
+          points: [Offset(10.0 + i * 2, 10), Offset(14.0 + i * 2, 18)],
+        ),
+      );
+      expect(BoardHandwritingValidator.validate(tinyStrokes, const []).valid,
+          isFalse);
+
+      // 4. Wild back-and-forth scribble loop
+      final scribblePts = <Offset>[];
+      for (var i = 0; i < 60; i++) {
+        scribblePts.add(
+          Offset(i.isEven ? 20.0 : 220.0, 20.0 + i * 2.5),
+        );
+      }
+      final scribbleStrokes = List.generate(
+        4,
+        (idx) => BoardStroke(
+          colorValue: 0xFF111827,
+          width: 3,
+          points: scribblePts
+              .map((p) => Offset(p.dx + idx * 5, p.dy + idx * 3))
+              .toList(),
+        ),
+      );
+      final scribbleRes =
+          BoardHandwritingValidator.validate(scribbleStrokes, const []);
+      expect(scribbleRes.valid, isFalse);
+      expect(scribbleRes.reason, contains('乱涂乱画'));
+    });
+
+    test('passes clean handwritten math equation strokes', () {
+      // Simulate clean characters for "2x + 3 = 7" (10 character-sized strokes)
+      final equationStrokes = <BoardStroke>[
+        // '2'
+        BoardStroke(
+          colorValue: 0xFF111827,
+          width: 3,
+          points: const [
+            Offset(10, 20),
+            Offset(28, 16),
+            Offset(30, 32),
+            Offset(10, 52),
+            Offset(34, 52),
+          ],
+        ),
+        // 'x' (2 strokes)
+        BoardStroke(
+          colorValue: 0xFF111827,
+          width: 3,
+          points: const [Offset(46, 26), Offset(66, 52)],
+        ),
+        BoardStroke(
+          colorValue: 0xFF111827,
+          width: 3,
+          points: const [Offset(66, 26), Offset(46, 52)],
+        ),
+        // '+' (2 strokes)
+        BoardStroke(
+          colorValue: 0xFF111827,
+          width: 3,
+          points: const [Offset(84, 38), Offset(106, 38)],
+        ),
+        BoardStroke(
+          colorValue: 0xFF111827,
+          width: 3,
+          points: const [Offset(95, 26), Offset(95, 50)],
+        ),
+        // '3'
+        BoardStroke(
+          colorValue: 0xFF111827,
+          width: 3,
+          points: const [
+            Offset(122, 20),
+            Offset(142, 24),
+            Offset(128, 36),
+            Offset(144, 48),
+            Offset(122, 52),
+          ],
+        ),
+        // '=' (2 strokes)
+        BoardStroke(
+          colorValue: 0xFF111827,
+          width: 3,
+          points: const [Offset(162, 32), Offset(188, 32)],
+        ),
+        BoardStroke(
+          colorValue: 0xFF111827,
+          width: 3,
+          points: const [Offset(162, 44), Offset(188, 44)],
+        ),
+        // '7'
+        BoardStroke(
+          colorValue: 0xFF111827,
+          width: 3,
+          points: const [Offset(206, 20), Offset(232, 20), Offset(214, 54)],
+        ),
+      ];
+
+      final res = BoardHandwritingValidator.validate(equationStrokes, const []);
+      expect(res.valid, isTrue);
+      expect(res.strokeCount, 9);
     });
   });
 

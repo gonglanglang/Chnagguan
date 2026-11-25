@@ -19,6 +19,8 @@ import '../../services/guoguanla_api.dart';
 import '../../widgets/ggl_comic_panel.dart';
 import '../../widgets/ggl_feedback.dart';
 import '../../widgets/ggl_skin_widgets.dart';
+import '../../widgets/math_text.dart';
+import '../../widgets/smart_board/board_handwriting_validator.dart';
 import '../../widgets/smart_board/board_models.dart';
 import '../../widgets/smart_board/photo_figure_extractor.dart';
 import '../../widgets/smart_board/smart_board_painter.dart';
@@ -59,8 +61,15 @@ class _SmartBoardPageState extends State<SmartBoardPage>
   static const double _minZoom = 0.25;
   static const double _maxZoom = 3.0;
   static const int _maxHistory = 60;
+  static const int _maxSavedBoards = 25;
 
   final ImagePicker _picker = ImagePicker();
+  GlobalCache? _cache;
+
+  String _boardId = '';
+  int _boardCreatedAtMs = 0;
+  List<SavedSmartBoardRecord> _savedRecords = <SavedSmartBoardRecord>[];
+  bool _recognizedFromHandwriting = false;
 
   final List<BoardStroke> _strokes = <BoardStroke>[];
   final List<BoardShape> _shapes = <BoardShape>[];
@@ -122,6 +131,11 @@ class _SmartBoardPageState extends State<SmartBoardPage>
   @override
   void initState() {
     super.initState();
+    _cache = context.read<GlobalCache>();
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    _boardId = _generateBoardId(nowMs);
+    _boardCreatedAtMs = nowMs;
+
     _revealCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2400),
@@ -149,6 +163,7 @@ class _SmartBoardPageState extends State<SmartBoardPage>
   void dispose() {
     _hintTimer?.cancel();
     _draftSaveTimer?.cancel();
+    _flushBoardSave(updateUi: false);
     _revealCtrl.dispose();
     if (!kIsWeb) {
       SystemChrome.setPreferredOrientations(const [
@@ -158,9 +173,21 @@ class _SmartBoardPageState extends State<SmartBoardPage>
     super.dispose();
   }
 
+  String _generateBoardId([int? nowMs]) =>
+      'sb_${nowMs ?? DateTime.now().millisecondsSinceEpoch}';
+
+  String _defaultUntitledTitle([int? timestampMs]) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(
+      timestampMs ?? _boardCreatedAtMs,
+    );
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '未命名画板 ${two(dt.month)}-${two(dt.day)} ${two(dt.hour)}:${two(dt.minute)}';
+  }
+
   void _restorePrefsAndDraft() {
     try {
-      final cache = context.read<GlobalCache>();
+      final cache = _cache;
+      if (cache == null) return;
       final prefs = cache.smartBoardPrefs;
       final paperName = prefs['paper']?.toString();
       if (paperName != null) {
@@ -174,57 +201,154 @@ class _SmartBoardPageState extends State<SmartBoardPage>
         _widthIdx = wIdx;
       }
 
+      _savedRecords = cache.smartBoardRecords
+          .map(SavedSmartBoardRecord.fromJson)
+          .whereType<SavedSmartBoardRecord>()
+          .toList()
+        ..sort((a, b) => b.updatedAtMs.compareTo(a.updatedAtMs));
+
       final draft = cache.smartBoardDraft;
       if (draft != null) {
-        final rawStrokes = draft['strokes'];
-        if (rawStrokes is List) {
-          for (final item in rawStrokes) {
-            if (item is Map<String, dynamic>) {
-              final s = BoardStroke.fromJson(item);
-              if (s != null) _strokes.add(s);
-            }
-          }
+        final draftWithId = Map<String, dynamic>.from(draft);
+        if ((draftWithId['id']?.toString().trim() ?? '').isEmpty) {
+          draftWithId['id'] = _boardId;
+          draftWithId['createdAtMs'] = _boardCreatedAtMs;
         }
-        final rawShapes = draft['shapes'];
-        if (rawShapes is List) {
-          for (final item in rawShapes) {
-            if (item is Map<String, dynamic>) {
-              final sh = BoardShape.fromJson(item);
-              if (sh != null) _shapes.add(sh);
-            }
-          }
+        final restored = SavedSmartBoardRecord.fromJson(draftWithId);
+        if (restored != null) {
+          _applyRecordState(restored, notify: false);
         }
-        if (draft['problem'] is Map<String, dynamic>) {
-          _problem = AiRecognizeResult.fromJson(
-            draft['problem'] as Map<String, dynamic>,
-          );
+      }
+    } catch (_) {}
+  }
+
+  void _applyRecordState(
+    SavedSmartBoardRecord record, {
+    bool notify = true,
+  }) {
+    Uint8List? photoBytes;
+    if (record.photoB64 != null && record.photoB64!.isNotEmpty) {
+      try {
+        photoBytes = base64Decode(record.photoB64!);
+      } catch (_) {}
+    }
+
+    BoardResultTab nextTab = BoardResultTab.problem;
+    if (record.activeResultTabName != null) {
+      nextTab = BoardResultTab.values.firstWhere(
+        (t) => t.name == record.activeResultTabName,
+        orElse: () => BoardResultTab.problem,
+      );
+    }
+
+    void mutate() {
+      _boardId = record.id;
+      _boardCreatedAtMs = record.createdAtMs;
+      _strokes
+        ..clear()
+        ..addAll(record.strokes.map((s) => s.clone()));
+      _shapes
+        ..clear()
+        ..addAll(record.shapes.map((s) => s.clone()));
+      _undoStack.clear();
+      _activeStroke = null;
+      _activeShape = null;
+      _paperStyle = record.paperStyle;
+      _panX = record.panX;
+      _panY = record.panY;
+      _zoom = record.zoom;
+      _problem = record.problem;
+      _ideas = record.ideas;
+      _diagnosis = record.diagnosis;
+      _solution = record.solution;
+      _croppedPhotoBytes = photoBytes;
+      _extractedFigures = const [];
+      _purifyFigures = record.purifyFigures;
+      _activeResultTab = nextTab;
+      _resultCollapsed = record.resultCollapsed;
+      _resultPanelPos = record.resultPanelPos ?? const Offset(10, 10);
+      _recognizedFromHandwriting = false;
+      _showCanvasOpsMenu = false;
+      _showShapePicker = false;
+    }
+
+    if (notify && mounted) {
+      setState(mutate);
+    } else {
+      mutate();
+    }
+
+    if (photoBytes != null &&
+        record.problem != null &&
+        record.problem!.figureBoxes.isNotEmpty) {
+      unawaited(_rebuildExtractedFigures());
+    }
+  }
+
+  SavedSmartBoardRecord _buildCurrentRecord() {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final photoB64 =
+        (_croppedPhotoBytes != null && _croppedPhotoBytes!.length <= 420000)
+            ? base64Encode(_croppedPhotoBytes!)
+            : null;
+    return SavedSmartBoardRecord(
+      id: _boardId,
+      title: SavedSmartBoardRecord.deriveTitle(
+        _problem,
+        fallback: _defaultUntitledTitle(_boardCreatedAtMs),
+      ),
+      createdAtMs: _boardCreatedAtMs,
+      updatedAtMs: nowMs,
+      strokes: _strokes.map((s) => s.clone()).toList(),
+      shapes: _shapes.map((s) => s.clone()).toList(),
+      paperStyle: _paperStyle,
+      panX: _panX,
+      panY: _panY,
+      zoom: _zoom,
+      problem: _problem,
+      ideas: _ideas,
+      diagnosis: _diagnosis,
+      solution: _solution,
+      photoB64: photoB64,
+      purifyFigures: _purifyFigures,
+      activeResultTabName: _activeResultTab.name,
+      resultCollapsed: _resultCollapsed,
+      resultPanelPos: _resultPanelPos,
+    );
+  }
+
+  void _flushBoardSave({bool updateUi = true}) {
+    final cache = _cache;
+    if (cache == null) return;
+    try {
+      final record = _buildCurrentRecord();
+      if (!record.hasMeaningfulContent) {
+        unawaited(cache.setSmartBoardDraft(null));
+        return;
+      }
+      final recordJson = record.toJson();
+      unawaited(cache.setSmartBoardDraft(recordJson));
+
+      final nextList = List<SavedSmartBoardRecord>.from(_savedRecords)
+        ..removeWhere((r) => r.id == record.id)
+        ..insert(0, record);
+      if (nextList.length > _maxSavedBoards) {
+        nextList.removeRange(_maxSavedBoards, nextList.length);
+      }
+      // 保留前 8 条记录的完整原图缓存，较早记录保留题目/笔迹/AI 全部信息避免本地存储膨胀
+      final serialized = <Map<String, dynamic>>[];
+      for (var i = 0; i < nextList.length; i++) {
+        final map = nextList[i].toJson();
+        if (i >= 8) {
+          map.remove('photoB64');
         }
-        if (draft['ideas'] is Map<String, dynamic>) {
-          _ideas = AiBoardGuidance.fromJson(
-            draft['ideas'] as Map<String, dynamic>,
-          );
-        }
-        if (draft['diagnosis'] is Map<String, dynamic>) {
-          _diagnosis = AiBoardGuidance.fromJson(
-            draft['diagnosis'] as Map<String, dynamic>,
-          );
-        }
-        if (draft['solution'] is Map<String, dynamic>) {
-          _solution = AiBoardGuidance.fromJson(
-            draft['solution'] as Map<String, dynamic>,
-          );
-        }
-        final photoB64 = draft['photoB64']?.toString();
-        if (photoB64 != null && photoB64.isNotEmpty) {
-          try {
-            _croppedPhotoBytes = base64Decode(photoB64);
-          } catch (_) {}
-        }
-        if (_croppedPhotoBytes != null &&
-            _problem != null &&
-            _problem!.figureBoxes.isNotEmpty) {
-          unawaited(_rebuildExtractedFigures());
-        }
+        serialized.add(map);
+      }
+      unawaited(cache.setSmartBoardRecords(serialized));
+      if (updateUi && mounted) {
+        setState(() => _savedRecords = nextList);
+      } else {
+        _savedRecords = nextList;
       }
     } catch (_) {}
   }
@@ -241,8 +365,10 @@ class _SmartBoardPageState extends State<SmartBoardPage>
 
   void _savePrefs() {
     try {
+      final cache = _cache;
+      if (cache == null) return;
       unawaited(
-        context.read<GlobalCache>().setSmartBoardPrefs({
+        cache.setSmartBoardPrefs({
           'paper': _paperStyle.name,
           'widthIdx': _widthIdx,
         }),
@@ -250,36 +376,228 @@ class _SmartBoardPageState extends State<SmartBoardPage>
     } catch (_) {}
   }
 
-  void _scheduleDraftSave() {
+  void _scheduleDraftSave({bool immediate = false}) {
     _draftSaveTimer?.cancel();
-    _draftSaveTimer = Timer(const Duration(milliseconds: 700), () {
+    if (immediate) {
+      _flushBoardSave(updateUi: true);
+      return;
+    }
+    _draftSaveTimer = Timer(const Duration(milliseconds: 650), () {
       if (!mounted) return;
-      try {
-        final cache = context.read<GlobalCache>();
-        final hasAnything = _strokes.isNotEmpty ||
-            _shapes.isNotEmpty ||
-            _problem != null ||
-            _ideas != null ||
-            _diagnosis != null ||
-            _solution != null;
-        if (!hasAnything) {
-          unawaited(cache.setSmartBoardDraft(null));
-          return;
-        }
-        final map = <String, dynamic>{
-          'strokes': _strokes.map((s) => s.toJson()).toList(),
-          'shapes': _shapes.map((s) => s.toJson()).toList(),
-          if (_problem != null) 'problem': _problem!.toJson(),
-          if (_ideas != null) 'ideas': _ideas!.toJson(),
-          if (_diagnosis != null) 'diagnosis': _diagnosis!.toJson(),
-          if (_solution != null) 'solution': _solution!.toJson(),
-        };
-        if (_croppedPhotoBytes != null && _croppedPhotoBytes!.length <= 500000) {
-          map['photoB64'] = base64Encode(_croppedPhotoBytes!);
-        }
-        unawaited(cache.setSmartBoardDraft(map));
-      } catch (_) {}
+      _flushBoardSave(updateUi: true);
     });
+  }
+
+  void _createNewBoard() {
+    _draftSaveTimer?.cancel();
+    _flushBoardSave(updateUi: true);
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final fresh = SavedSmartBoardRecord(
+      id: _generateBoardId(nowMs),
+      title: _defaultUntitledTitle(nowMs),
+      createdAtMs: nowMs,
+      updatedAtMs: nowMs,
+      paperStyle: _paperStyle,
+    );
+    _applyRecordState(fresh, notify: true);
+    unawaited(_cache?.setSmartBoardDraft(null));
+    _showHint('已新建空白画板（原画板已自动保存）');
+  }
+
+  void _loadSavedBoard(SavedSmartBoardRecord record) {
+    if (record.id == _boardId) {
+      _showHint('当前正在编辑此画板');
+      return;
+    }
+    _draftSaveTimer?.cancel();
+    _flushBoardSave(updateUi: true);
+    _applyRecordState(record, notify: true);
+    _scheduleDraftSave(immediate: true);
+    _showHint('已恢复画板：${record.title}');
+  }
+
+  void _deleteSavedBoard(SavedSmartBoardRecord record) {
+    final nextList = List<SavedSmartBoardRecord>.from(_savedRecords)
+      ..removeWhere((r) => r.id == record.id);
+    setState(() => _savedRecords = nextList);
+    unawaited(
+      _cache?.setSmartBoardRecords(nextList.map((e) => e.toJson()).toList()),
+    );
+    if (record.id == _boardId) {
+      unawaited(_cache?.setSmartBoardDraft(null));
+    }
+  }
+
+  String _formatRecordTime(int ms) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(ms);
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(dt.month)}-${two(dt.day)} ${two(dt.hour)}:${two(dt.minute)}';
+  }
+
+  Future<void> _openSavedBoardsSheet() async {
+    _draftSaveTimer?.cancel();
+    _flushBoardSave(updateUi: true);
+    await showGglBottomSheet<void>(
+      context: context,
+      title: '已保存画板（${_savedRecords.length}）',
+      closeLabel: '关闭',
+      builder: (sheetCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            final colors = WelkTheme.of(ctx).resolveColors(ctx);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '所有画板会自动按题目标题保存完整笔迹、配图与 AI 记录。',
+                        style: TextStyle(
+                          color: AppTheme.mutedText(ctx),
+                          fontSize: 12.2,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    GglButton(
+                      label: '新建画板',
+                      icon: Icons.add_rounded,
+                      compact: true,
+                      variant: WelkButtonVariant.primary,
+                      onPressed: () {
+                        Navigator.of(sheetCtx).pop();
+                        _createNewBoard();
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                if (_savedRecords.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 22),
+                    child: Center(
+                      child: Text(
+                        '还没有已保存的画板，识题或书写后会自动保存。',
+                        style: TextStyle(
+                          color: AppTheme.mutedText(ctx),
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 380),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: _savedRecords.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
+                      itemBuilder: (itemCtx, index) {
+                        final rec = _savedRecords[index];
+                        final isCurrent = rec.id == _boardId;
+                        return GglComicPanel(
+                          color: isCurrent ? colors.muted : colors.paper,
+                          padding: const EdgeInsets.all(10),
+                          shadowOffset: const Offset(2, 2),
+                          onTap: () {
+                            Navigator.of(sheetCtx).pop();
+                            _loadSavedBoard(rec);
+                          },
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      rec.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: colors.ink,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w800,
+                                        fontFamilyFallback:
+                                            AppTheme.cjkFontFallback,
+                                      ),
+                                    ),
+                                  ),
+                                  if (isCurrent) ...[
+                                    const SizedBox(width: 6),
+                                    const GglStatusTag(
+                                      label: '当前',
+                                      variant: WelkBadgeVariant.success,
+                                    ),
+                                  ],
+                                  const SizedBox(width: 6),
+                                  GglButton(
+                                    label: '删除',
+                                    compact: true,
+                                    variant: WelkButtonVariant.ghost,
+                                    onPressed: () {
+                                      _deleteSavedBoard(rec);
+                                      setSheetState(() {});
+                                    },
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 5),
+                              Wrap(
+                                spacing: 5,
+                                runSpacing: 4,
+                                children: [
+                                  GglStatusTag(
+                                    label: _formatRecordTime(rec.updatedAtMs),
+                                    neutral: true,
+                                  ),
+                                  if (rec.strokes.isNotEmpty)
+                                    GglStatusTag(
+                                      label: '笔迹 ${rec.strokes.length}',
+                                      neutral: true,
+                                    ),
+                                  if (rec.shapes.isNotEmpty)
+                                    GglStatusTag(
+                                      label: '图形 ${rec.shapes.length}',
+                                      neutral: true,
+                                    ),
+                                  if (rec.photoB64 != null &&
+                                      rec.photoB64!.isNotEmpty)
+                                    const GglStatusTag(
+                                      label: '含原图',
+                                      variant: WelkBadgeVariant.info,
+                                    ),
+                                  if (rec.ideas != null)
+                                    const GglStatusTag(
+                                      label: '已思路',
+                                      variant: WelkBadgeVariant.info,
+                                    ),
+                                  if (rec.diagnosis != null)
+                                    const GglStatusTag(
+                                      label: '已诊断',
+                                      variant: WelkBadgeVariant.warning,
+                                    ),
+                                  if (rec.solution != null)
+                                    const GglStatusTag(
+                                      label: '已解题',
+                                      variant: WelkBadgeVariant.success,
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   void _showHint(String text) {
@@ -650,7 +968,7 @@ class _SmartBoardPageState extends State<SmartBoardPage>
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              '拍照或选图后可自由框选题目范围，AI 将解析题干并 1:1 还原题目中的图形。',
+              '支持拍照框选题目、直接识别画板上写出的数学题，或手动输入/编辑题干。',
               style: TextStyle(
                 color: AppTheme.mutedText(sheetCtx),
                 fontSize: 13,
@@ -690,6 +1008,16 @@ class _SmartBoardPageState extends State<SmartBoardPage>
               ],
             ),
             const SizedBox(height: 10),
+            GglBlockButton(
+              label: '识别画板手写题目',
+              icon: Icons.draw_rounded,
+              variant: WelkButtonVariant.info,
+              onPressed: () {
+                Navigator.of(sheetCtx).pop();
+                unawaited(_recognizeFromBoardHandwriting());
+              },
+            ),
+            const SizedBox(height: 8),
             GglBlockButton(
               label: '手动输入 / 编辑题干',
               variant: WelkButtonVariant.secondary,
@@ -748,6 +1076,7 @@ class _SmartBoardPageState extends State<SmartBoardPage>
       final result = await api.recognizeMathProblem(
         imageBytes: cropped.bytes,
         filename: 'cropped-problem.png',
+        sourceType: 'PHOTO',
       );
       if (!mounted) return;
 
@@ -764,21 +1093,99 @@ class _SmartBoardPageState extends State<SmartBoardPage>
         _diagnosis = null;
         _solution = null;
         _extractedFigures = figures;
+        _recognizedFromHandwriting = false;
         _activeResultTab = BoardResultTab.problem;
         _resultCollapsed = false;
         _resultPanelPos = const Offset(10, 10);
       });
-      _scheduleDraftSave();
+      _scheduleDraftSave(immediate: true);
       _showHint(
         figures.isNotEmpty
-            ? '题目已解析，配图已 1:1 还原'
+            ? '题目已解析并自动保存，配图已 1:1 还原'
             : (result.hasFigure
-                ? '题目已解析，可点「重框配图」精准 1:1 框选图形'
-                : '题目已解析'),
+                ? '题目已解析并保存，可点「重框配图」精准 1:1 框选图形'
+                : '题目已解析并自动保存'),
       );
     } catch (e) {
       if (mounted) {
         GglFeedback.error(context, friendlyErrorMessage(e, '拍照识别题目失败'));
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busyAi = false;
+          _busyAiLabel = '';
+        });
+      }
+    }
+  }
+
+  /// 画板手写识题：
+  /// 第 1 层（本地 < 5ms 极速预检）：过滤空白、过少笔迹、过小区域与乱涂乱画；
+  /// 第 2 层（后端视觉 AI 语义校验）：仅放行完整合理的数学题，拒绝涂鸦/碎片。
+  Future<void> _recognizeFromBoardHandwriting() async {
+    if (_busyAi) return;
+    final check = BoardHandwritingValidator.validate(_strokes, _shapes);
+    if (!check.valid) {
+      GglFeedback.warning(context, check.reason);
+      return;
+    }
+
+    setState(() {
+      _showCanvasOpsMenu = false;
+      _showShapePicker = false;
+      _busyAi = true;
+      _busyAiLabel = '正在校验并识别画板手写题目...';
+    });
+
+    try {
+      final pngBytes = await renderSmartBoardToPng(
+        strokes: _strokes,
+        shapes: _shapes,
+        cards: const SmartBoardCardState(),
+        includeProblemCard: false,
+        includeAiCards: false,
+        maxDimension: 1400,
+      );
+      if (!mounted) return;
+
+      final api = context.read<GuoguanlaApi>();
+      final result = await api.recognizeMathProblem(
+        imageBytes: pngBytes,
+        filename: 'handwritten-problem.png',
+        sourceType: 'BOARD_HANDWRITING',
+      );
+      if (!mounted) return;
+
+      var figures = <ExtractedBoardFigure>[];
+      if (result.figureBoxes.isNotEmpty) {
+        figures = await PhotoFigureExtractor.extractFromPhoto(
+          pngBytes,
+          result.figureBoxes,
+        );
+      }
+      if (!mounted) return;
+
+      setState(() {
+        _problem = result;
+        _ideas = null;
+        _diagnosis = null;
+        _solution = null;
+        _croppedPhotoBytes = figures.isNotEmpty ? pngBytes : null;
+        _extractedFigures = figures;
+        _recognizedFromHandwriting = true;
+        _activeResultTab = BoardResultTab.problem;
+        _resultCollapsed = false;
+        _resultPanelPos = const Offset(10, 10);
+      });
+      _scheduleDraftSave(immediate: true);
+      _showHint('手写题目已识别并自动保存，可点「清笔迹作答」开始解题');
+    } catch (e) {
+      if (mounted) {
+        GglFeedback.warning(
+          context,
+          friendlyErrorMessage(e, '未能识别为完整数学题，请工整书写后再试'),
+        );
       }
     } finally {
       if (mounted) {
@@ -848,7 +1255,7 @@ class _SmartBoardPageState extends State<SmartBoardPage>
         );
       }
     });
-    _scheduleDraftSave();
+    _scheduleDraftSave(immediate: true);
     _showHint('已 1:1 更新原题配图');
   }
 
@@ -861,16 +1268,22 @@ class _SmartBoardPageState extends State<SmartBoardPage>
         initialTitle: _problem?.title ?? '',
         initialStem: _problem?.problemText ?? '',
         onSubmit: (title, text) {
-          final updated = (_problem ??
-                  const AiRecognizeResult(
-                    title: '数学解答题',
-                    problemText: '',
-                    subjectTag: '数学',
-                    questionType: '解答题',
-                    difficulty: '自选',
-                  ))
-              .copyWith(
-            title: title.isEmpty ? '数学解答题' : title,
+          final base = _problem ??
+              const AiRecognizeResult(
+                title: '数学解答题',
+                problemText: '',
+                subjectTag: '数学',
+                questionType: '解答题',
+                difficulty: '自选',
+              );
+          final resolvedTitle = title.isNotEmpty
+              ? title
+              : SavedSmartBoardRecord.deriveTitle(
+                  base.copyWith(title: '', problemText: text),
+                  fallback: '数学解答题',
+                );
+          final updated = base.copyWith(
+            title: resolvedTitle,
             problemText: text,
           );
           setState(() {
@@ -878,9 +1291,9 @@ class _SmartBoardPageState extends State<SmartBoardPage>
             _activeResultTab = BoardResultTab.problem;
             _resultCollapsed = false;
           });
-          _scheduleDraftSave();
+          _scheduleDraftSave(immediate: true);
           Navigator.of(sheetCtx).pop();
-          _showHint('题目已更新');
+          _showHint('题目已更新并自动保存');
         },
       ),
     );
@@ -891,14 +1304,17 @@ class _SmartBoardPageState extends State<SmartBoardPage>
     final problemText = _problem?.problemText.trim() ?? '';
     final hasDrawing = _hasHandwriting;
 
-    if (kind == _AiActionKind.diagnose && !hasDrawing) {
-      GglFeedback.warning(context, '请先在画板上写下你的解题过程，再点击诊断');
+    // 强制门禁：使用「思路 / 诊断 / 解题」前必须先通过拍照、手写识题或手动录题识别一道完整数学题
+    if (problemText.isEmpty) {
+      GglFeedback.warning(
+        context,
+        '请先通过「拍照」或「手写识题」识别一道完整数学题，再使用思路/诊断/解题',
+      );
       return;
     }
 
-    if (problemText.isEmpty && !hasDrawing && _croppedPhotoBytes == null) {
-      GglFeedback.warning(context, '请先拍照识别题目、输入题干或在画板上写下题目');
-      await _openProblemCaptureSheet();
+    if (kind == _AiActionKind.diagnose && !hasDrawing) {
+      GglFeedback.warning(context, '请先在画板上写下你的解题过程，再点击诊断');
       return;
     }
 
@@ -975,7 +1391,7 @@ class _SmartBoardPageState extends State<SmartBoardPage>
         }
         _resultCollapsed = false;
       });
-      _scheduleDraftSave();
+      _scheduleDraftSave(immediate: true);
       _startRevealAnimation();
       _showHint(
         switch (kind) {
@@ -1071,6 +1487,12 @@ class _SmartBoardPageState extends State<SmartBoardPage>
     String plainProblem, {
     required bool compactLandscape,
   }) {
+    final boardTitleText = _problem != null
+        ? SavedSmartBoardRecord.deriveTitle(_problem)
+        : (plainProblem.isNotEmpty
+            ? plainProblem
+            : (compactLandscape ? '拍题/手写识题' : '拍照或手写数学题'));
+
     final stemPill = GestureDetector(
       onTap: _problem == null
           ? _openProblemCaptureSheet
@@ -1087,9 +1509,7 @@ class _SmartBoardPageState extends State<SmartBoardPage>
           children: [
             Expanded(
               child: Text(
-                plainProblem.isNotEmpty
-                    ? plainProblem
-                    : (compactLandscape ? '拍题/录题' : '拍照或输入数学题'),
+                boardTitleText,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -1121,6 +1541,14 @@ class _SmartBoardPageState extends State<SmartBoardPage>
         ),
         const SizedBox(width: 5),
         GglButton(
+          label: '手写识题',
+          icon: Icons.draw_rounded,
+          variant: WelkButtonVariant.primary,
+          compact: true,
+          onPressed: _busyAi ? null : _recognizeFromBoardHandwriting,
+        ),
+        const SizedBox(width: 5),
+        GglButton(
           label: '思路',
           icon: Icons.lightbulb_outline_rounded,
           variant: WelkButtonVariant.info,
@@ -1144,6 +1572,14 @@ class _SmartBoardPageState extends State<SmartBoardPage>
           onPressed: _busyAi ? null : () => _runAiAction(_AiActionKind.solve),
         ),
       ],
+    );
+
+    final recordsBtn = GglButton(
+      label: _savedRecords.isEmpty ? '记录' : '记录(${_savedRecords.length})',
+      icon: Icons.folder_copy_outlined,
+      variant: WelkButtonVariant.secondary,
+      compact: true,
+      onPressed: _busyAi ? null : _openSavedBoardsSheet,
     );
 
     final canvasOpsBtn = GglButton(
@@ -1194,6 +1630,8 @@ class _SmartBoardPageState extends State<SmartBoardPage>
                           children: [
                             aiButtons,
                             const SizedBox(width: 6),
+                            recordsBtn,
+                            const SizedBox(width: 5),
                             canvasOpsBtn,
                             const SizedBox(width: 5),
                             GglButton(
@@ -1220,7 +1658,7 @@ class _SmartBoardPageState extends State<SmartBoardPage>
                     ),
                   ],
                 )
-              // 竖屏精简双行顶栏（去掉 LongCat-2.5，替换为「画布操作」）
+              // 竖屏精简双行顶栏（去掉 LongCat-2.5，替换为「画布操作」与「记录」）
               : Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -1234,7 +1672,9 @@ class _SmartBoardPageState extends State<SmartBoardPage>
                         ),
                         const SizedBox(width: 6),
                         Expanded(child: stemPill),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 5),
+                        recordsBtn,
+                        const SizedBox(width: 5),
                         GglButton(
                           label: '横屏',
                           variant: WelkButtonVariant.secondary,
@@ -1372,11 +1812,42 @@ class _SmartBoardPageState extends State<SmartBoardPage>
                       onPressed: () {
                         setState(() => _paperStyle = entry.$1);
                         _savePrefs();
+                        _scheduleDraftSave();
                       },
                     ),
                 ],
               ),
               const GglDivider(verticalPadding: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: GglButton(
+                      label: '画板记录',
+                      icon: Icons.folder_copy_outlined,
+                      compact: true,
+                      variant: WelkButtonVariant.secondary,
+                      onPressed: () {
+                        setState(() => _showCanvasOpsMenu = false);
+                        unawaited(_openSavedBoardsSheet());
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: GglButton(
+                      label: '新建画板',
+                      icon: Icons.note_add_outlined,
+                      compact: true,
+                      variant: WelkButtonVariant.primary,
+                      onPressed: () {
+                        setState(() => _showCanvasOpsMenu = false);
+                        _createNewBoard();
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
               Row(
                 children: [
                   Expanded(
@@ -1647,12 +2118,12 @@ class _SmartBoardPageState extends State<SmartBoardPage>
                               child: Padding(
                                 padding: EdgeInsets.symmetric(horizontal: 24),
                                 child: Text(
-                                  '拍照框选数学题 · 点击「思路」引导 · 写完点「诊断」批改 · 点击「解题」直看答案',
+                                  '拍照框选题目，或直接在画板写出完整数学题后点「手写识题」\n识别题目后即可使用「思路」「诊断」「解题」，画板自动按题目保存',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Color(0xFF94A3B8),
                                     fontSize: 12.6,
-                                    height: 1.5,
+                                    height: 1.55,
                                   ),
                                 ),
                               ),
@@ -1666,17 +2137,32 @@ class _SmartBoardPageState extends State<SmartBoardPage>
                             activeTab: _activeResultTab,
                             collapsed: _resultCollapsed,
                             position: _resultPanelPos,
-                            onPositionChanged: (pos) =>
-                                setState(() => _resultPanelPos = pos),
-                            onTabChanged: (t) =>
-                                setState(() => _activeResultTab = t),
-                            onToggleCollapsed: () => setState(
-                              () => _resultCollapsed = !_resultCollapsed,
-                            ),
+                            onPositionChanged: (pos) {
+                              setState(() => _resultPanelPos = pos);
+                              _scheduleDraftSave();
+                            },
+                            onTabChanged: (t) {
+                              setState(() => _activeResultTab = t);
+                              _scheduleDraftSave();
+                            },
+                            onToggleCollapsed: () {
+                              setState(
+                                () => _resultCollapsed = !_resultCollapsed,
+                              );
+                              _scheduleDraftSave();
+                            },
                             onEditProblem: _openManualProblemDialog,
                             onRecropFigure: _recropFigureManually,
-                            onCloseActiveTab: () =>
-                                setState(() => _resultCollapsed = true),
+                            onCloseActiveTab: () {
+                              setState(() => _resultCollapsed = true);
+                              _scheduleDraftSave();
+                            },
+                            showClearHandwritingAction:
+                                _recognizedFromHandwriting && _hasHandwriting,
+                            onClearHandwritingToSolve: () {
+                              _clearHandwritingOnly();
+                              setState(() => _recognizedFromHandwriting = false);
+                            },
                             problem: _problem,
                             ideas: _ideas,
                             diagnosis: _diagnosis,
@@ -1684,9 +2170,12 @@ class _SmartBoardPageState extends State<SmartBoardPage>
                             extractedFigures: _extractedFigures,
                             hasSourcePhoto: _croppedPhotoBytes != null,
                             purifyFigures: _purifyFigures,
-                            onTogglePurifyFigures: () => setState(
-                              () => _purifyFigures = !_purifyFigures,
-                            ),
+                            onTogglePurifyFigures: () {
+                              setState(
+                                () => _purifyFigures = !_purifyFigures,
+                              );
+                              _scheduleDraftSave();
+                            },
                             revealProgress: _revealCtrl.value,
                             isAnimating: _revealCtrl.isAnimating,
                             traceSpeed: _traceSpeed,
@@ -1873,6 +2362,19 @@ class _ManualProblemSheet extends StatefulWidget {
 }
 
 class _ManualProblemSheetState extends State<_ManualProblemSheet> {
+  static const List<(String label, String snippet, int cursorBackOffset)>
+      _mathSnippets = [
+    ('分式', r'$\dfrac{}{}$', 4),
+    ('根号', r'$\sqrt{}$', 2),
+    ('平方', r'$^2$', 0),
+    ('±', r'$\pm$', 0),
+    ('≤', r'$\leqslant$', 0),
+    ('≥', r'$\geqslant$', 0),
+    ('π', r'$\pi$', 0),
+    ('△', r'$\triangle$', 0),
+    ('∠', r'$\angle$', 0),
+  ];
+
   late String _title;
   late final TextEditingController _stemCtrl;
 
@@ -1889,42 +2391,90 @@ class _ManualProblemSheetState extends State<_ManualProblemSheet> {
     super.dispose();
   }
 
+  void _insertSnippet(String snippet, int cursorBackOffset) {
+    final text = _stemCtrl.text;
+    final sel = _stemCtrl.selection;
+    final start = sel.isValid ? sel.start.clamp(0, text.length) : text.length;
+    final end = sel.isValid ? sel.end.clamp(0, text.length) : text.length;
+    final nextText = text.replaceRange(start, end, snippet);
+    final nextOffset =
+        (start + snippet.length - cursorBackOffset).clamp(0, nextText.length);
+    _stemCtrl.value = TextEditingValue(
+      text: nextText,
+      selection: TextSelection.collapsed(offset: nextOffset),
+    );
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = WelkTheme.of(context).resolveColors(context);
+    final previewStem = _stemCtrl.text.trim();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
         GglInput(
-          label: '题目标题（选填）',
+          label: '题目标题（选填，留空将自动从题干提取）',
           value: _title,
-          placeholder: '例如：二次函数压轴题',
+          placeholder: '例如：椭圆与直线交点综合题',
           onChanged: (v) => setState(() => _title = v),
         ),
         const SizedBox(height: 10),
-        Text(
-          '题干内容（支持 LaTeX 如 \$x^2-4x+3=0\$）',
-          style: TextStyle(
-            color: colors.ink,
-            fontSize: 13,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 6),
-        TextField(
+        GglTextArea(
           controller: _stemCtrl,
-          minLines: 4,
-          maxLines: 7,
-          decoration: InputDecoration(
-            hintText: '输入或粘贴数学题干...',
-            filled: true,
-            fillColor: colors.paper,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
+          label: '题干内容（支持 LaTeX，如 \$\\dfrac{x^2}{2}+y^2=1\$）',
+          hintText: '输入或粘贴数学题干，下方可实时预览公式排版效果...',
+          minLines: 3,
+          maxLines: 5,
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 5,
+          runSpacing: 5,
+          children: [
+            for (final item in _mathSnippets)
+              GglButton(
+                label: item.$1,
+                compact: true,
+                variant: WelkButtonVariant.secondary,
+                onPressed: () => _insertSnippet(item.$2, item.$3),
+              ),
+          ],
+        ),
+        if (previewStem.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          GglComicPanel(
+            color: colors.muted,
+            padding: const EdgeInsets.all(10),
+            shadowOffset: const Offset(1.5, 1.5),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '实时公式渲染预览',
+                  style: TextStyle(
+                    color: AppTheme.mutedText(context),
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                MathText(
+                  previewStem,
+                  style: TextStyle(
+                    color: colors.ink,
+                    fontSize: 14,
+                    height: 1.55,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
           ),
-        ),
+        ],
         const SizedBox(height: 14),
         GglBlockButton(
           label: '保存到画板',

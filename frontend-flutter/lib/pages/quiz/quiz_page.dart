@@ -13,6 +13,7 @@ import '../../services/guoguanla_api.dart';
 import '../../widgets/ggl_comic_panel.dart';
 import '../../widgets/ggl_feedback.dart';
 import '../../widgets/ggl_skeleton.dart';
+import '../../widgets/ggl_skin_widgets.dart';
 import '../../widgets/image_preview_page.dart';
 import '../../widgets/math_text.dart';
 import '../draw_answer/draw_answer_page.dart';
@@ -405,12 +406,10 @@ class _QuizPageState extends State<QuizPage> {
       },
       child: Scaffold(
         backgroundColor: AppTheme.pageBackground(context),
-        appBar: WelkAppBar(
+        appBar: GglAppBar(
           title: _navbarTitle,
-          centerTitle: true,
-        layout: WelkAppBarLayout.comicStrip,
-          leading: WelkIconButton(
-            icon: const Icon(Icons.close_rounded),
+          leading: GglIconButton(
+            icon: Icons.close_rounded,
             label: '退出答题',
             onPressed: _handleExit,
           ),
@@ -535,9 +534,10 @@ class _QuizPageState extends State<QuizPage> {
                   ),
                 ),
                 const SizedBox(height: 18),
-                WelkButton(
+                GglButton(
+                  label: '返回上一页',
+                  size: WelkButtonSize.medium,
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('返回上一页'),
                 ),
               ],
             ),
@@ -964,7 +964,7 @@ class _QuizPageState extends State<QuizPage> {
                 ),
               ],
               const SizedBox(height: 16),
-              const WelkDivider(variant: WelkDividerVariant.dashed),
+              const GglDivider(verticalPadding: 0),
               const SizedBox(height: 14),
               Row(
                 children: [
@@ -1035,7 +1035,7 @@ class _QuizPageState extends State<QuizPage> {
                   if (i > 0)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 12),
-                      child: WelkDivider(variant: WelkDividerVariant.dashed),
+                      child: GglDivider(verticalPadding: 0),
                     ),
                   MathText(
                     res.wrongItems[i].stem,

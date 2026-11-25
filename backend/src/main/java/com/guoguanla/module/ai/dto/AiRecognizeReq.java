@@ -19,4 +19,9 @@ public class AiRecognizeReq {
      * 可选补充说明（例如“只需要识别第 2 小问”）
      */
     private String extraHint;
+
+    /**
+     * 图片来源：PHOTO（拍照/相册，默认）或 BOARD_HANDWRITING（画板手写识题）
+     */
+    private String sourceType;
 }

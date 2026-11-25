@@ -14,6 +14,7 @@ import '../../models/models.dart';
 import '../../services/guoguanla_api.dart';
 import '../../widgets/ggl_comic_panel.dart';
 import '../../widgets/ggl_feedback.dart';
+import '../../widgets/ggl_skin_widgets.dart';
 import '../../widgets/math_text.dart';
 import '../../widgets/smart_board/board_models.dart';
 import '../../widgets/smart_board/smart_board_painter.dart';
@@ -502,15 +503,12 @@ class _DrawAnswerPageState extends State<DrawAnswerPage> {
   }
 
   void _showStemDialog() {
-    showWelkDialog<void>(
+    showGglBottomSheet<void>(
       context: context,
-      closeOnTapOutside: true,
-      builder: (ctx) => WelkDialog(
-        title: const Text('当前题目'),
-        variant: WelkDialogVariant.info,
-        buttonText: '收起',
-        onClose: () => Navigator.of(ctx).pop(),
-        onPressed: () => Navigator.of(ctx).pop(),
+      title: '当前题目',
+      closeLabel: '收起',
+      builder: (_) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
         child: MathText(widget.stem),
       ),
     );
@@ -597,11 +595,12 @@ class _DrawAnswerPageState extends State<DrawAnswerPage> {
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     child: Row(
                       children: [
-                        WelkButton(
+                        GglButton(
+                          label: '返回',
+                          compact: true,
                           size: WelkButtonSize.small,
                           variant: WelkButtonVariant.secondary,
                           onPressed: _saving ? null : _handleBack,
-                          child: const Text('返回'),
                         ),
                         const SizedBox(width: 8),
                         if (plainStem.isNotEmpty)
@@ -647,11 +646,13 @@ class _DrawAnswerPageState extends State<DrawAnswerPage> {
                         else
                           const Spacer(),
                         const SizedBox(width: 8),
-                        WelkButton(
+                        GglButton(
+                          label: _saving ? '保存中...' : '完成保存',
+                          compact: true,
+                          loading: _saving,
                           size: WelkButtonSize.small,
                           variant: WelkButtonVariant.success,
                           onPressed: _saving ? null : _handleSave,
-                          child: Text(_saving ? '保存中...' : '完成保存'),
                         ),
                       ],
                     ),

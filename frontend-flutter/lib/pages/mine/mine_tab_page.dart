@@ -170,18 +170,14 @@ class _MineTabPageState extends State<MineTabPage> {
     final user = context.read<UserProvider>();
     final passed = _passedChapters;
 
-    await showWelkDrawer<void>(
+    await showGglBottomSheet<void>(
       context: context,
-      position: WelkDrawerPosition.bottom,
-      closeOnTapOutside: true,
-      builder: (drawerCtx) => WelkDrawer(
-        title: const Text('章节学习档案'),
-        closeLabel: '关闭',
-        onClose: () => Navigator.of(drawerCtx).pop(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
+      title: '章节学习档案',
+      closeLabel: '关闭',
+      builder: (drawerCtx) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
             Text(
               '已留下闯关记录的章节共 ${passed.length} 个，点击可直接进入该章闯关地图。',
               style: TextStyle(
@@ -267,7 +263,6 @@ class _MineTabPageState extends State<MineTabPage> {
                 ),
           ],
         ),
-      ),
     );
   }
 
@@ -361,7 +356,7 @@ class _MineTabPageState extends State<MineTabPage> {
                       onTap: user.isAuthenticated ? _openProfile : _openLogin,
                       child: Row(
                         children: [
-                          WelkAvatar(
+                          GglAvatar(
                             alt: user.userInfo?.nickname ?? '头像',
                             size: WelkAvatarSize.large,
                             image: avatarUrl.isNotEmpty
@@ -433,9 +428,7 @@ class _MineTabPageState extends State<MineTabPage> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    const WelkDivider(variant: WelkDividerVariant.dashed),
-                    const SizedBox(height: 14),
+                    const GglDivider(verticalPadding: 14),
                     Row(
                       children: [
                         Expanded(

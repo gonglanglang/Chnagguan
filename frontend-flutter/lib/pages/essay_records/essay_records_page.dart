@@ -145,12 +145,11 @@ class _EssayRecordsPageState extends State<EssayRecordsPage> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    WelkButton(
-                      size: WelkButtonSize.small,
+                    GglButton(
+                      label: _clearing ? '清空中...' : '清空',
                       variant: WelkButtonVariant.error,
                       onPressed:
                           _total == 0 || _clearing ? null : _handleClearAll,
-                      child: Text(_clearing ? '清空中...' : '清空'),
                     ),
                   ],
                 ),
@@ -196,15 +195,12 @@ class _EssayRecordsPageState extends State<EssayRecordsPage> {
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
                     child: Center(
-                      child: WelkButton(
-                        size: WelkButtonSize.small,
+                      child: GglButton(
+                        label: _loading
+                            ? '加载中...'
+                            : '加载更多 (${_list.length} / $_total)',
                         variant: WelkButtonVariant.secondary,
                         onPressed: _loading ? null : _loadMore,
-                        child: Text(
-                          _loading
-                              ? '加载中...'
-                              : '加载更多 (${_list.length} / $_total)',
-                        ),
                       ),
                     ),
                   ),

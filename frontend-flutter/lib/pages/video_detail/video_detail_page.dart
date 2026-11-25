@@ -297,12 +297,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                           ],
                           if (lesson.notesAttachments.isNotEmpty) ...[
                             if (lesson.classNotes.trim().isNotEmpty)
-                              const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 12),
-                                child: WelkDivider(
-                                  variant: WelkDividerVariant.dashed,
-                                ),
-                              )
+                              const GglDivider(verticalPadding: 12)
                             else
                               const SizedBox(height: 10),
                             Text(
@@ -511,10 +506,9 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                     style: TextStyle(color: Colors.white),
                   ),
                   const SizedBox(height: 10),
-                  WelkButton(
-                    size: WelkButtonSize.small,
+                  GglButton(
+                    label: '重试播放',
                     onPressed: () => _initPlayer(lesson, autoPlay: true),
-                    child: const Text('重试播放'),
                   ),
                 ],
               ),

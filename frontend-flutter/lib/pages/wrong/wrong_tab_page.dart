@@ -355,9 +355,10 @@ class _WrongTabPageState extends State<WrongTabPage> {
                             ),
                           ),
                           const SizedBox(height: 20),
-                          WelkButton(
+                          GglButton(
+                            label: '登录 / 注册',
+                            size: WelkButtonSize.medium,
                             onPressed: _goLogin,
-                            child: const Text('登录 / 注册'),
                           ),
                         ],
                       ),
@@ -415,19 +416,17 @@ class _WrongTabPageState extends State<WrongTabPage> {
                                   ],
                                 ),
                               ),
-                              WelkButton(
-                                size: WelkButtonSize.small,
+                              GglButton(
+                                label: '清空',
                                 variant: WelkButtonVariant.secondary,
                                 onPressed: _total == 0 ? null : _clearAll,
-                                child: const Text('清空'),
                               ),
                               const SizedBox(width: 8),
-                              WelkButton(
-                                size: WelkButtonSize.small,
+                              GglButton(
+                                label: '错题重做',
                                 variant: WelkButtonVariant.primary,
                                 onPressed:
                                     _displayedTotal == 0 ? null : _startRedo,
-                                child: const Text('错题重做'),
                               ),
                             ],
                           ),
@@ -647,9 +646,7 @@ class _WrongCard extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          const WelkDivider(variant: WelkDividerVariant.dashed),
-          const SizedBox(height: 10),
+          const GglDivider(verticalPadding: 11),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -660,11 +657,10 @@ class _WrongCard extends StatelessWidget {
                   fontSize: 12,
                 ),
               ),
-              WelkButton(
-                size: WelkButtonSize.small,
+              GglButton(
+                label: '标为已掌握',
                 variant: WelkButtonVariant.success,
                 onPressed: onMaster,
-                child: const Text('标为已掌握'),
               ),
             ],
           ),

@@ -292,18 +292,14 @@ class _HomeTabPageState extends State<HomeTabPage> {
     final user = context.read<UserProvider>();
     final currentRealm = user.currentRealm;
 
-    await showWelkDrawer<void>(
+    await showGglBottomSheet<void>(
       context: context,
-      position: WelkDrawerPosition.bottom,
-      closeOnTapOutside: true,
-      builder: (drawerCtx) => WelkDrawer(
-        title: const Text('学习体系 · 六大修仙境界'),
-        closeLabel: '关闭',
-        onClose: () => Navigator.of(drawerCtx).pop(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
+      title: '学习体系 · 六大修仙境界',
+      closeLabel: '关闭',
+      builder: (drawerCtx) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
             Text(
               '共 ${user.realms.length} 大境界，全阶段课程与章节题库自由开放学习；完成本境指定关卡后可发起进阶考核晋升。',
               style: TextStyle(
@@ -396,7 +392,6 @@ class _HomeTabPageState extends State<HomeTabPage> {
               ),
           ],
         ),
-      ),
     );
   }
 
@@ -511,11 +506,10 @@ class _HomeTabPageState extends State<HomeTabPage> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  WelkButton(
-                    size: WelkButtonSize.small,
+                  GglButton(
+                    label: '学习体系',
                     variant: WelkButtonVariant.secondary,
                     onPressed: _openSystemDrawer,
-                    child: const Text('学习体系'),
                   ),
                 ],
               ),
@@ -643,37 +637,23 @@ class _HomeTabPageState extends State<HomeTabPage> {
                     Row(
                       children: [
                         Expanded(
-                          child: WelkButton(
+                          child: GglBlockButton(
+                            label: '拍照识题',
+                            icon: Icons.photo_camera_rounded,
                             size: WelkButtonSize.small,
                             variant: WelkButtonVariant.primary,
                             onPressed: () =>
                                 _openSmartBoard(autoCapture: true),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.photo_camera_rounded, size: 15),
-                                SizedBox(width: 5),
-                                Text('拍照识题'),
-                              ],
-                            ),
                           ),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
-                          child: WelkButton(
+                          child: GglBlockButton(
+                            label: '打开画板',
+                            icon: Icons.edit_rounded,
                             size: WelkButtonSize.small,
                             variant: WelkButtonVariant.secondary,
                             onPressed: () => _openSmartBoard(),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.edit_rounded, size: 15),
-                                SizedBox(width: 5),
-                                Text('打开画板'),
-                              ],
-                            ),
                           ),
                         ),
                       ],
@@ -774,25 +754,21 @@ class _HomeTabPageState extends State<HomeTabPage> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 14),
-                      const WelkDivider(variant: WelkDividerVariant.dashed),
-                      const SizedBox(height: 12),
+                      const GglDivider(verticalPadding: 12),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          WelkButton(
-                            size: WelkButtonSize.small,
+                          GglButton(
+                            label: '查看地图',
                             variant: WelkButtonVariant.secondary,
                             onPressed: () =>
                                 _openChapterMap(hero, _heroChapterSeq),
-                            child: const Text('查看地图'),
                           ),
                           const SizedBox(width: 10),
-                          WelkButton(
-                            size: WelkButtonSize.small,
+                          GglButton(
+                            label: '继续闯关',
                             variant: WelkButtonVariant.primary,
                             onPressed: _handleContinuePractice,
-                            child: const Text('继续闯关'),
                           ),
                         ],
                       ),
@@ -825,11 +801,10 @@ class _HomeTabPageState extends State<HomeTabPage> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      WelkButton(
-                        size: WelkButtonSize.small,
+                      GglButton(
+                        label: '去考核',
                         variant: WelkButtonVariant.success,
                         onPressed: _startAdvanceExam,
-                        child: const Text('去考核'),
                       ),
                     ],
                   ),

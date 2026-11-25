@@ -34,9 +34,10 @@ public class AppAiBoardController {
     @PostMapping("/recognize-problem/upload")
     public Result<AiBoardVO.RecognizeVO> recognizeProblemUpload(
             @RequestParam("file") MultipartFile file,
-            @RequestParam(required = false) String extraHint
+            @RequestParam(required = false) String extraHint,
+            @RequestParam(required = false) String sourceType
     ) {
-        return Result.ok(aiBoardService.recognizeProblemUpload(file, extraHint));
+        return Result.ok(aiBoardService.recognizeProblemUpload(file, extraHint, sourceType));
     }
 
     @Operation(summary = "AI 生成启发式解题思路（仅给思路/公式/方法，不直接给答案）")

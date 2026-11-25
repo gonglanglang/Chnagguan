@@ -148,7 +148,7 @@ class _ProfilePageState extends State<ProfilePage> {
               onTap: _chooseAvatar,
               child: Row(
                 children: [
-                  WelkAvatar(
+                  GglAvatar(
                     alt: info?.nickname ?? '用户头像',
                     size: WelkAvatarSize.large,
                     image:

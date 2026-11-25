@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:welkui_flutter/welkui_flutter.dart';
+
+import 'ggl_skin_widgets.dart';
 
 class ImagePreviewPage extends StatelessWidget {
   const ImagePreviewPage({
@@ -27,17 +28,9 @@ class ImagePreviewPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF121214),
-      appBar: WelkAppBar(
+      appBar: GglAppBar(
         title: title,
-        centerTitle: true,
-        layout: WelkAppBarLayout.comicStrip,
-        overRideDarkMode: true,
-        leading: WelkIconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          label: '返回',
-          overRideDarkMode: true,
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        showBack: true,
       ),
       body: Center(
         child: InteractiveViewer(

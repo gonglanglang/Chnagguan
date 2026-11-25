@@ -175,8 +175,8 @@ class AppTheme {
       disabledTextColor: disabled,
       fillColor: paper,
       markerColor: accent,
-      strokeWidth: 2.0,
-      roughnessLevel: WiredRoughness.gentle,
+      strokeWidth: 2.2,
+      roughnessLevel: WiredRoughness.playful,
       // 显式指定 CJK 优先字体，避免查找未捆绑的 skribble_font_recursive 资源
       fontFamily: cjkFontFallback.first,
     );

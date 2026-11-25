@@ -427,12 +427,14 @@ class GuoguanlaApi {
     required Uint8List imageBytes,
     required String filename,
     String? extraHint,
+    String sourceType = 'PHOTO',
   }) {
     return client.uploadBytes<AiRecognizeResult>(
       path: '/app/ai/recognize-problem/upload',
       bytes: imageBytes,
       filename: filename,
       extraFields: {
+        'sourceType': sourceType,
         if (extraHint != null && extraHint.trim().isNotEmpty)
           'extraHint': extraHint.trim(),
       },

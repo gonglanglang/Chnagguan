@@ -141,6 +141,35 @@ class AiModuleTests {
     }
 
     @Test
+    void boardGuidanceEndpointsRequireRecognizedProblemFirst() throws Exception {
+        mockMvc.perform(post("/api/app/ai/board/ideas")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"problemText\":\"\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400));
+
+        mockMvc.perform(post("/api/app/ai/board/solve")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"problemText\":\"   \"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400));
+    }
+
+    @Test
+    void recognizeRejectsScribbleOrInvalidMathProblem() {
+        String scribbleJson = """
+                {
+                  "isValidMathProblem": false,
+                  "invalidReason": "检测到随手涂鸦线条，并非完整可解的数学题",
+                  "problemText": ""
+                }
+                """;
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> aiBoardService.parseRecognizeResult(scribbleJson, "LongCat-2.5", 90L)
+        ).hasMessageContaining("涂鸦");
+    }
+
+    @Test
     void adminAiConfigSavesSecurelyMasksKeyAndExposesSafeAppStatus() throws Exception {
         String token = loginAdminToken();
         String fakeSecret = "test_fake_key_998877665544";

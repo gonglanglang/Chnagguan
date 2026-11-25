@@ -162,6 +162,15 @@ enum GlobalCacheKey {
       preserveOnCacheClear: true,
     ),
   ),
+  smartBoardRecords(
+    GlobalCacheEntryMeta(
+      storageKey: 'ggl_smart_board_records',
+      description: 'AI 智能手写画板历史保存记录（自动以题目命名，完整保存笔迹、几何、配图与 AI 思路/诊断/解题信息）',
+      category: GlobalCacheCategory.learning,
+      preserveOnAppUpdate: true,
+      preserveOnCacheClear: true,
+    ),
+  ),
   smartBoardDraft(
     GlobalCacheEntryMeta(
       storageKey: 'ggl_smart_board_draft',
@@ -437,6 +446,32 @@ class GlobalCache {
     );
   }
 
+  List<Map<String, dynamic>> get smartBoardRecords {
+    final raw = _prefs.getString(GlobalCacheKey.smartBoardRecords.storageKey);
+    if (raw == null || raw.isEmpty) return const <Map<String, dynamic>>[];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        return decoded
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+      }
+    } catch (_) {
+      // 忽略损坏的画板历史记录
+    }
+    return const <Map<String, dynamic>>[];
+  }
+
+  Future<void> setSmartBoardRecords(List<Map<String, dynamic>> records) async {
+    final key = GlobalCacheKey.smartBoardRecords.storageKey;
+    if (records.isEmpty) {
+      await _prefs.remove(key);
+    } else {
+      await _prefs.setString(key, jsonEncode(records));
+    }
+  }
+
   Map<String, dynamic>? get smartBoardDraft {
     final raw = _prefs.getString(GlobalCacheKey.smartBoardDraft.storageKey);
     if (raw == null || raw.isEmpty) return null;
@@ -476,6 +511,7 @@ class GlobalCache {
       'lastAnnouncementVersion': lastAnnouncementVersion,
       'lastInstalledAppVersion': lastInstalledAppVersion,
       'hasSmartBoardDraft': smartBoardDraft != null,
+      'smartBoardRecordCount': smartBoardRecords.length,
       'smartBoardPrefs': smartBoardPrefs,
     };
   }

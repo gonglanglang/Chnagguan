@@ -207,7 +207,7 @@ class _LevelsPageState extends State<LevelsPage> {
                       ],
                       if (item.realmOrder < 6) ...[
                         const SizedBox(height: 10),
-                        const WelkDivider(variant: WelkDividerVariant.dashed),
+                        const GglDivider(verticalPadding: 0),
                         const SizedBox(height: 8),
                         Wrap(
                           spacing: 12,

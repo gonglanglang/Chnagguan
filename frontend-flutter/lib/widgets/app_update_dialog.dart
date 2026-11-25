@@ -8,6 +8,7 @@ import '../providers/update_provider.dart';
 import '../services/apk_installer.dart';
 import 'ggl_comic_panel.dart';
 import 'ggl_feedback.dart';
+import 'ggl_skin_widgets.dart';
 
 /// Global comic-styled in-app update overlay modal.
 class AppUpdateOverlay extends StatelessWidget {
@@ -87,8 +88,8 @@ class AppUpdateOverlay extends StatelessWidget {
                               ),
                             ),
                             if (!update.forceUpdate && !update.downloading)
-                              WelkIconButton.close(
-                                dialog: true,
+                              GglIconButton(
+                                icon: Icons.close_rounded,
                                 label: '关闭',
                                 onPressed: update.dismiss,
                               ),

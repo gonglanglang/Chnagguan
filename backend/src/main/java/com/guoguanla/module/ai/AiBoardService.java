@@ -129,13 +129,17 @@ public class AiBoardService {
 
     public AiBoardVO.RecognizeVO recognizeProblem(AiRecognizeReq req) {
         if (req == null || req.getImageBase64() == null || req.getImageBase64().isBlank()) {
-            throw new BizException(ErrorCode.BAD_REQUEST, "请先拍摄或上传数学题目图片");
+            throw new BizException(ErrorCode.BAD_REQUEST, "请先拍摄、上传或在画板写下数学题目");
         }
         String dataUri = normalizeImageDataUri(req.getImageBase64(), req.getMimeType());
-        return recognizeProblemInternal(dataUri, req.getExtraHint());
+        return recognizeProblemInternal(dataUri, req.getExtraHint(), req.getSourceType());
     }
 
     public AiBoardVO.RecognizeVO recognizeProblemUpload(MultipartFile file, String extraHint) {
+        return recognizeProblemUpload(file, extraHint, "PHOTO");
+    }
+
+    public AiBoardVO.RecognizeVO recognizeProblemUpload(MultipartFile file, String extraHint, String sourceType) {
         if (file == null || file.isEmpty()) {
             throw new BizException(ErrorCode.BAD_REQUEST, "请上传有效的数学题目图片");
         }
@@ -145,7 +149,7 @@ public class AiBoardService {
         try {
             String mime = normalizeMimeType(file.getContentType(), file.getOriginalFilename());
             String b64 = Base64.getEncoder().encodeToString(file.getBytes());
-            return recognizeProblemInternal("data:" + mime + ";base64," + b64, extraHint);
+            return recognizeProblemInternal("data:" + mime + ";base64," + b64, extraHint, sourceType);
         } catch (BizException e) {
             throw e;
         } catch (Exception e) {
@@ -153,14 +157,23 @@ public class AiBoardService {
         }
     }
 
-    private AiBoardVO.RecognizeVO recognizeProblemInternal(String imageDataUri, String extraHint) {
+    private AiBoardVO.RecognizeVO recognizeProblemInternal(String imageDataUri, String extraHint, String sourceType) {
         AiConfigService.RuntimeAiConfig cfg = requireReadyConfig();
+        boolean fromHandwriting = "BOARD_HANDWRITING".equalsIgnoreCase(sourceType);
 
         StringBuilder userPrompt = new StringBuilder();
+        if (fromHandwriting) {
+            userPrompt.append("这是一张学生在电子手写画板上手写的图片。请先严格审核图片内容是否为一道【合理、清晰、完整可解的数学题目】。\n");
+            userPrompt.append("防乱画硬性规则：如果图片是随手涂鸦、乱画线条、空白、鬼画符、非数学闲聊文字、孤立数字/字母，或残缺不全没有明确运算/求解/证明目标的片段，必须返回 \"isValidMathProblem\": false，并在 invalidReason 中用 1 句话明确告知原因；切勿编造或脑补不存在的题目！\n");
+        } else {
+            userPrompt.append("请先严格判断图片中是否包含一道【合理、清晰、完整可解的数学题目】。若为无关风景、乱画涂鸦、空白模糊或非数学题，必须返回 \"isValidMathProblem\": false 并在 invalidReason 说明原因。\n");
+        }
         userPrompt.append("""
-                请仔细识别图片中的数学题目，提取完整题干并定位题目中的几何图形/函数图像区域，方便客户端从原图 1:1 精准还原图形。
+                若确认是合理完整的数学题，请提取完整题干并定位题目中的几何图形/函数图像区域，方便客户端从原图 1:1 精准还原图形。
                 请严格返回如下 JSON 结构（所有字符串中的 LaTeX 反斜杠请双写）：
                 {
+                  "isValidMathProblem": true或false,
+                  "invalidReason": "仅当 isValidMathProblem 为 false 时填写简短原因，有效题目留空字符串",
                   "title": "简短题目标题（8~18字）",
                   "problemText": "完整规范的题干文本，分小题请使用 \\n 换行，公式使用 $...$ 包裹",
                   "subjectTag": "核心知识点，如 二次函数 / 全等三角形 / 一元二次方程",
@@ -222,17 +235,17 @@ public class AiBoardService {
     }
 
     private AiBoardVO.GuidanceVO runBoardGuidance(String mode, AiBoardAnalyzeReq req) {
-        AiConfigService.RuntimeAiConfig cfg = requireReadyConfig();
         String problemText = req != null && req.getProblemText() != null ? req.getProblemText().trim() : "";
+        if (problemText.isBlank()) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "请先拍照或手写识别一道完整的数学题目，再使用思路、诊断或解题");
+        }
+        AiConfigService.RuntimeAiConfig cfg = requireReadyConfig();
         List<String> images = new ArrayList<>();
         if (req != null && req.getProblemImageBase64() != null && !req.getProblemImageBase64().isBlank()) {
             images.add(normalizeImageDataUri(req.getProblemImageBase64(), null));
         }
         if (req != null && req.getBoardImageBase64() != null && !req.getBoardImageBase64().isBlank()) {
             images.add(normalizeImageDataUri(req.getBoardImageBase64(), "image/png"));
-        }
-        if (problemText.isBlank() && images.isEmpty()) {
-            throw new BizException(ErrorCode.BAD_REQUEST, "请先拍照识别题目、输入题干或在画板上写下题目");
         }
 
         boolean isIdeas = "IDEAS".equals(mode);
@@ -371,9 +384,17 @@ public class AiBoardService {
                     .build();
         }
 
+        if (root.has("isValidMathProblem") && !root.path("isValidMathProblem").asBoolean(true)) {
+            String reason = textOf(root, "invalidReason", "未检测到完整合理的数学题目，请重新拍照或工整书写后再识别");
+            throw new BizException(ErrorCode.BAD_REQUEST, reason);
+        }
+
         String problemText = textOf(root, "problemText", "");
         if (problemText.isBlank()) {
             problemText = textOf(root, "stem", cleanRawFallback(rawContent));
+        }
+        if (problemText.replaceAll("\\s+", "").length() < 3) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "识别到的题目内容不完整，请写清已知条件与求解目标后再试");
         }
         List<AiBoardVO.FigureBoxVO> figureBoxes = readFigureBoxes(root.path("figureBoxes"));
         boolean hasFigure = root.path("hasFigure").asBoolean(false) || !figureBoxes.isEmpty();

@@ -243,11 +243,10 @@ class _GradeChaptersPageState extends State<GradeChaptersPage> {
                     ),
                     if (canExamHere) ...[
                       const SizedBox(width: 8),
-                      WelkButton(
-                        size: WelkButtonSize.small,
+                      GglButton(
+                        label: '去考核',
                         variant: WelkButtonVariant.success,
                         onPressed: _startAdvanceExam,
-                        child: const Text('去考核'),
                       ),
                     ],
                   ],

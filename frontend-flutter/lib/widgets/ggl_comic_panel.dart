@@ -505,7 +505,8 @@ class GglBlockButton extends StatelessWidget {
 
     if (isSkribble) {
       final wired = WiredTheme.of(context);
-      final isPrimary = variant == WelkButtonVariant.primary;
+      final isFilledVariant = variant != WelkButtonVariant.secondary &&
+          variant != WelkButtonVariant.ghost;
       final fill = switch (variant) {
         WelkButtonVariant.primary => wired.markerColor,
         WelkButtonVariant.secondary => wired.fillColor,
@@ -515,15 +516,12 @@ class GglBlockButton extends StatelessWidget {
         WelkButtonVariant.error => colors.error,
         WelkButtonVariant.ghost => wired.fillColor,
       };
-      final textColor = (variant == WelkButtonVariant.secondary ||
-              variant == WelkButtonVariant.ghost)
-          ? wired.textColor
-          : colors.onFill(fill);
+      final textColor = isFilledVariant ? colors.onFill(fill) : wired.textColor;
       return SizedBox(
         width: double.infinity,
         child: WiredThemeScope(
           data: wired.copyWith(fillColor: fill, textColor: textColor),
-          child: isPrimary
+          child: isFilledVariant
               ? WiredElevatedButton(
                   onPressed: loading ? null : onPressed,
                   semanticLabel: label,

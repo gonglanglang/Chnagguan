@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:guoguanla_app/app/app_theme.dart';
@@ -520,11 +522,166 @@ void main() {
     expect(api.lastSavedPhone, '13812345678');
     expect(api.lastSavedEmail, 'math@example.com');
   });
+
+  testWidgets(
+      'SmartBoardPage enforces problem-first gate, upgrades problem editor with live preview, and auto-saves/restores records by problem title',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final cache = await GlobalCache.init();
+    final api = _FakeGuoguanlaApi();
+    final themeProvider = ThemeProvider(cache);
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider<GlobalCache>.value(value: cache),
+          Provider<GuoguanlaApi>.value(value: api),
+          ChangeNotifierProvider<ThemeProvider>.value(value: themeProvider),
+        ],
+        child: Consumer<ThemeProvider>(
+          builder: (context, theme, _) => WelkTheme(
+            data: theme.welkTheme,
+            child: WiredThemeScope(
+              data: theme.skribbleTheme,
+              child: MaterialApp(
+                theme: theme.materialTheme,
+                home: const SmartBoardPage(),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 1. 未识题前，点击「思路」「解题」必须被拦截，不得发起 AI 调用
+    await tester.tap(find.text('思路'));
+    await tester.pumpAndSettle();
+    expect(api.ideasCallCount, 0);
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('解题'));
+    await tester.pumpAndSettle();
+    expect(api.solveCallCount, 0);
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+
+    // 2. 空画板点击「手写识题」应被本地极速预检拦截
+    expect(find.text('手写识题'), findsOneWidget);
+    await tester.tap(find.text('手写识题'));
+    await tester.pumpAndSettle();
+    expect(api.recognizeCallCount, 0);
+
+    // 等待顶部提示条自动收起，避免遮挡顶栏按钮
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+
+    // 3. 打开编辑题目抽屉，验证快捷公式插入按钮与实时公式预览
+    await tester.tap(find.text('拍照'));
+    await tester.pumpAndSettle();
+    expect(find.text('识别画板手写题目'), findsOneWidget);
+    await tester.tap(find.text('手动输入 / 编辑题干'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('分式'), findsOneWidget);
+    expect(find.text('根号'), findsOneWidget);
+    await tester.enterText(
+      find.byType(TextField).first,
+      '椭圆标准方程',
+    );
+    await tester.enterText(
+      find.byType(TextField).last,
+      '（1）\$\\dfrac{x^2}{2}+y^2=1\$',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('实时公式渲染预览'), findsOneWidget);
+    await tester.ensureVisible(find.text('保存到画板'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存到画板'));
+    await tester.pumpAndSettle();
+
+    // 4. 识别/录入题目后可正常触发 AI 思路，且画板以题目标题自动保存
+    await tester.tap(find.text('思路'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(api.ideasCallCount, 1);
+    await tester.tap(find.text('立即显示'));
+    await tester.pumpAndSettle();
+
+    expect(cache.smartBoardRecords.length, 1);
+    expect(cache.smartBoardRecords.first['title'], '椭圆标准方程');
+    expect(find.text('记录(1)'), findsOneWidget);
+
+    // 5. 打开「记录(1)」新建画板后再恢复「椭圆标准方程」
+    await tester.tap(find.text('记录(1)'));
+    await tester.pumpAndSettle();
+    expect(find.text('已保存画板（1）'), findsOneWidget);
+    expect(find.text('已思路'), findsOneWidget);
+
+    await tester.tap(find.text('新建画板'));
+    await tester.pumpAndSettle();
+    expect(find.text('引导思路（不含答案）'), findsNothing);
+
+    await tester.tap(find.text('记录(1)'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('椭圆标准方程').last);
+    await tester.pumpAndSettle();
+    expect(find.text('引导思路（不含答案）'), findsOneWidget);
+  });
+
+  testWidgets(
+      'Switching UI skin to Skribble switches buttons and inputs to Wired widgets on LoginPage & HomeTabPage',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'ggl_ui_skin': 'skribble',
+    });
+    final cache = await GlobalCache.init();
+    final api = _FakeGuoguanlaApi();
+    final userProvider = UserProvider(storage: cache, api: api);
+    final themeProvider = ThemeProvider(cache);
+    expect(themeProvider.isSkribble, isTrue);
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider<GlobalCache>.value(value: cache),
+          Provider<GuoguanlaApi>.value(value: api),
+          ChangeNotifierProvider<UserProvider>.value(value: userProvider),
+          ChangeNotifierProvider<ThemeProvider>.value(value: themeProvider),
+        ],
+        child: Consumer<ThemeProvider>(
+          builder: (context, theme, _) => WelkTheme(
+            data: theme.welkTheme,
+            child: WiredThemeScope(
+              data: theme.skribbleTheme,
+              child: MaterialApp(
+                theme: theme.materialTheme,
+                home: const LoginPage(),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(WiredAppBar), findsOneWidget);
+    expect(find.byType(WiredInput), findsNWidgets(2));
+    expect(find.byType(WiredCheckbox), findsOneWidget);
+    expect(find.byType(WiredElevatedButton), findsOneWidget);
+    expect(find.byType(WelkButton), findsNothing);
+    expect(find.byType(WelkInput), findsNothing);
+    expect(find.byType(WelkCheckBox), findsNothing);
+  });
 }
 
 class _FakeGuoguanlaApi extends GuoguanlaApi {
   String? lastSavedPhone;
   String? lastSavedEmail;
+  int recognizeCallCount = 0;
+  int ideasCallCount = 0;
+  int solveCallCount = 0;
 
   _FakeGuoguanlaApi()
       : super(
@@ -632,6 +789,23 @@ class _FakeGuoguanlaApi extends GuoguanlaApi {
   }
 
   @override
+  Future<AiRecognizeResult> recognizeMathProblem({
+    required Uint8List imageBytes,
+    required String filename,
+    String? extraHint,
+    String sourceType = 'PHOTO',
+  }) async {
+    recognizeCallCount++;
+    return const AiRecognizeResult(
+      title: '手写识别方程题',
+      problemText: r'解方程 $2x+3=7$',
+      subjectTag: '初中数学',
+      questionType: '解答题',
+      difficulty: '基础',
+    );
+  }
+
+  @override
   Future<AiBoardGuidance> generateBoardIdeas({
     String? problemText,
     String? boardImageBase64,
@@ -639,6 +813,7 @@ class _FakeGuoguanlaApi extends GuoguanlaApi {
     String? userNotes,
     bool hasHandwriting = false,
   }) async {
+    ideasCallCount++;
     return const AiBoardGuidance(
       mode: 'IDEAS',
       headline: '十字相乘法破题',
@@ -663,6 +838,7 @@ class _FakeGuoguanlaApi extends GuoguanlaApi {
     String? problemImageBase64,
     String? userNotes,
   }) async {
+    solveCallCount++;
     return const AiBoardGuidance(
       mode: 'SOLVE',
       headline: '规范分步求解',
