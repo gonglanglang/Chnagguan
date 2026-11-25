@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS app_user (
   username VARCHAR(64) DEFAULT NULL COMMENT '登录账号',
   password_hash VARCHAR(128) DEFAULT NULL COMMENT '密码哈希（微信登录可空）',
   phone VARCHAR(20) DEFAULT NULL COMMENT '手机号',
+  email VARCHAR(128) DEFAULT NULL COMMENT '绑定邮箱',
   wx_openid VARCHAR(64) DEFAULT NULL COMMENT '微信小程序OpenID',
   wx_unionid VARCHAR(64) DEFAULT NULL COMMENT '微信UnionID',
   nickname VARCHAR(64) NOT NULL DEFAULT '数学小学徒' COMMENT '学生昵称',

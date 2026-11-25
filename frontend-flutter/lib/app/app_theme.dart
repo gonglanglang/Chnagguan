@@ -1,5 +1,38 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:skribble/skribble.dart';
 import 'package:welkui_flutter/welkui_flutter.dart';
+
+import '../providers/theme_provider.dart';
+
+/// 应用全局可热切换的 UI 组件库皮肤。
+enum AppUiSkin {
+  welkui(
+    code: 'welkui',
+    name: 'WelkUI 漫画风',
+    subtitle: '硬核粗描边与漫画硬阴影组件体系',
+  ),
+  skribble(
+    code: 'skribble',
+    name: 'Skribble 手绘风',
+    subtitle: 'skribble.dev 手绘素描线稿与暖纸墨迹组件库',
+  );
+
+  const AppUiSkin({
+    required this.code,
+    required this.name,
+    required this.subtitle,
+  });
+
+  final String code;
+  final String name;
+  final String subtitle;
+
+  static AppUiSkin fromCode(String? raw) {
+    if (raw == 'skribble') return AppUiSkin.skribble;
+    return AppUiSkin.welkui;
+  }
+}
 
 @immutable
 class AppThemePreset {
@@ -31,6 +64,8 @@ class AppTheme {
 
   static const Color lightCanvas = Color(0xFFF4F1E8);
   static const Color darkCanvas = Color(0xFF1F1F22);
+  static const Color skribbleLightCanvas = Color(0xFFFBF8F1);
+  static const Color skribbleDarkCanvas = Color(0xFF1C1A1E);
 
   static const List<AppThemePreset> presets = <AppThemePreset>[
     AppThemePreset(
@@ -127,14 +162,39 @@ class AppTheme {
     );
   }
 
+  static WiredThemeData buildSkribbleTheme({
+    required bool isDark,
+    required Color accent,
+  }) {
+    final ink = isDark ? const Color(0xFFF5EFE6) : const Color(0xFF1F1B24);
+    final paper = isDark ? const Color(0xFF28252C) : const Color(0xFFFFFDF8);
+    final disabled = isDark ? const Color(0xFF9F98A8) : const Color(0xFF6B6574);
+    return WiredThemeData(
+      borderColor: ink,
+      textColor: ink,
+      disabledTextColor: disabled,
+      fillColor: paper,
+      markerColor: accent,
+      strokeWidth: 2.0,
+      roughnessLevel: WiredRoughness.gentle,
+      // 显式指定 CJK 优先字体，避免查找未捆绑的 skribble_font_recursive 资源
+      fontFamily: cjkFontFallback.first,
+    );
+  }
+
   static ThemeData buildMaterialTheme({
     required bool isDark,
     required WelkThemeData welk,
+    bool isSkribble = false,
   }) {
     final brightness = isDark ? Brightness.dark : Brightness.light;
-    final bg = isDark ? darkCanvas : lightCanvas;
+    final bg = isSkribble
+        ? (isDark ? skribbleDarkCanvas : skribbleLightCanvas)
+        : (isDark ? darkCanvas : lightCanvas);
     final ink = isDark ? welk.darkInk : welk.ink;
-    final paper = isDark ? welk.darkPaper : welk.paper;
+    final paper = isSkribble
+        ? (isDark ? const Color(0xFF28252C) : const Color(0xFFFFFDF8))
+        : (isDark ? welk.darkPaper : welk.paper);
 
     final baseText = ThemeData(brightness: brightness).textTheme.apply(
           bodyColor: ink,
@@ -163,8 +223,19 @@ class AppTheme {
     );
   }
 
+  static bool isSkribble(BuildContext context, {bool listen = true}) {
+    try {
+      return Provider.of<ThemeProvider>(context, listen: listen).isSkribble;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Color pageBackground(BuildContext context) {
     final isDark = WelkTheme.of(context).resolveDarkMode(context);
+    if (isSkribble(context)) {
+      return isDark ? skribbleDarkCanvas : skribbleLightCanvas;
+    }
     return isDark ? darkCanvas : lightCanvas;
   }
 

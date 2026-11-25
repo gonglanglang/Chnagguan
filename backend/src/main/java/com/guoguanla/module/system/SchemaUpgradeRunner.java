@@ -53,6 +53,7 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
         ensureUserEssayAnswerTable();
         ensureVideoTables();
         boolean addedUserRealm = ensureColumn("app_user", "realm_code", "VARCHAR(24) NOT NULL DEFAULT 'lianqi'");
+        ensureColumn("app_user", "email", "VARCHAR(128) DEFAULT NULL");
         ensureColumn("user_quiz_record", "realm_code", "VARCHAR(24) DEFAULT NULL");
         ensureColumn("user_quiz_record", "score", "INT DEFAULT NULL");
         ensureColumn("user_wrong_question", "question_format", "VARCHAR(24) NOT NULL DEFAULT 'SINGLE_CHOICE'");

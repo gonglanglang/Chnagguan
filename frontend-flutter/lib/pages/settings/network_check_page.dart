@@ -8,6 +8,7 @@ import '../../core/cache/global_cache.dart';
 import '../../core/network/api_client.dart';
 import '../../widgets/ggl_comic_panel.dart';
 import '../../widgets/ggl_feedback.dart';
+import '../../widgets/ggl_skin_widgets.dart';
 import '../../widgets/ggl_skeleton.dart';
 
 class NetworkCheckPage extends StatefulWidget {
@@ -74,15 +75,9 @@ class _NetworkCheckPageState extends State<NetworkCheckPage> {
 
     return Scaffold(
       backgroundColor: AppTheme.pageBackground(context),
-      appBar: WelkAppBar(
+      appBar: const GglAppBar(
         title: '网络检测',
-        centerTitle: true,
-        layout: WelkAppBarLayout.comicStrip,
-        leading: WelkIconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          label: '返回',
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        showBack: true,
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),

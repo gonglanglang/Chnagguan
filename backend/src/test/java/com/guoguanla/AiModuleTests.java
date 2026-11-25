@@ -207,4 +207,69 @@ class AiModuleTests {
         mockMvc.perform(get("/api/admin/ai/config"))
                 .andExpect(jsonPath("$.code").value(401));
     }
+
+    @Test
+    void parseRecognizeFigureBoxesNormalizesCoordinates() {
+        String raw = """
+                {
+                  "title": "几何相似三角形",
+                  "problemText": "如图，在 $\\triangle ABC$ 中，$DE \\parallel BC$。",
+                  "hasFigure": false,
+                  "figureBoxes": [
+                    {"title": "原题几何图", "x": 0.12, "y": 0.45, "w": 0.72, "h": 0.48},
+                    {"title": "千分比兼容框", "x": 100, "y": 200, "w": 500, "h": 400}
+                  ],
+                  "diagrams": []
+                }
+                """;
+        AiBoardVO.RecognizeVO rec = aiBoardService.parseRecognizeResult(raw, "LongCat-2.5", 180L);
+        assertThat(rec.getHasFigure()).isTrue();
+        assertThat(rec.getFigureBoxes()).hasSize(2);
+        assertThat(rec.getFigureBoxes().get(0).getX()).isEqualTo(0.12);
+        assertThat(rec.getFigureBoxes().get(0).getW()).isEqualTo(0.72);
+        assertThat(rec.getFigureBoxes().get(1).getX()).isEqualTo(0.1);
+        assertThat(rec.getFigureBoxes().get(1).getH()).isEqualTo(0.4);
+    }
+
+    @Test
+    void appUserCanBindPhoneAndEmailWithoutVerification() throws Exception {
+        String uname = "bind_test_" + System.currentTimeMillis();
+        MvcResult regRes = mockMvc.perform(post("/api/app/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "%s",
+                                  "password": "password123",
+                                  "nickname": "小测同学",
+                                  "gradeCode": "g8"
+                                }
+                                """.formatted(uname)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andReturn();
+        String appToken = objectMapper.readTree(regRes.getResponse().getContentAsString())
+                .path("data").path("token").asText();
+
+        mockMvc.perform(put("/api/app/user/profile")
+                        .header("Authorization", "Bearer " + appToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "nickname": "小测新昵称",
+                                  "phone": "13900139888",
+                                  "email": "student@example.com"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.nickname").value("小测新昵称"))
+                .andExpect(jsonPath("$.data.phone").value("13900139888"))
+                .andExpect(jsonPath("$.data.email").value("student@example.com"));
+
+        mockMvc.perform(get("/api/app/user/profile")
+                        .header("Authorization", "Bearer " + appToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.phone").value("13900139888"))
+                .andExpect(jsonPath("$.data.email").value("student@example.com"));
+    }
 }

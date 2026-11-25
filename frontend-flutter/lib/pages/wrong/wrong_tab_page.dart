@@ -14,6 +14,7 @@ import '../../services/guoguanla_api.dart';
 import '../../widgets/ggl_comic_panel.dart';
 import '../../widgets/ggl_feedback.dart';
 import '../../widgets/ggl_skeleton.dart';
+import '../../widgets/ggl_skin_widgets.dart';
 import '../../widgets/image_preview_page.dart';
 import '../../widgets/math_text.dart';
 import '../login/login_page.dart';
@@ -241,10 +242,9 @@ class _WrongTabPageState extends State<WrongTabPage> {
 
     return Scaffold(
       backgroundColor: AppTheme.pageBackground(context),
-      appBar: const WelkAppBar(
+      appBar: const GglAppBar(
         title: '错题本',
-        layout: WelkAppBarLayout.comicStrip,
-        automaticallyImplyLeading: false,
+        centerTitle: false,
       ),
       body: Column(
         children: [

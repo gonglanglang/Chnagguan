@@ -8,6 +8,7 @@ import '../../core/network/api_client.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/ggl_comic_panel.dart';
 import '../../widgets/ggl_feedback.dart';
+import '../../widgets/ggl_skin_widgets.dart';
 import '../../widgets/ggl_skeleton.dart';
 
 class LoginPage extends StatefulWidget {
@@ -155,18 +156,10 @@ class _LoginPageState extends State<LoginPage> {
 
     return Scaffold(
       backgroundColor: AppTheme.pageBackground(context),
-      appBar: WelkAppBar(
+      appBar: GglAppBar(
         title: _isRegister ? '学生注册' : '账号登录',
-        centerTitle: true,
-        layout: WelkAppBarLayout.comicStrip,
-        automaticallyImplyLeading: false,
-        leading: canPop
-            ? WelkIconButton(
-                icon: const Icon(Icons.arrow_back_rounded),
-                label: '返回',
-                onPressed: () => Navigator.of(context).pop(false),
-              )
-            : null,
+        showBack: canPop,
+        onBack: () => Navigator.of(context).pop(false),
       ),
       body: SafeArea(
         child: SingleChildScrollView(

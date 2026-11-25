@@ -14,6 +14,7 @@ public class AppUser {
     private String username;
     private String passwordHash;
     private String phone;
+    private String email;
     private String wxOpenid;
     private String wxUnionid;
     private String nickname;

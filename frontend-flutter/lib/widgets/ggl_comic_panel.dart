@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:skribble/skribble.dart';
 import 'package:welkui_flutter/welkui_flutter.dart';
 
 import '../app/app_theme.dart';
@@ -44,12 +45,58 @@ class _GglComicPanelState extends State<GglComicPanel> {
 
   @override
   Widget build(BuildContext context) {
+    final isSkribble = AppTheme.isSkribble(context);
     final colors = WelkTheme.of(context).resolveColors(context);
+    final interactive = widget.onTap != null;
+
+    if (isSkribble) {
+      final wired = WiredTheme.of(context);
+      final fill = widget.color ?? wired.fillColor;
+      final outline = widget.borderColor ?? wired.borderColor;
+      final skribbleRadius = widget.borderRadius ?? BorderRadius.circular(12);
+
+      Widget box = AnimatedContainer(
+        duration: const Duration(milliseconds: 90),
+        curve: Curves.easeOut,
+        margin: widget.margin,
+        transform: Matrix4.translationValues(
+          _pressed && interactive ? 1.5 : 0.0,
+          _pressed && interactive ? 1.5 : 0.0,
+          0,
+        ),
+        decoration: RoughBoxDecoration(
+          drawConfig: wired.drawConfig,
+          shape: RoughBoxShape.roundedRectangle,
+          borderRadius: skribbleRadius,
+          borderStyle: RoughDrawingStyle(
+            width: wired.strokeWidth,
+            color: outline,
+          ),
+          fillStyle: RoughDrawingStyle(color: fill),
+          filler: SolidFiller(FillerConfig.build()),
+        ),
+        child: ClipRRect(
+          borderRadius: skribbleRadius,
+          clipBehavior: widget.clipBehavior,
+          child: Padding(padding: widget.padding, child: widget.child),
+        ),
+      );
+
+      if (!interactive) return box;
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTapCancel: () => setState(() => _pressed = false),
+        child: box,
+      );
+    }
+
     final fill = widget.color ?? colors.paper;
     final outline = widget.borderColor ?? colors.outline;
     final offset = widget.shadowOffset ?? colors.cardShadowOffset;
     final radii = widget.borderRadius ?? GglComicPanel.defaultComicRadius;
-    final interactive = widget.onTap != null;
     final effectiveOffset = _pressed && interactive
         ? const Offset(1, 1)
         : offset;
@@ -112,8 +159,17 @@ class GglProgressBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = WelkTheme.of(context).resolveColors(context);
     final clamped = percent.clamp(0.0, 1.0);
+    if (AppTheme.isSkribble(context)) {
+      final wired = WiredTheme.of(context);
+      return WiredThemeScope(
+        data: fillColor != null
+            ? wired.copyWith(markerColor: fillColor)
+            : wired,
+        child: WiredProgress(value: clamped, height: height + 4),
+      );
+    }
+    final colors = WelkTheme.of(context).resolveColors(context);
     final radius = BorderRadius.circular(height / 2);
 
     return Container(
@@ -170,6 +226,48 @@ class GglPillChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = WelkTheme.of(context).resolveColors(context);
+    final isSkribble = AppTheme.isSkribble(context);
+    if (isSkribble) {
+      final wired = WiredTheme.of(context);
+      final fill = selected ? (selectedColor ?? wired.markerColor) : wired.fillColor;
+      final fg = selected ? colors.onFill(fill) : wired.textColor;
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+          decoration: RoughBoxDecoration(
+            drawConfig: wired.drawConfig,
+            shape: RoughBoxShape.roundedRectangle,
+            borderRadius: BorderRadius.circular(14),
+            borderStyle: RoughDrawingStyle(
+              width: selected ? wired.strokeWidth + 0.3 : wired.strokeWidth - 0.2,
+              color: wired.borderColor,
+            ),
+            fillStyle: RoughDrawingStyle(color: fill),
+            filler: SolidFiller(FillerConfig.build()),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (leading != null) ...[
+                leading!,
+                const SizedBox(width: 6),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  color: fg,
+                  fontSize: 13.5,
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  fontFamilyFallback: AppTheme.cjkFontFallback,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     final fill = selected ? (selectedColor ?? colors.accent) : colors.paper;
     final fg = selected ? colors.onFill(fill) : colors.ink;
 
@@ -248,6 +346,36 @@ class GglStatusTag extends StatelessWidget {
             WelkBadgeVariant.error => colors.error,
           };
     final fg = neutral ? colors.ink : colors.onFill(fill);
+
+    if (AppTheme.isSkribble(context)) {
+      final wired = WiredTheme.of(context);
+      final skFill = neutral ? wired.fillColor : fill;
+      final skFg = neutral ? wired.textColor : fg;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: RoughBoxDecoration(
+          drawConfig: wired.drawConfig,
+          shape: RoughBoxShape.roundedRectangle,
+          borderRadius: BorderRadius.circular(8),
+          borderStyle: RoughDrawingStyle(
+            width: 1.5,
+            color: wired.borderColor,
+          ),
+          fillStyle: RoughDrawingStyle(color: skFill),
+          filler: SolidFiller(FillerConfig.build()),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: skFg,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            height: 1.2,
+            fontFamilyFallback: AppTheme.cjkFontFallback,
+          ),
+        ),
+      );
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -343,40 +471,80 @@ class GglBlockButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isSkribble = AppTheme.isSkribble(context);
+    final colors = WelkTheme.of(context).resolveColors(context);
+
+    final inner = SizedBox(
+      width: double.infinity,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (loading) ...[
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 8),
+          ] else if (icon != null) ...[
+            Icon(icon, size: 18),
+            const SizedBox(width: 6),
+          ],
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (isSkribble) {
+      final wired = WiredTheme.of(context);
+      final isPrimary = variant == WelkButtonVariant.primary;
+      final fill = switch (variant) {
+        WelkButtonVariant.primary => wired.markerColor,
+        WelkButtonVariant.secondary => wired.fillColor,
+        WelkButtonVariant.info => colors.info,
+        WelkButtonVariant.success => colors.success,
+        WelkButtonVariant.warning => colors.warning,
+        WelkButtonVariant.error => colors.error,
+        WelkButtonVariant.ghost => wired.fillColor,
+      };
+      final textColor = (variant == WelkButtonVariant.secondary ||
+              variant == WelkButtonVariant.ghost)
+          ? wired.textColor
+          : colors.onFill(fill);
+      return SizedBox(
+        width: double.infinity,
+        child: WiredThemeScope(
+          data: wired.copyWith(fillColor: fill, textColor: textColor),
+          child: isPrimary
+              ? WiredElevatedButton(
+                  onPressed: loading ? null : onPressed,
+                  semanticLabel: label,
+                  child: inner,
+                )
+              : WiredButton(
+                  onPressed: loading ? null : onPressed,
+                  semanticLabel: label,
+                  child: inner,
+                ),
+        ),
+      );
+    }
+
     return SizedBox(
       width: double.infinity,
       child: WelkButton(
         variant: variant,
         size: size,
         onPressed: loading ? null : onPressed,
-        child: SizedBox(
-          width: double.infinity,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (loading) ...[
-                const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                const SizedBox(width: 8),
-              ] else if (icon != null) ...[
-                Icon(icon, size: 18),
-                const SizedBox(width: 6),
-              ],
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ],
-          ),
-        ),
+        child: inner,
       ),
     );
   }

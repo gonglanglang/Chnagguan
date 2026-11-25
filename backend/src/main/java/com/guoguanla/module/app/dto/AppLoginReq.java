@@ -43,5 +43,7 @@ public class AppLoginReq {
 
         private String avatarUrl;
         private String gradeCode;
+        private String phone;
+        private String email;
     }
 }

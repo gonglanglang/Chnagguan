@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:skribble/skribble.dart';
 import 'package:welkui_flutter/welkui_flutter.dart';
 
+import '../app/app_theme.dart';
 import '../providers/update_provider.dart';
 import '../providers/user_provider.dart';
 import 'cultivate/cultivate_tab_page.dart';
@@ -55,6 +57,7 @@ class _MainShellPageState extends State<MainShellPage> {
   Widget build(BuildContext context) {
     final wrongCount = context.watch<UserProvider>().wrongCount;
     final colors = WelkTheme.of(context).resolveColors(context);
+    final isSkribble = AppTheme.isSkribble(context);
 
     Widget? wrongBadge;
     if (wrongCount > 0) {
@@ -78,17 +81,41 @@ class _MainShellPageState extends State<MainShellPage> {
       );
     }
 
-    return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: [
-          HomeTabPage(refreshSignal: _tabSignals[0]),
-          CultivateTabPage(refreshSignal: _tabSignals[1]),
-          WrongTabPage(refreshSignal: _tabSignals[2]),
-          MineTabPage(refreshSignal: _tabSignals[3]),
-        ],
-      ),
-      bottomNavigationBar: WelkBottomNavBar(
+    final Widget bottomBar;
+    if (isSkribble) {
+      final wired = WiredTheme.of(context);
+      bottomBar = Container(
+        color: wired.fillColor,
+        child: SafeArea(
+          top: false,
+          child: WiredBottomNavigationBar(
+            currentIndex: _currentIndex,
+            onTap: _onTabTap,
+            items: [
+              const WiredBottomNavItem(
+                icon: Icons.flag_rounded,
+                label: '闯关',
+              ),
+              const WiredBottomNavItem(
+                icon: Icons.play_circle_rounded,
+                label: '课堂',
+              ),
+              WiredBottomNavItem(
+                icon: Icons.menu_book_rounded,
+                label: wrongCount > 0
+                    ? '错题(${wrongCount > 99 ? '99+' : wrongCount})'
+                    : '错题本',
+              ),
+              const WiredBottomNavItem(
+                icon: Icons.person_rounded,
+                label: '我的',
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      bottomBar = WelkBottomNavBar(
         currentIndex: _currentIndex,
         onTap: _onTabTap,
         layout: WelkBottomNavLayout.comicDock,
@@ -121,7 +148,20 @@ class _MainShellPageState extends State<MainShellPage> {
             label: '我的',
           ),
         ],
+      );
+    }
+
+    return Scaffold(
+      body: IndexedStack(
+        index: _currentIndex,
+        children: [
+          HomeTabPage(refreshSignal: _tabSignals[0]),
+          CultivateTabPage(refreshSignal: _tabSignals[1]),
+          WrongTabPage(refreshSignal: _tabSignals[2]),
+          MineTabPage(refreshSignal: _tabSignals[3]),
+        ],
       ),
+      bottomNavigationBar: bottomBar,
     );
   }
 }

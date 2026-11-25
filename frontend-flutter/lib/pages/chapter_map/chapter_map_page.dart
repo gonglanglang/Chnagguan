@@ -10,6 +10,7 @@ import '../../services/guoguanla_api.dart';
 import '../../widgets/ggl_comic_panel.dart';
 import '../../widgets/ggl_feedback.dart';
 import '../../widgets/ggl_skeleton.dart';
+import '../../widgets/ggl_skin_widgets.dart';
 import '../login/login_page.dart';
 import '../quiz/quiz_page.dart';
 
@@ -167,15 +168,9 @@ class _ChapterMapPageState extends State<ChapterMapPage> {
 
     return Scaffold(
       backgroundColor: AppTheme.pageBackground(context),
-      appBar: WelkAppBar(
+      appBar: const GglAppBar(
         title: '闯关地图',
-        centerTitle: true,
-        layout: WelkAppBarLayout.comicStrip,
-        leading: WelkIconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          label: '返回',
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        showBack: true,
       ),
       body: RefreshIndicator(
         onRefresh: _fetchGates,

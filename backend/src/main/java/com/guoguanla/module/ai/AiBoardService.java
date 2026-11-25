@@ -158,7 +158,7 @@ public class AiBoardService {
 
         StringBuilder userPrompt = new StringBuilder();
         userPrompt.append("""
-                请仔细识别图片中的数学题目，提取完整题干并结构化输出，方便自动排版绘制到学生的智能手写画板中。
+                请仔细识别图片中的数学题目，提取完整题干并定位题目中的几何图形/函数图像区域，方便客户端从原图 1:1 精准还原图形。
                 请严格返回如下 JSON 结构（所有字符串中的 LaTeX 反斜杠请双写）：
                 {
                   "title": "简短题目标题（8~18字）",
@@ -169,10 +169,15 @@ public class AiBoardService {
                   "knownConditions": ["提炼的已知条件1", "已知条件2"],
                   "targets": ["要求解或证明的目标1", "目标2"],
                   "hasFigure": true或false,
-                  "figureNote": "若图片包含几何图/坐标系图，简述图形要点，否则留空",
+                  "figureNote": "若图片包含几何图/坐标系图/表格，简述图形要点，否则留空",
+                  "figureBoxes": [
+                    {"title": "原题配图", "x": 0.10, "y": 0.42, "w": 0.76, "h": 0.48}
+                  ],
                   "diagrams": []
                 }
-                注意：仅当图片明显包含几何图形或函数图像时才在 diagrams 中给出 1 个简洁矢量示意图（width:320,height:220，primitives 最多 8 个核心图元）；纯文字题请直接返回 "diagrams": []。
+                重要要求：
+                1. 当图片包含任何几何图形、函数坐标系、数轴、表格或插图时，hasFigure 必须为 true，且必须在 figureBoxes 中返回每个图形在整张输入图片中的精确归一化矩形框（x=左边缘比例、y=上边缘比例、w=宽度比例、h=高度比例，均为 0.0~1.0 小数，四周略留 2% 白边确保包含全部顶点字母、角度符号和坐标刻度）；
+                2. 纯文字无配图题目，请返回 "hasFigure": false, "figureBoxes": [], "diagrams": []。
                 """);
         if (extraHint != null && !extraHint.isBlank()) {
             userPrompt.append("\n学生补充说明：").append(extraHint.trim());
@@ -248,12 +253,12 @@ public class AiBoardService {
             prompt.append("3. 在 steps 中按学生作答顺序逐条列出批注（例如：第1步正确/第2步符号有误，建议重算该项），仅提示检查方向，不直接剧透答案；\n");
             prompt.append("4. 语言像老师红笔批改一样简短干脆，不要客套废话；diagrams 返回空数组 []。\n");
         } else {
-            prompt.append("任务：请直接给出下方数学题的【完整规范解题过程与最终答案】，用于逐笔板书绘制在白板上。\n");
-            prompt.append("要求：\n");
-            prompt.append("1. 语言精炼、格式规范（标准“解：/ 证明：”板书推导，无花哨修饰与多余客套）；\n");
-            prompt.append("2. steps 按实际推导逻辑给出清晰分步与关键数学算式，finalAnswer 写出明确最终答案；\n");
-            prompt.append("3. studentDiagnosis.status 设为 \"NONE\" 且内容留空；\n");
-            prompt.append("4. 若涉及几何图形或函数图像，请在 diagrams 给出 1 个准确坐标的矢量示意图（0~320 x 0~220）。\n");
+            prompt.append("任务：请为下方数学题直接生成【纯粹最终答案】，并将精简【解题思路】放在步骤字段中以便展示在答案下方。\n");
+            prompt.append("硬性要求：\n");
+            prompt.append("1. finalAnswer 必须是纯粹、直接、精准的最终答案（支持 $...$，多小问按 (1) ...\\n(2) ... 分行，不要加“答：”“综上所述”等客套前后缀）；\n");
+            prompt.append("2. headline 填 \"答案\"，summary 留空字符串 \"\"，pitfalls 返回 []，studentDiagnosis.status 设为 \"NONE\"；\n");
+            prompt.append("3. steps 放 2~4 条简洁精炼的解题思路与关键算式推导，供学生查看答案后在下方展开核对；\n");
+            prompt.append("4. 非必要不画图，diagrams 优先返回 []。\n");
         }
 
         if (!problemText.isBlank()) {
@@ -359,6 +364,7 @@ public class AiBoardService {
                     .targets(List.of())
                     .hasFigure(false)
                     .figureNote("")
+                    .figureBoxes(List.of())
                     .diagrams(List.of())
                     .modelUsed(modelUsed)
                     .latencyMs(latencyMs)
@@ -369,6 +375,8 @@ public class AiBoardService {
         if (problemText.isBlank()) {
             problemText = textOf(root, "stem", cleanRawFallback(rawContent));
         }
+        List<AiBoardVO.FigureBoxVO> figureBoxes = readFigureBoxes(root.path("figureBoxes"));
+        boolean hasFigure = root.path("hasFigure").asBoolean(false) || !figureBoxes.isEmpty();
 
         return AiBoardVO.RecognizeVO.builder()
                 .title(textOf(root, "title", "数学解答题"))
@@ -378,8 +386,9 @@ public class AiBoardService {
                 .difficulty(textOf(root, "difficulty", "中档"))
                 .knownConditions(readStringList(root.path("knownConditions")))
                 .targets(readStringList(root.path("targets")))
-                .hasFigure(root.path("hasFigure").asBoolean(false))
+                .hasFigure(hasFigure)
                 .figureNote(textOf(root, "figureNote", ""))
+                .figureBoxes(figureBoxes)
                 .diagrams(readDiagrams(root.path("diagrams")))
                 .modelUsed(modelUsed)
                 .latencyMs(latencyMs)
@@ -564,6 +573,49 @@ public class AiBoardService {
             out.append(c);
         }
         return out.toString();
+    }
+
+    private List<AiBoardVO.FigureBoxVO> readFigureBoxes(JsonNode node) {
+        if (node == null || !node.isArray()) return List.of();
+        List<AiBoardVO.FigureBoxVO> out = new ArrayList<>();
+        for (JsonNode b : node) {
+            if (!b.isObject()) continue;
+            Double rx = nullableDouble(b, "x");
+            Double ry = nullableDouble(b, "y");
+            Double rw = nullableDouble(b, "w");
+            Double rh = nullableDouble(b, "h");
+            if (rx == null || ry == null || rw == null || rh == null) {
+                JsonNode bbox = b.path("bbox");
+                if (bbox.isArray() && bbox.size() >= 4) {
+                    rx = bbox.get(0).asDouble();
+                    ry = bbox.get(1).asDouble();
+                    rw = bbox.get(2).asDouble() - rx;
+                    rh = bbox.get(3).asDouble() - ry;
+                }
+            }
+            if (rx == null || ry == null || rw == null || rh == null) continue;
+            // 兼容 0~100 百分比或 0~1000 归一化坐标
+            double maxVal = Math.max(Math.max(Math.abs(rx), Math.abs(ry)), Math.max(Math.abs(rw), Math.abs(rh)));
+            double scale = 1.0;
+            if (maxVal > 1.05 && maxVal <= 100.5) {
+                scale = 100.0;
+            } else if (maxVal > 100.5 && maxVal <= 1005.0) {
+                scale = 1000.0;
+            }
+            double x = Math.max(0.0, Math.min(0.96, rx / scale));
+            double y = Math.max(0.0, Math.min(0.96, ry / scale));
+            double w = Math.max(0.0, Math.min(1.0 - x, rw / scale));
+            double h = Math.max(0.0, Math.min(1.0 - y, rh / scale));
+            if (w < 0.04 || h < 0.04) continue;
+            out.add(AiBoardVO.FigureBoxVO.builder()
+                    .title(textOf(b, "title", "原题配图"))
+                    .x(x)
+                    .y(y)
+                    .w(w)
+                    .h(h)
+                    .build());
+        }
+        return out;
     }
 
     private List<AiBoardVO.BoardDiagramVO> readDiagrams(JsonNode node) {

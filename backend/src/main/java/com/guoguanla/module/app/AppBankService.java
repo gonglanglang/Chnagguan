@@ -1,6 +1,7 @@
 package com.guoguanla.module.app;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.guoguanla.common.exception.BizException;
 import com.guoguanla.common.result.ErrorCode;
 import com.guoguanla.common.security.StpAppUtil;
@@ -304,12 +305,50 @@ public class AppBankService {
         if (user == null) {
             throw new BizException(ErrorCode.UNAUTHORIZED);
         }
-        user.setNickname(req.getNickname().trim());
+
+        LambdaUpdateWrapper<AppUser> uw = new LambdaUpdateWrapper<AppUser>()
+                .eq(AppUser::getId, userId)
+                .set(AppUser::getNickname, req.getNickname().trim());
+
         if (req.getAvatarUrl() != null && !req.getAvatarUrl().isBlank()) {
-            user.setAvatarUrl(req.getAvatarUrl().trim());
+            uw.set(AppUser::getAvatarUrl, req.getAvatarUrl().trim());
         }
-        userMapper.updateById(user);
-        return buildProfileVO(user, baseOrigin);
+
+        if (req.getPhone() != null) {
+            String phone = req.getPhone().trim();
+            if (phone.isEmpty()) {
+                uw.set(AppUser::getPhone, null);
+            } else {
+                if (!phone.matches("^[0-9+\\-]{6,20}$")) {
+                    throw new BizException(ErrorCode.BAD_REQUEST, "请输入有效的手机号格式");
+                }
+                long conflict = userMapper.selectCount(
+                        new LambdaQueryWrapper<AppUser>()
+                                .eq(AppUser::getPhone, phone)
+                                .ne(AppUser::getId, userId)
+                );
+                if (conflict > 0) {
+                    throw new BizException(ErrorCode.BAD_REQUEST, "该手机号已被其他账号绑定");
+                }
+                uw.set(AppUser::getPhone, phone);
+            }
+        }
+
+        if (req.getEmail() != null) {
+            String email = req.getEmail().trim();
+            if (email.isEmpty()) {
+                uw.set(AppUser::getEmail, null);
+            } else {
+                if (email.length() > 128 || !email.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
+                    throw new BizException(ErrorCode.BAD_REQUEST, "请输入有效的邮箱地址");
+                }
+                uw.set(AppUser::getEmail, email);
+            }
+        }
+
+        userMapper.update(null, uw);
+        AppUser refreshed = userMapper.selectById(userId);
+        return buildProfileVO(refreshed != null ? refreshed : user, baseOrigin);
     }
 
     public AppUserProfileVO uploadAvatar(MultipartFile file, String baseOrigin) {
@@ -377,6 +416,8 @@ public class AppBankService {
         return AppUserProfileVO.builder()
                 .id(user.getId())
                 .username(user.getUsername())
+                .phone(user.getPhone())
+                .email(user.getEmail())
                 .nickname(user.getNickname())
                 .avatarUrl(ossService.resolveViewUrl(user.getAvatarUrl(), baseOrigin))
                 .gradeCode(user.getGradeCode())

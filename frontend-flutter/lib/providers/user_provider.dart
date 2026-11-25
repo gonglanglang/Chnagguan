@@ -188,10 +188,14 @@ class UserProvider extends ChangeNotifier {
   Future<AppUserProfile> updateProfile({
     required String nickname,
     String? avatarUrl,
+    String? phone,
+    String? email,
   }) async {
     final updated = await _api.updateProfile(
       nickname: nickname,
       avatarUrl: avatarUrl,
+      phone: phone,
+      email: email,
     );
     _userInfo = updated;
     await _storage.setCachedProfile(updated);

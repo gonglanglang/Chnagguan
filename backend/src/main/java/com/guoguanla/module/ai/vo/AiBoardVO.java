@@ -35,9 +35,25 @@ public class AiBoardVO {
         private List<String> targets;
         private Boolean hasFigure;
         private String figureNote;
+        private List<FigureBoxVO> figureBoxes;
         private List<BoardDiagramVO> diagrams;
         private String modelUsed;
         private Long latencyMs;
+    }
+
+    /**
+     * 题目配图在原图中的归一化边界框（0.0 ~ 1.0），用于客户端从高分辨率原图 1:1 精准裁剪还原。
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class FigureBoxVO {
+        private String title;
+        private Double x;
+        private Double y;
+        private Double w;
+        private Double h;
     }
 
     @Data

@@ -6,6 +6,7 @@ import '../../app/app_theme.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/ggl_comic_panel.dart';
 import '../../widgets/ggl_skeleton.dart';
+import '../../widgets/ggl_skin_widgets.dart';
 
 class LevelsPage extends StatefulWidget {
   const LevelsPage({super.key});
@@ -46,15 +47,9 @@ class _LevelsPageState extends State<LevelsPage> {
 
     return Scaffold(
       backgroundColor: AppTheme.pageBackground(context),
-      appBar: WelkAppBar(
+      appBar: const GglAppBar(
         title: '修仙境界体系',
-        centerTitle: true,
-        layout: WelkAppBarLayout.comicStrip,
-        leading: WelkIconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          label: '返回',
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        showBack: true,
       ),
       body: RefreshIndicator(
         onRefresh: _refresh,

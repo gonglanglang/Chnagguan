@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:skribble/skribble.dart';
 import 'package:welkui_flutter/welkui_flutter.dart';
+
+import '../app/app_theme.dart';
+import 'ggl_skin_widgets.dart';
 
 class GglFeedback {
   GglFeedback._();
@@ -12,6 +16,38 @@ class GglFeedback {
     WelkSnackBarVariant variant = WelkSnackBarVariant.info,
     Duration duration = const Duration(milliseconds: 2400),
   }) {
+    if (AppTheme.isSkribble(context, listen: false)) {
+      ScaffoldMessenger.maybeOf(context)?.hideCurrentSnackBar();
+      final colors = WelkTheme.of(context).resolveColors(context);
+      final wired = WiredTheme.of(context);
+      final tint = switch (variant) {
+        WelkSnackBarVariant.standard => wired.fillColor,
+        WelkSnackBarVariant.info => wired.fillColor,
+        WelkSnackBarVariant.success => colors.success.withValues(alpha: 0.28),
+        WelkSnackBarVariant.warning => colors.warning.withValues(alpha: 0.28),
+        WelkSnackBarVariant.error => colors.error.withValues(alpha: 0.28),
+      };
+      showWiredSnackBar(
+        context,
+        duration: duration,
+        content: WiredThemeScope(
+          data: wired.copyWith(fillColor: Color.alphaBlend(tint, wired.fillColor)),
+          child: WiredSnackBarContent(
+            child: Text(
+              message,
+              style: TextStyle(
+                color: wired.textColor,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w700,
+                fontFamilyFallback: AppTheme.cjkFontFallback,
+              ),
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
     _activeSnack?.close();
     _activeSnack = showWelkSnackBar(
       context: context,
@@ -56,6 +92,62 @@ class GglFeedback {
     String noText = '取消',
     WelkDialogVariant variant = WelkDialogVariant.warning,
   }) async {
+    if (AppTheme.isSkribble(context, listen: false)) {
+      final result = await showDialog<bool>(
+        context: context,
+        builder: (dialogCtx) {
+          final wired = WiredTheme.of(dialogCtx);
+          return WiredDialog(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: wired.textColor,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    fontFamilyFallback: AppTheme.cjkFontFallback,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  content,
+                  style: TextStyle(
+                    color: wired.textColor,
+                    fontSize: 14,
+                    height: 1.5,
+                    fontFamilyFallback: AppTheme.cjkFontFallback,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    GglButton(
+                      label: noText,
+                      variant: WelkButtonVariant.secondary,
+                      onPressed: () => Navigator.of(dialogCtx).pop(false),
+                    ),
+                    const SizedBox(width: 10),
+                    GglButton(
+                      label: yesText,
+                      variant: variant == WelkDialogVariant.warning
+                          ? WelkButtonVariant.warning
+                          : WelkButtonVariant.primary,
+                      onPressed: () => Navigator.of(dialogCtx).pop(true),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      );
+      return result == true;
+    }
+
     final result = await showWelkDialog<bool>(
       context: context,
       closeOnTapOutside: true,
@@ -82,6 +174,52 @@ class GglFeedback {
     String buttonText = '知道了',
     WelkDialogVariant variant = WelkDialogVariant.info,
   }) async {
+    if (AppTheme.isSkribble(context, listen: false)) {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogCtx) {
+          final wired = WiredTheme.of(dialogCtx);
+          return WiredDialog(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: wired.textColor,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    fontFamilyFallback: AppTheme.cjkFontFallback,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  content,
+                  style: TextStyle(
+                    color: wired.textColor,
+                    fontSize: 14,
+                    height: 1.5,
+                    fontFamilyFallback: AppTheme.cjkFontFallback,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: GglButton(
+                    label: buttonText,
+                    variant: WelkButtonVariant.primary,
+                    onPressed: () => Navigator.of(dialogCtx).pop(),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+      return;
+    }
+
     await showWelkDialog<void>(
       context: context,
       closeOnTapOutside: true,

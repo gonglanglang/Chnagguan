@@ -13,6 +13,7 @@ import '../../services/guoguanla_api.dart';
 import '../../widgets/ggl_comic_panel.dart';
 import '../../widgets/ggl_feedback.dart';
 import '../../widgets/ggl_skeleton.dart';
+import '../../widgets/ggl_skin_widgets.dart';
 import '../chapter_map/chapter_map_page.dart';
 import '../login/login_page.dart';
 import '../quiz/quiz_page.dart';
@@ -132,15 +133,9 @@ class _GradeChaptersPageState extends State<GradeChaptersPage> {
 
     return Scaffold(
       backgroundColor: AppTheme.pageBackground(context),
-      appBar: WelkAppBar(
+      appBar: GglAppBar(
         title: '${widget.grade.gradeName} · 章节闯关',
-        centerTitle: true,
-        layout: WelkAppBarLayout.comicStrip,
-        leading: WelkIconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          label: '返回',
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        showBack: true,
       ),
       body: RefreshIndicator(
         onRefresh: _fetchChapters,

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -19,14 +18,19 @@ import '../../models/models.dart';
 import '../../services/guoguanla_api.dart';
 import '../../widgets/ggl_comic_panel.dart';
 import '../../widgets/ggl_feedback.dart';
+import '../../widgets/ggl_skin_widgets.dart';
 import '../../widgets/smart_board/board_models.dart';
+import '../../widgets/smart_board/photo_figure_extractor.dart';
 import '../../widgets/smart_board/smart_board_painter.dart';
+import '../../widgets/smart_board/smart_board_result_panel.dart';
+import 'photo_crop_page.dart';
 
 /// 首页「AI 智能手写画板」：
-/// - 顶/底安全区满铺无白边，画布严格 ClipRect 不越界覆盖导航；
-/// - 极简纯粹白板风，AI 职责三分离：思路(不给答案) / 诊断(批改手写不给答案) / 解题(完整过程与答案)；
-/// - 坐标级逐笔自动书写与矢量作图动画（笔尖跟随 + 调速 + 重播）；
-/// - 自由横竖屏一键切换 + 手机横屏紧凑大画布 & 沉浸全屏模式。
+/// - 横竖屏严格锁定（切横屏不会自动回弹竖屏），顶/底安全区满铺无白边；
+/// - 拍照/选图后先进入选区裁剪，再识别题目并从原图 1:1 裁剪提纯还原配图；
+/// - 移除荧光笔与模型名展示，精简底栏最大化画布空间，新增「画布操作」菜单（橡皮/移动/撤销/清笔迹）；
+/// - 题目/思路/诊断/解题全部采用当前 UI 组件库（WelkUI / Skribble）渲染，风格统一且严格裁剪在画布内；
+/// - 解题面板顶部仅呈现纯粹答案，解题思路折叠/排布在下方。
 class SmartBoardPage extends StatefulWidget {
   const SmartBoardPage({
     super.key,
@@ -42,7 +46,7 @@ class SmartBoardPage extends StatefulWidget {
 enum _AiActionKind { ideas, diagnose, solve }
 
 class _SmartBoardPageState extends State<SmartBoardPage>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   static const List<Color> _penColors = <Color>[
     Color(0xFF111827), // 墨黑
     Color(0xFF2563EB), // 宝蓝
@@ -61,7 +65,6 @@ class _SmartBoardPageState extends State<SmartBoardPage>
   final List<BoardStroke> _strokes = <BoardStroke>[];
   final List<BoardShape> _shapes = <BoardShape>[];
   final List<BoardUndoSnapshot> _undoStack = <BoardUndoSnapshot>[];
-  final List<BoardUndoSnapshot> _redoStack = <BoardUndoSnapshot>[];
 
   BoardStroke? _activeStroke;
   BoardShape? _activeShape;
@@ -73,25 +76,32 @@ class _SmartBoardPageState extends State<SmartBoardPage>
   Color _activeColor = _penColors.first;
   int _widthIdx = 1;
   BoardPaperStyle _paperStyle = BoardPaperStyle.dots;
+
   bool _isLandscape = false;
   bool _immersiveDockHidden = false;
   bool _showShapePicker = false;
+  bool _showCanvasOpsMenu = false;
 
-  // AI 与板书状态
-  AiBoardStatus? _aiStatus;
-  SmartBoardCardState _cards = const SmartBoardCardState();
-  BoardLayerVisibility _visibility = const BoardLayerVisibility();
-  Uint8List? _problemPhotoBytes;
-  ui.Image? _problemPhotoImage;
+  // 题目与 AI 结果（全部使用 UI 库组件渲染，不在 Canvas 上自绘）
+  AiRecognizeResult? _problem;
+  AiBoardGuidance? _ideas;
+  AiBoardGuidance? _diagnosis;
+  AiBoardGuidance? _solution;
+
+  Uint8List? _croppedPhotoBytes;
+  List<ExtractedBoardFigure> _extractedFigures = const [];
+  bool _purifyFigures = true;
+
+  BoardResultTab _activeResultTab = BoardResultTab.problem;
+  bool _resultCollapsed = false;
+  Offset _resultPanelPos = const Offset(10, 10);
+
   bool _busyAi = false;
   String _busyAiLabel = '';
 
-  // 坐标级逐笔自动绘制动画控制器
-  late final AnimationController _ideasRevealCtrl;
-  late final AnimationController _diagnosisRevealCtrl;
-  late final AnimationController _solutionRevealCtrl;
-  double _traceSpeed = 1.0; // 1.0x / 2.0x
-  BoardCardId? _lastAnimatedCard;
+  // 逐步呈现动画（用于思路/诊断/解题 UI 卡片与矢量图）
+  late final AnimationController _revealCtrl;
+  double _traceSpeed = 1.0;
 
   // 视口变换
   double _panX = 0;
@@ -104,8 +114,6 @@ class _SmartBoardPageState extends State<SmartBoardPage>
   Offset _gestureAnchorWorld = Offset.zero;
   Offset? _singlePanLast;
   bool _isPinching = false;
-  BoardCardId? _draggingCardId;
-  Offset? _cardDragLastWorld;
 
   String _floatingHint = '';
   Timer? _hintTimer;
@@ -114,40 +122,23 @@ class _SmartBoardPageState extends State<SmartBoardPage>
   @override
   void initState() {
     super.initState();
-    _ideasRevealCtrl = AnimationController(
+    _revealCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 5200),
-      value: 1.0,
-    )..addListener(() {
-        if (mounted) setState(() {});
-      });
-    _diagnosisRevealCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 4200),
-      value: 1.0,
-    )..addListener(() {
-        if (mounted) setState(() {});
-      });
-    _solutionRevealCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 6200),
+      duration: const Duration(milliseconds: 2400),
       value: 1.0,
     )..addListener(() {
         if (mounted) setState(() {});
       });
 
-    // 允许用户自由旋转横竖屏
+    // 默认锁定竖屏，仅在用户主动点击「横屏」时严格锁定横屏，避免传感器误触发来回弹跳
     if (!kIsWeb) {
       SystemChrome.setPreferredOrientations(const [
         DeviceOrientation.portraitUp,
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
       ]);
     }
 
     _restorePrefsAndDraft();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_loadAiStatus());
       if (widget.autoOpenCapture && mounted) {
         unawaited(_openProblemCaptureSheet());
       }
@@ -158,10 +149,7 @@ class _SmartBoardPageState extends State<SmartBoardPage>
   void dispose() {
     _hintTimer?.cancel();
     _draftSaveTimer?.cancel();
-    _ideasRevealCtrl.dispose();
-    _diagnosisRevealCtrl.dispose();
-    _solutionRevealCtrl.dispose();
-    _problemPhotoImage?.dispose();
+    _revealCtrl.dispose();
     if (!kIsWeb) {
       SystemChrome.setPreferredOrientations(const [
         DeviceOrientation.portraitUp,
@@ -206,52 +194,49 @@ class _SmartBoardPageState extends State<SmartBoardPage>
             }
           }
         }
-        AiRecognizeResult? problem;
         if (draft['problem'] is Map<String, dynamic>) {
-          problem = AiRecognizeResult.fromJson(
+          _problem = AiRecognizeResult.fromJson(
             draft['problem'] as Map<String, dynamic>,
           );
         }
-        AiBoardGuidance? ideas;
         if (draft['ideas'] is Map<String, dynamic>) {
-          ideas = AiBoardGuidance.fromJson(
+          _ideas = AiBoardGuidance.fromJson(
             draft['ideas'] as Map<String, dynamic>,
           );
         }
-        AiBoardGuidance? diagnosis;
         if (draft['diagnosis'] is Map<String, dynamic>) {
-          diagnosis = AiBoardGuidance.fromJson(
+          _diagnosis = AiBoardGuidance.fromJson(
             draft['diagnosis'] as Map<String, dynamic>,
           );
         }
-        AiBoardGuidance? solution;
         if (draft['solution'] is Map<String, dynamic>) {
-          solution = AiBoardGuidance.fromJson(
+          _solution = AiBoardGuidance.fromJson(
             draft['solution'] as Map<String, dynamic>,
           );
         }
-        Offset readOffset(String key, Offset fallback) {
-          final v = draft[key];
-          if (v is List && v.length >= 2) {
-            final dx = (v[0] as num?)?.toDouble();
-            final dy = (v[1] as num?)?.toDouble();
-            if (dx != null && dy != null) return Offset(dx, dy);
-          }
-          return fallback;
+        final photoB64 = draft['photoB64']?.toString();
+        if (photoB64 != null && photoB64.isNotEmpty) {
+          try {
+            _croppedPhotoBytes = base64Decode(photoB64);
+          } catch (_) {}
         }
-
-        _cards = SmartBoardCardState(
-          problem: problem,
-          ideas: ideas,
-          diagnosis: diagnosis,
-          solution: solution,
-          problemPos: readOffset('problemPos', const Offset(24, 20)),
-          ideasPos: readOffset('ideasPos', const Offset(24, 290)),
-          diagnosisPos: readOffset('diagnosisPos', const Offset(430, 20)),
-          solutionPos: readOffset('solutionPos', const Offset(430, 290)),
-        );
+        if (_croppedPhotoBytes != null &&
+            _problem != null &&
+            _problem!.figureBoxes.isNotEmpty) {
+          unawaited(_rebuildExtractedFigures());
+        }
       }
     } catch (_) {}
+  }
+
+  Future<void> _rebuildExtractedFigures() async {
+    final photo = _croppedPhotoBytes;
+    final boxes = _problem?.figureBoxes ?? const [];
+    if (photo == null || boxes.isEmpty) return;
+    final figs = await PhotoFigureExtractor.extractFromPhoto(photo, boxes);
+    if (mounted) {
+      setState(() => _extractedFigures = figs);
+    }
   }
 
   void _savePrefs() {
@@ -273,46 +258,34 @@ class _SmartBoardPageState extends State<SmartBoardPage>
         final cache = context.read<GlobalCache>();
         final hasAnything = _strokes.isNotEmpty ||
             _shapes.isNotEmpty ||
-            _cards.problem != null ||
-            _cards.ideas != null ||
-            _cards.diagnosis != null ||
-            _cards.solution != null;
+            _problem != null ||
+            _ideas != null ||
+            _diagnosis != null ||
+            _solution != null;
         if (!hasAnything) {
           unawaited(cache.setSmartBoardDraft(null));
           return;
         }
-        unawaited(
-          cache.setSmartBoardDraft({
-            'strokes': _strokes.map((s) => s.toJson()).toList(),
-            'shapes': _shapes.map((s) => s.toJson()).toList(),
-            if (_cards.problem != null) 'problem': _cards.problem!.toJson(),
-            if (_cards.ideas != null) 'ideas': _cards.ideas!.toJson(),
-            if (_cards.diagnosis != null)
-              'diagnosis': _cards.diagnosis!.toJson(),
-            if (_cards.solution != null) 'solution': _cards.solution!.toJson(),
-            'problemPos': [_cards.problemPos.dx, _cards.problemPos.dy],
-            'ideasPos': [_cards.ideasPos.dx, _cards.ideasPos.dy],
-            'diagnosisPos': [_cards.diagnosisPos.dx, _cards.diagnosisPos.dy],
-            'solutionPos': [_cards.solutionPos.dx, _cards.solutionPos.dy],
-          }),
-        );
+        final map = <String, dynamic>{
+          'strokes': _strokes.map((s) => s.toJson()).toList(),
+          'shapes': _shapes.map((s) => s.toJson()).toList(),
+          if (_problem != null) 'problem': _problem!.toJson(),
+          if (_ideas != null) 'ideas': _ideas!.toJson(),
+          if (_diagnosis != null) 'diagnosis': _diagnosis!.toJson(),
+          if (_solution != null) 'solution': _solution!.toJson(),
+        };
+        if (_croppedPhotoBytes != null && _croppedPhotoBytes!.length <= 500000) {
+          map['photoB64'] = base64Encode(_croppedPhotoBytes!);
+        }
+        unawaited(cache.setSmartBoardDraft(map));
       } catch (_) {}
     });
-  }
-
-  Future<void> _loadAiStatus() async {
-    try {
-      final status = await context.read<GuoguanlaApi>().getAiBoardStatus();
-      if (mounted) {
-        setState(() => _aiStatus = status);
-      }
-    } catch (_) {}
   }
 
   void _showHint(String text) {
     _hintTimer?.cancel();
     setState(() => _floatingHint = text);
-    _hintTimer = Timer(const Duration(milliseconds: 1900), () {
+    _hintTimer = Timer(const Duration(milliseconds: 1800), () {
       if (mounted) setState(() => _floatingHint = '');
     });
   }
@@ -341,15 +314,23 @@ class _SmartBoardPageState extends State<SmartBoardPage>
         _ => _lastShapeKind,
       };
 
+  bool get _hasHandwriting =>
+      _strokes.any((s) => !s.isEraser && s.points.isNotEmpty) ||
+      _shapes.isNotEmpty;
+
+  bool get _hasAnyResult =>
+      _problem != null ||
+      _ideas != null ||
+      _diagnosis != null ||
+      _solution != null;
+
   void _pushUndoCheckpoint() {
     _undoStack.add(BoardUndoSnapshot.capture(_strokes, _shapes));
     if (_undoStack.length > _maxHistory) _undoStack.removeAt(0);
-    _redoStack.clear();
   }
 
   void _handleUndo() {
     if (_undoStack.isEmpty) return;
-    _redoStack.add(BoardUndoSnapshot.capture(_strokes, _shapes));
     final prev = _undoStack.removeLast();
     setState(() {
       _strokes
@@ -362,63 +343,6 @@ class _SmartBoardPageState extends State<SmartBoardPage>
       _activeShape = null;
     });
     _scheduleDraftSave();
-  }
-
-  void _handleRedo() {
-    if (_redoStack.isEmpty) return;
-    _undoStack.add(BoardUndoSnapshot.capture(_strokes, _shapes));
-    final next = _redoStack.removeLast();
-    setState(() {
-      _strokes
-        ..clear()
-        ..addAll(next.strokes);
-      _shapes
-        ..clear()
-        ..addAll(next.shapes);
-      _activeStroke = null;
-      _activeShape = null;
-    });
-    _scheduleDraftSave();
-  }
-
-  BoardCardId? _hitTestCardHeader(Offset worldPt, {bool wholeCard = false}) {
-    final metrics = SmartBoardLayoutMetrics.compute(
-      cards: _cards,
-      visibility: _visibility,
-      problemPhoto: _problemPhotoImage,
-    );
-    const order = <BoardCardId>[
-      BoardCardId.solution,
-      BoardCardId.diagnosis,
-      BoardCardId.ideas,
-      BoardCardId.problem,
-    ];
-    for (final id in order) {
-      final rect = metrics.rectOf(id);
-      if (rect == null) continue;
-      final hitRect = wholeCard
-          ? rect
-          : Rect.fromLTWH(rect.left, rect.top, rect.width, 32);
-      if (hitRect.contains(worldPt)) return id;
-    }
-    return null;
-  }
-
-  void _moveCardBy(BoardCardId id, Offset deltaWorld) {
-    setState(() {
-      switch (id) {
-        case BoardCardId.problem:
-          _cards = _cards.copyWith(problemPos: _cards.problemPos + deltaWorld);
-        case BoardCardId.ideas:
-          _cards = _cards.copyWith(ideasPos: _cards.ideasPos + deltaWorld);
-        case BoardCardId.diagnosis:
-          _cards =
-              _cards.copyWith(diagnosisPos: _cards.diagnosisPos + deltaWorld);
-        case BoardCardId.solution:
-          _cards =
-              _cards.copyWith(solutionPos: _cards.solutionPos + deltaWorld);
-      }
-    });
   }
 
   void _eraseAtWorld(Offset worldPt) {
@@ -451,13 +375,17 @@ class _SmartBoardPageState extends State<SmartBoardPage>
   }
 
   void _onScaleStart(ScaleStartDetails details) {
-    if (_showShapePicker) setState(() => _showShapePicker = false);
+    if (_showShapePicker || _showCanvasOpsMenu) {
+      setState(() {
+        _showShapePicker = false;
+        _showCanvasOpsMenu = false;
+      });
+    }
     final focal = details.localFocalPoint;
     if (details.pointerCount >= 2) {
       _isPinching = true;
       _activeStroke = null;
       _activeShape = null;
-      _draggingCardId = null;
       _eraserCursorWorld = null;
       _singlePanLast = null;
       _gestureStartZoom = _zoom;
@@ -467,18 +395,6 @@ class _SmartBoardPageState extends State<SmartBoardPage>
 
     _isPinching = false;
     final worldPt = _screenToWorld(focal);
-
-    final hitCard = _hitTestCardHeader(
-      worldPt,
-      wholeCard: _tool == BoardToolMode.hand,
-    );
-    if (hitCard != null) {
-      setState(() {
-        _draggingCardId = hitCard;
-        _cardDragLastWorld = worldPt;
-      });
-      return;
-    }
 
     if (_tool == BoardToolMode.hand) {
       _singlePanLast = focal;
@@ -505,18 +421,10 @@ class _SmartBoardPageState extends State<SmartBoardPage>
       return;
     }
 
-    final isPixelEraser = _tool == BoardToolMode.pixelEraser;
-    final isHighlighter = _tool == BoardToolMode.highlighter;
-    final width = isPixelEraser
-        ? 22.0
-        : (isHighlighter ? 16.0 : _strokeWidths[_widthIdx]);
-
     setState(() {
       _activeStroke = BoardStroke(
-        colorValue: isPixelEraser ? 0xFFFCFDFF : _activeColor.toARGB32(),
-        width: width,
-        isEraser: isPixelEraser,
-        isHighlighter: isHighlighter,
+        colorValue: _activeColor.toARGB32(),
+        width: _strokeWidths[_widthIdx],
         points: <Offset>[worldPt],
       );
     });
@@ -530,7 +438,6 @@ class _SmartBoardPageState extends State<SmartBoardPage>
         _isPinching = true;
         _activeStroke = null;
         _activeShape = null;
-        _draggingCardId = null;
         _eraserCursorWorld = null;
         _gestureStartZoom = _zoom;
         _gestureAnchorWorld = _screenToWorld(focal);
@@ -545,14 +452,6 @@ class _SmartBoardPageState extends State<SmartBoardPage>
         _panX = focal.dx - _gestureAnchorWorld.dx * nextZoom;
         _panY = focal.dy - _gestureAnchorWorld.dy * nextZoom;
       });
-      return;
-    }
-
-    if (_draggingCardId != null && _cardDragLastWorld != null) {
-      final worldPt = _screenToWorld(focal);
-      final delta = worldPt - _cardDragLastWorld!;
-      _cardDragLastWorld = worldPt;
-      _moveCardBy(_draggingCardId!, delta);
       return;
     }
 
@@ -602,15 +501,6 @@ class _SmartBoardPageState extends State<SmartBoardPage>
     _isPinching = false;
     _singlePanLast = null;
 
-    if (_draggingCardId != null) {
-      setState(() {
-        _draggingCardId = null;
-        _cardDragLastWorld = null;
-      });
-      _scheduleDraftSave();
-      return;
-    }
-
     if (_eraserCursorWorld != null) {
       final didErase = _erasedDuringDrag;
       _erasedDuringDrag = false;
@@ -643,8 +533,7 @@ class _SmartBoardPageState extends State<SmartBoardPage>
     });
     _scheduleDraftSave();
 
-    if (!finished.isEraser &&
-        _canvasSize.width > 0 &&
+    if (_canvasSize.width > 0 &&
         _canvasSize.height > 0 &&
         finished.points.isNotEmpty) {
       var maxX = finished.points.first.dx;
@@ -691,327 +580,202 @@ class _SmartBoardPageState extends State<SmartBoardPage>
     );
   }
 
-  void _resetZoomTo100() {
-    if (_canvasSize.isEmpty) return;
-    if ((_zoom - 1.0).abs() < 0.01) {
-      setState(() {
-        _panX = 0;
-        _panY = 0;
-      });
-      return;
-    }
-    _zoomAtFocal(Offset(_canvasSize.width / 2, _canvasSize.height / 2), 1.0);
-  }
-
-  void _focusOnRect(Rect rect, {double maxZoom = 1.05}) {
-    if (_canvasSize.isEmpty) return;
-    const pad = 26.0;
-    final boxW = math.max(160.0, rect.width + pad * 2);
-    final boxH = math.max(140.0, rect.height + pad * 2);
-    final nextZoom = math
-        .min(
-          maxZoom,
-          math.min(_canvasSize.width / boxW, _canvasSize.height / boxH),
-        )
-        .clamp(_minZoom, _maxZoom);
+  void _resetView() {
     setState(() {
-      _zoom = nextZoom;
-      _panX = _canvasSize.width / 2 - rect.center.dx * _zoom;
-      _panY = math.min(
-        _canvasSize.height / 2 - rect.center.dy * _zoom,
-        18 - rect.top * _zoom,
-      );
+      _zoom = 1.0;
+      _panX = 0;
+      _panY = 0;
     });
   }
 
-  void _fitAllContent() {
-    if (_canvasSize.isEmpty) return;
-    Rect? union;
-    void addRect(Rect r) {
-      union = union == null ? r : union!.expandToInclude(r);
-    }
-
-    for (final s in _strokes) {
-      if (s.isEraser) continue;
-      final b = s.bounds;
-      if (b != null) addRect(b);
-    }
-    for (final sh in _shapes) {
-      addRect(sh.bounds);
-    }
-    final metrics = SmartBoardLayoutMetrics.compute(
-      cards: _cards,
-      visibility: _visibility,
-      problemPhoto: _problemPhotoImage,
-    );
-    if (metrics.problemRect != null) addRect(metrics.problemRect!);
-    if (metrics.ideasRect != null) addRect(metrics.ideasRect!);
-    if (metrics.diagnosisRect != null) addRect(metrics.diagnosisRect!);
-    if (metrics.solutionRect != null) addRect(metrics.solutionRect!);
-
-    if (union == null) {
-      setState(() {
-        _zoom = 1.0;
-        _panX = 0;
-        _panY = 0;
-      });
-      return;
-    }
-    _focusOnRect(union!, maxZoom: 1.12);
+  void _startRevealAnimation() {
+    final baseMs = (2400 / _traceSpeed).round();
+    _revealCtrl.duration = Duration(milliseconds: baseMs);
+    _revealCtrl.forward(from: 0.0);
   }
 
-  Rect? _computeHandwritingBounds() {
-    Rect? union;
-    for (final s in _strokes) {
-      if (s.isEraser) continue;
-      final b = s.bounds;
-      if (b != null) union = union == null ? b : union.expandToInclude(b);
-    }
-    for (final sh in _shapes) {
-      union = union == null ? sh.bounds : union.expandToInclude(sh.bounds);
-    }
-    return union;
-  }
-
-  bool get _hasHandwriting =>
-      _strokes.any((s) => !s.isEraser && s.points.isNotEmpty) ||
-      _shapes.isNotEmpty;
-
-  bool get _anyAiAnimating =>
-      _ideasRevealCtrl.isAnimating ||
-      _diagnosisRevealCtrl.isAnimating ||
-      _solutionRevealCtrl.isAnimating;
-
-  Duration _estimateTraceDuration(AiBoardGuidance g) {
-    var chars = g.summary.length + g.finalAnswer.length;
-    for (final s in g.steps) {
-      chars += s.title.length + s.content.length + (s.formula.length * 2);
-    }
-    if (g.studentDiagnosis != null) {
-      chars += g.studentDiagnosis!.comment.length +
-          g.studentDiagnosis!.mistakePoint.length +
-          g.studentDiagnosis!.suggestion.length;
-    }
-    final diagCount = g.diagrams.fold<int>(0, (a, d) => a + d.primitives.length);
-    final baseMs = (2400 + chars * 16 + diagCount * 240).clamp(3200, 9500);
-    return Duration(milliseconds: (baseMs / _traceSpeed).round());
-  }
-
-  void _startTraceAnimation(BoardCardId cardId, AiBoardGuidance g) {
-    final dur = _estimateTraceDuration(g);
-    _lastAnimatedCard = cardId;
-    switch (cardId) {
-      case BoardCardId.ideas:
-        _ideasRevealCtrl.duration = dur;
-        _ideasRevealCtrl.forward(from: 0.0);
-      case BoardCardId.diagnosis:
-        _diagnosisRevealCtrl.duration = dur;
-        _diagnosisRevealCtrl.forward(from: 0.0);
-      case BoardCardId.solution:
-        _solutionRevealCtrl.duration = dur;
-        _solutionRevealCtrl.forward(from: 0.0);
-      case BoardCardId.problem:
-        break;
-    }
-  }
-
-  void _replayLastTrace() {
-    BoardCardId? target = _lastAnimatedCard;
-    if (target == null) {
-      if (_cards.ideas != null) {
-        target = BoardCardId.ideas;
-      } else if (_cards.solution != null) {
-        target = BoardCardId.solution;
-      } else if (_cards.diagnosis != null) {
-        target = BoardCardId.diagnosis;
-      }
-    }
-    if (target == null) return;
-    final guidance = switch (target) {
-      BoardCardId.ideas => _cards.ideas,
-      BoardCardId.diagnosis => _cards.diagnosis,
-      BoardCardId.solution => _cards.solution,
-      BoardCardId.problem => null,
-    };
-    if (guidance == null) return;
-    final metrics = SmartBoardLayoutMetrics.compute(
-      cards: _cards,
-      visibility: _visibility,
-      problemPhoto: _problemPhotoImage,
-    );
-    final rect = metrics.rectOf(target);
-    if (rect != null) _focusOnRect(rect, maxZoom: 1.0);
-    _startTraceAnimation(target, guidance);
-  }
-
-  void _skipAllTraceAnimations() {
+  void _skipRevealAnimation() {
     _hintTimer?.cancel();
     setState(() => _floatingHint = '');
-    _ideasRevealCtrl.value = 1.0;
-    _diagnosisRevealCtrl.value = 1.0;
-    _solutionRevealCtrl.value = 1.0;
+    _revealCtrl.value = 1.0;
   }
 
   void _toggleTraceSpeed() {
     setState(() => _traceSpeed = _traceSpeed >= 1.9 ? 1.0 : 2.0);
-    // 若正在播放则按新倍速无缝继续
-    for (final entry in [
-      (_ideasRevealCtrl, _cards.ideas),
-      (_diagnosisRevealCtrl, _cards.diagnosis),
-      (_solutionRevealCtrl, _cards.solution),
-    ]) {
-      final ctrl = entry.$1;
-      final g = entry.$2;
-      if (ctrl.isAnimating && g != null) {
-        final cur = ctrl.value;
-        ctrl.duration = _estimateTraceDuration(g);
-        ctrl.forward(from: cur);
-      }
+    if (_revealCtrl.isAnimating) {
+      final cur = _revealCtrl.value;
+      _revealCtrl.duration = Duration(milliseconds: (2400 / _traceSpeed).round());
+      _revealCtrl.forward(from: cur);
     }
   }
 
-  // ==================== 拍照/相册识题 & AI 三分模式 ====================
+  // ==================== 横竖屏严格锁定（修复横屏自动回弹竖屏） ====================
+
+  Future<void> _toggleOrientation() async {
+    final nextLandscape = !_isLandscape;
+    setState(() {
+      _isLandscape = nextLandscape;
+      _showCanvasOpsMenu = false;
+      _showShapePicker = false;
+      if (!nextLandscape) _immersiveDockHidden = false;
+    });
+    if (kIsWeb) {
+      _showHint(nextLandscape ? '已切换横屏大画板布局' : '已切换竖屏布局');
+      return;
+    }
+    // 严格锁定所选方向，不再在 1.5 秒后解锁，彻底解决横屏几秒后自动跳回竖屏的问题
+    await SystemChrome.setPreferredOrientations(
+      nextLandscape
+          ? const [
+              DeviceOrientation.landscapeLeft,
+              DeviceOrientation.landscapeRight,
+            ]
+          : const [DeviceOrientation.portraitUp],
+    );
+    _showHint(nextLandscape ? '已锁定横屏大画板' : '已锁定竖屏模式');
+  }
+
+  // ==================== 拍照裁剪 + 1:1 图形还原 + AI 三模式 ====================
 
   Future<void> _openProblemCaptureSheet() async {
     if (_busyAi) return;
-    await showWelkDrawer<void>(
+    await showGglBottomSheet<void>(
       context: context,
-      position: WelkDrawerPosition.bottom,
-      closeOnTapOutside: true,
-      builder: (drawerCtx) {
-        final colors = WelkTheme.of(drawerCtx).resolveColors(drawerCtx);
-        return WelkDrawer(
-          title: const Text('导入数学题目'),
-          closeLabel: '取消',
-          onClose: () => Navigator.of(drawerCtx).pop(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '拍照或上传题目图片，AI 自动解析题干并排版到白板中。',
-                style: TextStyle(
-                  color: AppTheme.mutedText(drawerCtx),
-                  fontSize: 13,
-                ),
+      title: '导入数学题目',
+      closeLabel: '取消',
+      builder: (sheetCtx) {
+        final colors = WelkTheme.of(sheetCtx).resolveColors(sheetCtx);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '拍照或选图后可自由框选题目范围，AI 将解析题干并 1:1 还原题目中的图形。',
+              style: TextStyle(
+                color: AppTheme.mutedText(sheetCtx),
+                fontSize: 13,
+                height: 1.45,
               ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  if (!kIsWeb) ...[
-                    Expanded(
-                      child: _CaptureOptionTile(
-                        icon: Icons.photo_camera_rounded,
-                        label: '拍照识题',
-                        subtitle: '拍摄纸质或屏幕题目',
-                        accent: colors.accent,
-                        onTap: () {
-                          Navigator.of(drawerCtx).pop();
-                          unawaited(_pickAndRecognize(ImageSource.camera));
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                  ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                if (!kIsWeb) ...[
                   Expanded(
                     child: _CaptureOptionTile(
-                      icon: Icons.photo_library_rounded,
-                      label: kIsWeb ? '上传题目图片' : '相册选图',
-                      subtitle: '从本地相册识别',
-                      accent: colors.success,
+                      icon: Icons.photo_camera_rounded,
+                      label: '拍照并框选',
+                      subtitle: '拍摄题目后截取范围',
+                      accent: colors.accent,
                       onTap: () {
-                        Navigator.of(drawerCtx).pop();
-                        unawaited(_pickAndRecognize(ImageSource.gallery));
+                        Navigator.of(sheetCtx).pop();
+                        unawaited(_pickCropAndRecognize(ImageSource.camera));
                       },
                     ),
                   ),
+                  const SizedBox(width: 10),
                 ],
-              ),
-              const SizedBox(height: 10),
-              GglBlockButton(
-                label: '手动输入 / 编辑题干',
-                variant: WelkButtonVariant.secondary,
-                onPressed: () {
-                  Navigator.of(drawerCtx).pop();
-                  unawaited(_openManualProblemDialog());
-                },
-              ),
-            ],
-          ),
+                Expanded(
+                  child: _CaptureOptionTile(
+                    icon: Icons.photo_library_rounded,
+                    label: kIsWeb ? '上传图片并框选' : '相册选图并框选',
+                    subtitle: '框选单道题更精准',
+                    accent: colors.success,
+                    onTap: () {
+                      Navigator.of(sheetCtx).pop();
+                      unawaited(_pickCropAndRecognize(ImageSource.gallery));
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            GglBlockButton(
+              label: '手动输入 / 编辑题干',
+              variant: WelkButtonVariant.secondary,
+              onPressed: () {
+                Navigator.of(sheetCtx).pop();
+                unawaited(_openManualProblemDialog());
+              },
+            ),
+          ],
         );
       },
     );
   }
 
-  Future<void> _pickAndRecognize(ImageSource source) async {
+  Future<void> _pickCropAndRecognize(ImageSource source) async {
     try {
       final picked = await _picker.pickImage(
         source: source,
-        maxWidth: 1600,
-        maxHeight: 1600,
-        imageQuality: 85,
+        maxWidth: 2200,
+        maxHeight: 2200,
+        imageQuality: 92,
       );
       if (picked == null || !mounted) return;
+      final rawBytes = await picked.readAsBytes();
+      if (rawBytes.isEmpty || !mounted) return;
 
-      final bytes = await picked.readAsBytes();
-      if (bytes.isEmpty || !mounted) return;
+      // 1. 进入交互式选区裁剪页，截取目标题目范围
+      final cropped = await Navigator.of(context).push<PhotoCropResult>(
+        MaterialPageRoute<PhotoCropResult>(
+          builder: (_) => PhotoCropPage(
+            imageBytes: rawBytes,
+            title: '截取题目范围',
+            confirmLabel: '确认识别',
+          ),
+        ),
+      );
+      if (cropped == null || cropped.bytes.isEmpty || !mounted) return;
 
-      ui.Image? decoded;
-      try {
-        final codec = await ui.instantiateImageCodec(bytes);
-        final frame = await codec.getNextFrame();
-        decoded = frame.image;
-      } catch (_) {}
-
-      if (!mounted) {
-        decoded?.dispose();
-        return;
+      // 若此前锁定了横屏，返回画板后确保方向保持一致
+      if (!kIsWeb && _isLandscape) {
+        await SystemChrome.setPreferredOrientations(const [
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
       }
 
+      if (!mounted) return;
       final api = context.read<GuoguanlaApi>();
       setState(() {
-        _problemPhotoBytes = bytes;
-        _problemPhotoImage?.dispose();
-        _problemPhotoImage = decoded;
+        _croppedPhotoBytes = cropped.bytes;
+        _extractedFigures = const [];
         _busyAi = true;
-        _busyAiLabel = '正在识别数学题目...';
+        _busyAiLabel = '正在识别题目与 1:1 提取配图...';
       });
 
       final result = await api.recognizeMathProblem(
-        imageBytes: bytes,
-        filename: picked.name.isNotEmpty ? picked.name : 'math-problem.jpg',
+        imageBytes: cropped.bytes,
+        filename: 'cropped-problem.png',
       );
       if (!mounted) return;
 
-      final cardWidth = _canvasSize.width > 0
-          ? math.min(400.0, math.max(300.0, _canvasSize.width * 0.44))
-          : 380.0;
+      // 2. 若 AI 返回配图归一化框坐标，从原裁剪图直接 1:1 精准切割并提纯
+      var figures = await PhotoFigureExtractor.extractFromPhoto(
+        cropped.bytes,
+        result.figureBoxes,
+      );
+      if (!mounted) return;
 
       setState(() {
-        _cards = _cards.copyWith(
-          problem: result,
-          problemPos: const Offset(24, 20),
-          problemWidth: cardWidth,
-          clearIdeas: true,
-          clearDiagnosis: true,
-          clearSolution: true,
-        );
-        _visibility = _visibility.copyWith(
-          showProblemCard: true,
-          showPhotoCard: result.hasFigure,
-        );
+        _problem = result;
+        _ideas = null;
+        _diagnosis = null;
+        _solution = null;
+        _extractedFigures = figures;
+        _activeResultTab = BoardResultTab.problem;
+        _resultCollapsed = false;
+        _resultPanelPos = const Offset(10, 10);
       });
       _scheduleDraftSave();
-
-      final metrics = SmartBoardLayoutMetrics.compute(
-        cards: _cards,
-        visibility: _visibility,
-        problemPhoto: _problemPhotoImage,
+      _showHint(
+        figures.isNotEmpty
+            ? '题目已解析，配图已 1:1 还原'
+            : (result.hasFigure
+                ? '题目已解析，可点「重框配图」精准 1:1 框选图形'
+                : '题目已解析'),
       );
-      if (metrics.problemRect != null) {
-        _focusOnRect(metrics.problemRect!, maxZoom: 1.0);
-      }
-      _showHint('题目已解析到画板');
     } catch (e) {
       if (mounted) {
         GglFeedback.error(context, friendlyErrorMessage(e, '拍照识别题目失败'));
@@ -1026,27 +790,78 @@ class _SmartBoardPageState extends State<SmartBoardPage>
     }
   }
 
-  Future<void> _openManualProblemDialog() async {
-    final titleCtrl = TextEditingController(text: _cards.problem?.title ?? '');
-    final stemCtrl = TextEditingController(
-      text: _cards.problem?.problemText ?? '',
-    );
+  /// 允许用户在题目原图上手动精确 1:1 框选配图区域，确保任何复杂几何图都 100% 精准还原。
+  Future<void> _recropFigureManually() async {
+    final sourceBytes = _croppedPhotoBytes;
+    if (sourceBytes == null || sourceBytes.isEmpty) {
+      GglFeedback.warning(context, '请先拍照导入题目图片');
+      return;
+    }
+    final existingBox =
+        (_problem?.figureBoxes.isNotEmpty ?? false) ? _problem!.figureBoxes.first : null;
+    final initialRect = existingBox != null
+        ? Rect.fromLTWH(
+            existingBox.x,
+            existingBox.y,
+            existingBox.w,
+            existingBox.h,
+          )
+        : const Rect.fromLTRB(0.12, 0.36, 0.88, 0.92);
 
-    await showWelkDialog<void>(
+    final cropped = await Navigator.of(context).push<PhotoCropResult>(
+      MaterialPageRoute<PhotoCropResult>(
+        builder: (_) => PhotoCropPage(
+          imageBytes: sourceBytes,
+          title: '1:1 框选题目配图',
+          confirmLabel: '确认还原配图',
+          initialRect: initialRect,
+        ),
+      ),
+    );
+    if (cropped == null || cropped.bytes.isEmpty || !mounted) return;
+    if (!kIsWeb && _isLandscape) {
+      await SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    }
+
+    final box = BoardFigureBox(
+      title: '原题配图 (1:1)',
+      x: cropped.normalizedRect.left,
+      y: cropped.normalizedRect.top,
+      w: cropped.normalizedRect.width,
+      h: cropped.normalizedRect.height,
+    );
+    final extracted = await PhotoFigureExtractor.buildFromCroppedBytes(
+      cropped.bytes,
+      title: box.title,
+      box: box,
+    );
+    if (extracted == null || !mounted) return;
+    setState(() {
+      _extractedFigures = [extracted];
+      if (_problem != null) {
+        _problem = _problem!.copyWith(
+          hasFigure: true,
+          figureBoxes: [box],
+        );
+      }
+    });
+    _scheduleDraftSave();
+    _showHint('已 1:1 更新原题配图');
+  }
+
+  Future<void> _openManualProblemDialog() async {
+    await showGglBottomSheet<void>(
       context: context,
-      closeOnTapOutside: true,
-      builder: (ctx) => WelkDialog(
-        title: Text(_cards.problem == null ? '输入数学题目' : '编辑画板题目'),
-        variant: WelkDialogVariant.info,
-        buttonText: '放入画板',
-        onClose: () => Navigator.of(ctx).pop(),
-        onPressed: () {
-          final text = stemCtrl.text.trim();
-          if (text.isEmpty) {
-            GglFeedback.warning(ctx, '请输入数学题目内容');
-            return;
-          }
-          final updated = (_cards.problem ??
+      title: _problem == null ? '输入数学题目' : '编辑题目内容',
+      closeLabel: '取消',
+      builder: (sheetCtx) => _ManualProblemSheet(
+        initialTitle: _problem?.title ?? '',
+        initialStem: _problem?.problemText ?? '',
+        onSubmit: (title, text) {
+          final updated = (_problem ??
                   const AiRecognizeResult(
                     title: '数学解答题',
                     problemText: '',
@@ -1055,88 +870,46 @@ class _SmartBoardPageState extends State<SmartBoardPage>
                     difficulty: '自选',
                   ))
               .copyWith(
-            title: titleCtrl.text.trim().isEmpty
-                ? '数学解答题'
-                : titleCtrl.text.trim(),
+            title: title.isEmpty ? '数学解答题' : title,
             problemText: text,
           );
           setState(() {
-            _cards = _cards.copyWith(problem: updated);
-            _visibility = _visibility.copyWith(showProblemCard: true);
+            _problem = updated;
+            _activeResultTab = BoardResultTab.problem;
+            _resultCollapsed = false;
           });
           _scheduleDraftSave();
-          Navigator.of(ctx).pop();
-          final metrics = SmartBoardLayoutMetrics.compute(
-            cards: _cards,
-            visibility: _visibility,
-            problemPhoto: _problemPhotoImage,
-          );
-          if (metrics.problemRect != null) {
-            _focusOnRect(metrics.problemRect!, maxZoom: 1.0);
-          }
-          _showHint('题目已放入画板');
+          Navigator.of(sheetCtx).pop();
+          _showHint('题目已更新');
         },
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TextField(
-              controller: titleCtrl,
-              decoration: InputDecoration(
-                hintText: '题目标题（选填）',
-                filled: true,
-                fillColor: const Color(0xFFF8FAFC),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: stemCtrl,
-              minLines: 4,
-              maxLines: 8,
-              decoration: InputDecoration(
-                hintText:
-                    '输入或粘贴数学题目（支持 LaTeX 如 \$x^2-3x+2=0\$、\$\\frac{1}{2}\$）...',
-                filled: true,
-                fillColor: const Color(0xFFF8FAFC),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
 
   Future<void> _runAiAction(_AiActionKind kind) async {
     if (_busyAi) return;
-    final problemText = _cards.problem?.problemText.trim() ?? '';
+    final problemText = _problem?.problemText.trim() ?? '';
     final hasDrawing = _hasHandwriting;
 
-    // 诊断模式必须要求先有手写过程
     if (kind == _AiActionKind.diagnose && !hasDrawing) {
       GglFeedback.warning(context, '请先在画板上写下你的解题过程，再点击诊断');
       return;
     }
 
-    if (problemText.isEmpty && !hasDrawing && _problemPhotoBytes == null) {
+    if (problemText.isEmpty && !hasDrawing && _croppedPhotoBytes == null) {
       GglFeedback.warning(context, '请先拍照识别题目、输入题干或在画板上写下题目');
       await _openProblemCaptureSheet();
       return;
     }
 
     setState(() {
+      _showCanvasOpsMenu = false;
+      _showShapePicker = false;
       _busyAi = true;
       _busyAiLabel = switch (kind) {
-        _AiActionKind.ideas => 'AI 正在梳理引导思路...',
-        _AiActionKind.diagnose => 'AI 正在诊断你的手写过程...',
-        _AiActionKind.solve => 'AI 正在生成完整解题过程...',
+        _AiActionKind.ideas => 'AI 正在生成引导思路...',
+        _AiActionKind.diagnose => 'AI 正在诊断手写过程...',
+        _AiActionKind.solve => 'AI 正在生成解题答案...',
       };
     });
 
@@ -1147,10 +920,8 @@ class _SmartBoardPageState extends State<SmartBoardPage>
         final pngBytes = await renderSmartBoardToPng(
           strokes: _strokes,
           shapes: _shapes,
-          cards: _cards,
-          visibility: _visibility,
-          problemPhoto: _problemPhotoImage,
-          includeProblemCard: _cards.problem != null,
+          cards: const SmartBoardCardState(),
+          includeProblemCard: false,
           includeAiCards: false,
           maxDimension: 1400,
         );
@@ -1158,10 +929,10 @@ class _SmartBoardPageState extends State<SmartBoardPage>
       }
 
       String? photoBase64;
-      if (_problemPhotoBytes != null &&
-          (_cards.problem?.hasFigure == true || problemText.isEmpty)) {
+      if (_croppedPhotoBytes != null &&
+          (_problem?.hasFigure == true || problemText.isEmpty)) {
         photoBase64 =
-            'data:image/jpeg;base64,${base64Encode(_problemPhotoBytes!)}';
+            'data:image/png;base64,${base64Encode(_croppedPhotoBytes!)}';
       }
 
       if (!mounted) return;
@@ -1190,114 +961,27 @@ class _SmartBoardPageState extends State<SmartBoardPage>
       }
       if (!mounted) return;
 
-      // 智能排版：横屏优先右侧铺开，竖屏优先下方排列，避开已有区域
-      final isWide = _canvasSize.width > _canvasSize.height;
-      final metricsBefore = SmartBoardLayoutMetrics.compute(
-        cards: _cards,
-        visibility: _visibility,
-        problemPhoto: _problemPhotoImage,
-      );
-      final pRect = metricsBefore.problemRect;
-      final inkBounds = _computeHandwritingBounds();
-      final cardW = _canvasSize.width > 0
-          ? math.min(400.0, math.max(300.0, _canvasSize.width * (isWide ? 0.44 : 0.86)))
-          : 380.0;
-
-      late final Offset targetPos;
-      late final BoardCardId cardId;
-      switch (kind) {
-        case _AiActionKind.ideas:
-          cardId = BoardCardId.ideas;
-          targetPos = pRect != null
-              ? (isWide
-                  ? Offset(pRect.right + 24, pRect.top)
-                  : Offset(pRect.left, pRect.bottom + 20))
-              : const Offset(24, 20);
-        case _AiActionKind.diagnose:
-          cardId = BoardCardId.diagnosis;
-          final rightX = math.max(
-            pRect != null ? pRect.right + 24 : 24.0,
-            inkBounds != null && inkBounds.right < 900
-                ? inkBounds.right + 24
-                : 24.0,
-          );
-          targetPos = isWide
-              ? Offset(rightX, pRect?.top ?? 20.0)
-              : Offset(
-                  24.0,
-                  math.max(
-                    pRect?.bottom ?? 20.0,
-                    inkBounds?.bottom ?? 20.0,
-                  ) +
-                      20.0,
-                );
-        case _AiActionKind.solve:
-          cardId = BoardCardId.solution;
-          var anchorX = 24.0;
-          var anchorY = 20.0;
-          if (isWide) {
-            if (pRect != null) anchorX = math.max(anchorX, pRect.right + 24);
-            if (metricsBefore.ideasRect != null) {
-              anchorX = math.max(anchorX, metricsBefore.ideasRect!.right + 24);
-            }
-            anchorY = pRect?.top ?? 20.0;
-          } else {
-            if (pRect != null) anchorY = math.max(anchorY, pRect.bottom + 20);
-            if (metricsBefore.ideasRect != null) {
-              anchorY = math.max(anchorY, metricsBefore.ideasRect!.bottom + 20);
-            }
-            if (metricsBefore.diagnosisRect != null) {
-              anchorY =
-                  math.max(anchorY, metricsBefore.diagnosisRect!.bottom + 20);
-            }
-          }
-          targetPos = Offset(anchorX, anchorY);
-      }
-
       setState(() {
         switch (kind) {
           case _AiActionKind.ideas:
-            _cards = _cards.copyWith(
-              ideas: guidance,
-              ideasPos: targetPos,
-              ideasWidth: cardW,
-            );
-            _visibility = _visibility.copyWith(showIdeasCard: true);
+            _ideas = guidance;
+            _activeResultTab = BoardResultTab.ideas;
           case _AiActionKind.diagnose:
-            _cards = _cards.copyWith(
-              diagnosis: guidance,
-              diagnosisPos: targetPos,
-              diagnosisWidth: cardW,
-            );
-            _visibility = _visibility.copyWith(showDiagnosisCard: true);
+            _diagnosis = guidance;
+            _activeResultTab = BoardResultTab.diagnosis;
           case _AiActionKind.solve:
-            _cards = _cards.copyWith(
-              solution: guidance,
-              solutionPos: targetPos,
-              solutionWidth: cardW,
-            );
-            _visibility = _visibility.copyWith(showSolutionCard: true);
+            _solution = guidance;
+            _activeResultTab = BoardResultTab.solution;
         }
+        _resultCollapsed = false;
       });
       _scheduleDraftSave();
-
-      final metricsAfter = SmartBoardLayoutMetrics.compute(
-        cards: _cards,
-        visibility: _visibility,
-        problemPhoto: _problemPhotoImage,
-      );
-      final targetRect = metricsAfter.rectOf(cardId);
-      if (targetRect != null) {
-        _focusOnRect(targetRect, maxZoom: 1.0);
-      }
-
-      // 启动坐标级逐笔自动书写绘制动画！
-      _startTraceAnimation(cardId, guidance);
+      _startRevealAnimation();
       _showHint(
         switch (kind) {
-          _AiActionKind.ideas => '正在逐笔绘制解题思路（引导不剧透答案）',
-          _AiActionKind.diagnose => '正在逐笔绘制手写诊断批注',
-          _AiActionKind.solve => '正在逐笔绘制完整解题过程与答案',
+          _AiActionKind.ideas => '思路已生成（仅引导不剧透答案）',
+          _AiActionKind.diagnose => '手写诊断已完成',
+          _AiActionKind.solve => '答案已生成（思路在下方）',
         },
       );
     } catch (e) {
@@ -1317,251 +1001,25 @@ class _SmartBoardPageState extends State<SmartBoardPage>
     }
   }
 
-  Future<void> _toggleOrientation() async {
-    final currentLandscape =
-        MediaQuery.of(context).size.width > MediaQuery.of(context).size.height;
-    final nextLandscape = !currentLandscape;
-    setState(() => _isLandscape = nextLandscape);
-    if (kIsWeb) {
-      _showHint(nextLandscape ? '已切换横屏紧凑工具栏' : '已切换竖屏标准工具栏');
-      return;
-    }
-    await SystemChrome.setPreferredOrientations(
-      nextLandscape
-          ? const [
-              DeviceOrientation.landscapeLeft,
-              DeviceOrientation.landscapeRight,
-            ]
-          : const [DeviceOrientation.portraitUp],
-    );
-    // 1.5秒后恢复自由重力旋转，既支持按钮主动横竖屏切换，又支持手机自然翻转
-    Future<void>.delayed(const Duration(milliseconds: 1500), () {
-      if (mounted && !kIsWeb) {
-        SystemChrome.setPreferredOrientations(const [
-          DeviceOrientation.portraitUp,
-          DeviceOrientation.landscapeLeft,
-          DeviceOrientation.landscapeRight,
-        ]);
-      }
+  void _clearHandwritingOnly() {
+    if (!_hasHandwriting) return;
+    _pushUndoCheckpoint();
+    setState(() {
+      _strokes.clear();
+      _shapes.clear();
+      _activeStroke = null;
+      _activeShape = null;
+      _showCanvasOpsMenu = false;
     });
-    _showHint(nextLandscape ? '已切为横屏大画板' : '已切为竖屏模式');
-  }
-
-  Future<void> _previewExportFullBoard() async {
-    try {
-      final png = await renderSmartBoardToPng(
-        strokes: _strokes,
-        shapes: _shapes,
-        cards: _cards,
-        visibility: _visibility,
-        problemPhoto: _problemPhotoImage,
-        includeProblemCard: true,
-        includeAiCards: true,
-        maxDimension: 2000,
-      );
-      if (!mounted) return;
-      await showWelkDialog<void>(
-        context: context,
-        closeOnTapOutside: true,
-        builder: (ctx) => WelkDialog(
-          title: const Text('高清完整板书快照'),
-          variant: WelkDialogVariant.success,
-          buttonText: '关闭',
-          onClose: () => Navigator.of(ctx).pop(),
-          onPressed: () => Navigator.of(ctx).pop(),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '已导出高清板书图（${(png.length / 1024).round()} KB）',
-                style: TextStyle(color: AppTheme.mutedText(ctx), fontSize: 12),
-              ),
-              const SizedBox(height: 10),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 320),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: InteractiveViewer(
-                    minScale: 0.5,
-                    maxScale: 4.0,
-                    child: Image.memory(png, fit: BoxFit.contain),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        GglFeedback.warning(context, friendlyErrorMessage(e, '画板暂无可导出内容'));
-      }
-    }
-  }
-
-  Future<void> _openBoardSettingsDrawer() async {
-    await showWelkDrawer<void>(
-      context: context,
-      position: WelkDrawerPosition.bottom,
-      closeOnTapOutside: true,
-      builder: (drawerCtx) => StatefulBuilder(
-        builder: (ctx, setSheetState) {
-          void updateState(VoidCallback fn) {
-            setState(fn);
-            setSheetState(() {});
-          }
-
-          return WelkDrawer(
-            title: const Text('画板图层与设置'),
-            closeLabel: '完成',
-            onClose: () => Navigator.of(ctx).pop(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  '纸张底纹',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final entry in const [
-                      (BoardPaperStyle.dots, '点阵纸'),
-                      (BoardPaperStyle.grid, '数学方格'),
-                      (BoardPaperStyle.lined, '横线作业'),
-                      (BoardPaperStyle.plain, '纯白纸'),
-                    ])
-                      _BoardChip(
-                        label: entry.$2,
-                        active: _paperStyle == entry.$1,
-                        onTap: () {
-                          updateState(() => _paperStyle = entry.$1);
-                          _savePrefs();
-                        },
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                const Text(
-                  '白板图层显隐',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 8),
-                _LayerToggleRow(
-                  label: '题目板书',
-                  available: _cards.problem != null,
-                  value: _visibility.showProblemCard,
-                  onChanged: (v) => updateState(
-                    () => _visibility = _visibility.copyWith(showProblemCard: v),
-                  ),
-                ),
-                _LayerToggleRow(
-                  label: '原题照片',
-                  available: _problemPhotoImage != null,
-                  value: _visibility.showPhotoCard,
-                  onChanged: (v) => updateState(
-                    () => _visibility = _visibility.copyWith(showPhotoCard: v),
-                  ),
-                ),
-                _LayerToggleRow(
-                  label: 'AI 解题思路',
-                  available: _cards.ideas != null,
-                  value: _visibility.showIdeasCard,
-                  onChanged: (v) => updateState(
-                    () => _visibility = _visibility.copyWith(showIdeasCard: v),
-                  ),
-                ),
-                _LayerToggleRow(
-                  label: 'AI 手写诊断',
-                  available: _cards.diagnosis != null,
-                  value: _visibility.showDiagnosisCard,
-                  onChanged: (v) => updateState(
-                    () => _visibility =
-                        _visibility.copyWith(showDiagnosisCard: v),
-                  ),
-                ),
-                _LayerToggleRow(
-                  label: 'AI 完整解题',
-                  available: _cards.solution != null,
-                  value: _visibility.showSolutionCard,
-                  onChanged: (v) => updateState(
-                    () =>
-                        _visibility = _visibility.copyWith(showSolutionCard: v),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    if (_cards.ideas != null ||
-                        _cards.diagnosis != null ||
-                        _cards.solution != null)
-                      WelkButton(
-                        size: WelkButtonSize.small,
-                        variant: WelkButtonVariant.primary,
-                        onPressed: () {
-                          Navigator.of(ctx).pop();
-                          _replayLastTrace();
-                        },
-                        child: const Text('重播逐笔绘制'),
-                      ),
-                    WelkButton(
-                      size: WelkButtonSize.small,
-                      variant: WelkButtonVariant.secondary,
-                      onPressed: () {
-                        Navigator.of(ctx).pop();
-                        unawaited(_previewExportFullBoard());
-                      },
-                      child: const Text('导出板书图'),
-                    ),
-                    if (_cards.ideas != null ||
-                        _cards.diagnosis != null ||
-                        _cards.solution != null)
-                      WelkButton(
-                        size: WelkButtonSize.small,
-                        variant: WelkButtonVariant.warning,
-                        onPressed: () {
-                          Navigator.of(ctx).pop();
-                          setState(() {
-                            _cards = _cards.copyWith(
-                              clearIdeas: true,
-                              clearDiagnosis: true,
-                              clearSolution: true,
-                            );
-                          });
-                          _scheduleDraftSave();
-                          _showHint('已清空 AI 板书图层');
-                        },
-                        child: const Text('仅清 AI 板书'),
-                      ),
-                    WelkButton(
-                      size: WelkButtonSize.small,
-                      variant: WelkButtonVariant.error,
-                      onPressed: () async {
-                        Navigator.of(ctx).pop();
-                        await _confirmClearAll();
-                      },
-                      child: const Text('清空画板'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
+    _scheduleDraftSave();
+    _showHint('已清空手写笔迹');
   }
 
   Future<void> _confirmClearAll() async {
     final ok = await GglFeedback.confirm(
       context,
-      title: '清空整块智能画板？',
-      content: '将清除当前题目、手写笔迹、几何图形及全部 AI 板书内容。',
+      title: '清空整块画板？',
+      content: '将清除当前题目、配图、手写笔迹以及全部 AI 内容。',
       yesText: '确认清空',
       noText: '取消',
     );
@@ -1572,34 +1030,24 @@ class _SmartBoardPageState extends State<SmartBoardPage>
       _shapes.clear();
       _activeStroke = null;
       _activeShape = null;
-      _problemPhotoBytes = null;
-      _problemPhotoImage?.dispose();
-      _problemPhotoImage = null;
-      _cards = const SmartBoardCardState();
+      _problem = null;
+      _ideas = null;
+      _diagnosis = null;
+      _solution = null;
+      _croppedPhotoBytes = null;
+      _extractedFigures = const [];
+      _showCanvasOpsMenu = false;
       _zoom = 1.0;
       _panX = 0;
       _panY = 0;
     });
     _scheduleDraftSave();
-    _showHint('画板已清空');
-  }
-
-  void _clearHandwritingOnly() {
-    if (!_hasHandwriting) return;
-    _pushUndoCheckpoint();
-    setState(() {
-      _strokes.clear();
-      _shapes.clear();
-      _activeStroke = null;
-      _activeShape = null;
-    });
-    _scheduleDraftSave();
-    _showHint('已清空手写与几何笔迹');
+    _showHint('画板已全部清空');
   }
 
   String _shapeLabel(BoardShapeKind kind) => switch (kind) {
         BoardShapeKind.line => '直线',
-        BoardShapeKind.dashedLine => '辅助虚线',
+        BoardShapeKind.dashedLine => '虚线',
         BoardShapeKind.arrow => '箭头',
         BoardShapeKind.rect => '矩形',
         BoardShapeKind.oval => '圆/椭圆',
@@ -1615,18 +1063,20 @@ class _SmartBoardPageState extends State<SmartBoardPage>
         BoardShapeKind.axes => BoardToolMode.axes,
       };
 
+  // ==================== 顶栏 / 画布操作面板 / 极简底栏 ====================
+
   Widget _buildTopToolbar(
     BuildContext context,
     WelkColors colors,
     String plainProblem, {
     required bool compactLandscape,
   }) {
-    final stemWidget = GestureDetector(
-      onTap: _cards.problem == null
+    final stemPill = GestureDetector(
+      onTap: _problem == null
           ? _openProblemCaptureSheet
           : _openManualProblemDialog,
       child: Container(
-        height: compactLandscape ? 32 : 34,
+        height: 31,
         padding: const EdgeInsets.symmetric(horizontal: 9),
         decoration: BoxDecoration(
           color: colors.muted,
@@ -1639,19 +1089,19 @@ class _SmartBoardPageState extends State<SmartBoardPage>
               child: Text(
                 plainProblem.isNotEmpty
                     ? plainProblem
-                    : (compactLandscape ? '点此拍题/录题' : '拍照或输入数学题目，开始智能画板'),
+                    : (compactLandscape ? '拍题/录题' : '拍照或输入数学题'),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: colors.ink,
-                  fontSize: compactLandscape ? 12 : 12.5,
+                  fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
               ),
             ),
             Icon(
               Icons.edit_note_rounded,
-              size: 15,
+              size: 14,
               color: AppTheme.mutedText(context),
             ),
           ],
@@ -1659,49 +1109,54 @@ class _SmartBoardPageState extends State<SmartBoardPage>
       ),
     );
 
-    final aiActionRow = Row(
+    final aiButtons = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _CompactActionBtn(
-          icon: Icons.photo_camera_rounded,
+        GglButton(
           label: '拍照',
-          bg: colors.accent,
-          fg: colors.onFill(colors.accent),
-          outline: colors.outline,
-          disabled: _busyAi,
-          onTap: _openProblemCaptureSheet,
+          icon: Icons.photo_camera_rounded,
+          variant: WelkButtonVariant.primary,
+          compact: true,
+          onPressed: _busyAi ? null : _openProblemCaptureSheet,
         ),
         const SizedBox(width: 5),
-        _CompactActionBtn(
-          icon: Icons.lightbulb_outline_rounded,
+        GglButton(
           label: '思路',
-          bg: const Color(0xFFDBEAFE),
-          fg: const Color(0xFF1D4ED8),
-          outline: colors.outline,
-          disabled: _busyAi,
-          onTap: () => _runAiAction(_AiActionKind.ideas),
+          icon: Icons.lightbulb_outline_rounded,
+          variant: WelkButtonVariant.info,
+          compact: true,
+          onPressed: _busyAi ? null : () => _runAiAction(_AiActionKind.ideas),
         ),
         const SizedBox(width: 5),
-        _CompactActionBtn(
-          icon: Icons.fact_check_outlined,
+        GglButton(
           label: '诊断',
-          bg: const Color(0xFFFEE2E2),
-          fg: const Color(0xFFB91C1C),
-          outline: colors.outline,
-          disabled: _busyAi,
-          onTap: () => _runAiAction(_AiActionKind.diagnose),
+          icon: Icons.fact_check_outlined,
+          variant: WelkButtonVariant.warning,
+          compact: true,
+          onPressed: _busyAi ? null : () => _runAiAction(_AiActionKind.diagnose),
         ),
         const SizedBox(width: 5),
-        _CompactActionBtn(
-          icon: Icons.auto_fix_high_rounded,
+        GglButton(
           label: '解题',
-          bg: const Color(0xFFD1FAE5),
-          fg: const Color(0xFF047857),
-          outline: colors.outline,
-          disabled: _busyAi,
-          onTap: () => _runAiAction(_AiActionKind.solve),
+          icon: Icons.check_circle_outline_rounded,
+          variant: WelkButtonVariant.success,
+          compact: true,
+          onPressed: _busyAi ? null : () => _runAiAction(_AiActionKind.solve),
         ),
       ],
+    );
+
+    final canvasOpsBtn = GglButton(
+      label: '画布操作',
+      icon: Icons.tune_rounded,
+      variant: _showCanvasOpsMenu
+          ? WelkButtonVariant.primary
+          : WelkButtonVariant.secondary,
+      compact: true,
+      onPressed: () => setState(() {
+        _showCanvasOpsMenu = !_showCanvasOpsMenu;
+        _showShapePicker = false;
+      }),
     );
 
     return Container(
@@ -1719,50 +1174,45 @@ class _SmartBoardPageState extends State<SmartBoardPage>
         child: Padding(
           padding: EdgeInsets.symmetric(
             horizontal: 8,
-            vertical: compactLandscape ? 4 : 6,
+            vertical: compactLandscape ? 4 : 5,
           ),
           child: compactLandscape
-              // 手机横屏：单行极紧凑顶栏，最大化留给画布的垂直书写高度！
+              // 横屏极紧凑单行顶栏：最大化垂直画布空间
               ? Row(
                   children: [
-                    _BoardChip(
+                    GglButton(
                       label: '返回',
-                      active: false,
+                      variant: WelkButtonVariant.secondary,
                       compact: true,
-                      onTap: () => Navigator.of(context).pop(),
+                      onPressed: () => Navigator.of(context).pop(),
                     ),
-                    const SizedBox(width: 6),
-                    SizedBox(width: 140, child: stemWidget),
                     const SizedBox(width: 6),
                     Expanded(
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: Row(
                           children: [
-                            aiActionRow,
+                            aiButtons,
                             const SizedBox(width: 6),
-                            _BoardChip(
+                            canvasOpsBtn,
+                            const SizedBox(width: 5),
+                            GglButton(
                               label: '竖屏',
-                              active: false,
+                              variant: WelkButtonVariant.secondary,
                               compact: true,
-                              onTap: _toggleOrientation,
+                              onPressed: _toggleOrientation,
                             ),
-                            const SizedBox(width: 4),
-                            _BoardChip(
+                            const SizedBox(width: 5),
+                            GglButton(
                               label: _immersiveDockHidden ? '显底栏' : '大画布',
-                              active: _immersiveDockHidden,
+                              variant: _immersiveDockHidden
+                                  ? WelkButtonVariant.primary
+                                  : WelkButtonVariant.secondary,
                               compact: true,
-                              onTap: () => setState(
+                              onPressed: () => setState(
                                 () => _immersiveDockHidden =
                                     !_immersiveDockHidden,
                               ),
-                            ),
-                            const SizedBox(width: 4),
-                            _BoardChip(
-                              label: '图层',
-                              active: false,
-                              compact: true,
-                              onTap: _openBoardSettingsDrawer,
                             ),
                           ],
                         ),
@@ -1770,53 +1220,40 @@ class _SmartBoardPageState extends State<SmartBoardPage>
                     ),
                   ],
                 )
-              // 竖屏 / 宽屏：清晰双行顶栏
+              // 竖屏精简双行顶栏（去掉 LongCat-2.5，替换为「画布操作」）
               : Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Row(
                       children: [
-                        _BoardChip(
+                        GglButton(
                           label: '返回',
-                          active: false,
-                          onTap: () => Navigator.of(context).pop(),
+                          variant: WelkButtonVariant.secondary,
+                          compact: true,
+                          onPressed: () => Navigator.of(context).pop(),
                         ),
                         const SizedBox(width: 6),
-                        Expanded(child: stemWidget),
+                        Expanded(child: stemPill),
                         const SizedBox(width: 6),
-                        _BoardChip(
+                        GglButton(
                           label: '横屏',
-                          active: false,
-                          onTap: _toggleOrientation,
-                        ),
-                        const SizedBox(width: 5),
-                        _BoardChip(
-                          label: '图层',
-                          active: false,
-                          onTap: _openBoardSettingsDrawer,
+                          variant: WelkButtonVariant.secondary,
+                          compact: true,
+                          onPressed: _toggleOrientation,
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 5),
                     Row(
                       children: [
                         Expanded(
                           child: SingleChildScrollView(
                             scrollDirection: Axis.horizontal,
-                            child: aiActionRow,
+                            child: aiButtons,
                           ),
                         ),
-                        if (_aiStatus != null && _aiStatus!.ready) ...[
-                          const SizedBox(width: 6),
-                          Text(
-                            _aiStatus!.modelName,
-                            style: TextStyle(
-                              color: AppTheme.mutedText(context),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
+                        const SizedBox(width: 6),
+                        canvasOpsBtn,
                       ],
                     ),
                   ],
@@ -1826,6 +1263,155 @@ class _SmartBoardPageState extends State<SmartBoardPage>
     );
   }
 
+  /// 点击「画布操作」后弹出的紧凑面板：直出 橡皮 / 移动 / 撤销 / 清笔迹 + 纸张底纹
+  Widget _buildCanvasOpsPopover(BuildContext context, WelkColors colors) {
+    return Positioned(
+      top: 8,
+      right: 10,
+      child: SizedBox(
+        width: 244,
+        child: GglComicPanel(
+          padding: const EdgeInsets.all(10),
+          shadowOffset: const Offset(2, 2),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    '画布操作',
+                    style: TextStyle(
+                      color: colors.ink,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: () => setState(() => _showCanvasOpsMenu = false),
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 16,
+                      color: AppTheme.mutedText(context),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  GglButton(
+                    label: '橡皮',
+                    icon: Icons.auto_fix_normal_rounded,
+                    compact: true,
+                    variant: _tool == BoardToolMode.strokeEraser
+                        ? WelkButtonVariant.primary
+                        : WelkButtonVariant.secondary,
+                    onPressed: () => setState(() {
+                      _tool = BoardToolMode.strokeEraser;
+                      _showCanvasOpsMenu = false;
+                    }),
+                  ),
+                  GglButton(
+                    label: '移动',
+                    icon: Icons.pan_tool_alt_rounded,
+                    compact: true,
+                    variant: _tool == BoardToolMode.hand
+                        ? WelkButtonVariant.primary
+                        : WelkButtonVariant.secondary,
+                    onPressed: () => setState(() {
+                      _tool = BoardToolMode.hand;
+                      _showCanvasOpsMenu = false;
+                    }),
+                  ),
+                  GglButton(
+                    label: '撤销',
+                    icon: Icons.undo_rounded,
+                    compact: true,
+                    variant: WelkButtonVariant.secondary,
+                    onPressed: _undoStack.isEmpty ? null : _handleUndo,
+                  ),
+                  GglButton(
+                    label: '清笔迹',
+                    icon: Icons.layers_clear_rounded,
+                    compact: true,
+                    variant: WelkButtonVariant.warning,
+                    onPressed: _hasHandwriting ? _clearHandwritingOnly : null,
+                  ),
+                ],
+              ),
+              const GglDivider(verticalPadding: 8),
+              Text(
+                '画纸底纹',
+                style: TextStyle(
+                  color: AppTheme.mutedText(context),
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 5,
+                runSpacing: 5,
+                children: [
+                  for (final entry in const [
+                    (BoardPaperStyle.dots, '点阵'),
+                    (BoardPaperStyle.grid, '方格'),
+                    (BoardPaperStyle.lined, '横线'),
+                    (BoardPaperStyle.plain, '纯白'),
+                  ])
+                    GglButton(
+                      label: entry.$2,
+                      compact: true,
+                      variant: _paperStyle == entry.$1
+                          ? WelkButtonVariant.primary
+                          : WelkButtonVariant.secondary,
+                      onPressed: () {
+                        setState(() => _paperStyle = entry.$1);
+                        _savePrefs();
+                      },
+                    ),
+                ],
+              ),
+              const GglDivider(verticalPadding: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: GglButton(
+                      label: '重置视野',
+                      compact: true,
+                      variant: WelkButtonVariant.secondary,
+                      onPressed: () {
+                        _resetView();
+                        setState(() => _showCanvasOpsMenu = false);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: GglButton(
+                      label: '清空全部',
+                      compact: true,
+                      variant: WelkButtonVariant.error,
+                      onPressed: () {
+                        setState(() => _showCanvasOpsMenu = false);
+                        unawaited(_confirmClearAll());
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 极简底部工具栏：去除荧光笔与重复操作按钮，最大程度留出大画布书写空间
   Widget _buildBottomDock(
     BuildContext context,
     WelkColors colors, {
@@ -1846,134 +1432,136 @@ class _SmartBoardPageState extends State<SmartBoardPage>
         child: Padding(
           padding: EdgeInsets.symmetric(
             horizontal: 8,
-            vertical: compactLandscape ? 4 : 6,
+            vertical: compactLandscape ? 3 : 5,
           ),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                for (final c in _penColors)
-                  GestureDetector(
-                    onTap: () => setState(() {
-                      _activeColor = c;
+          child: Row(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (final c in _penColors)
+                        GestureDetector(
+                          onTap: () => setState(() {
+                            _activeColor = c;
+                            if (_tool == BoardToolMode.strokeEraser ||
+                                _tool == BoardToolMode.hand) {
+                              _tool = BoardToolMode.pen;
+                            }
+                          }),
+                          child: Container(
+                            width: 20,
+                            height: 20,
+                            margin: const EdgeInsets.only(right: 6),
+                            decoration: BoxDecoration(
+                              color: c,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: (_tool == BoardToolMode.pen ||
+                                            _isShapeTool) &&
+                                        _activeColor == c
+                                    ? colors.accent
+                                    : colors.outline,
+                                width: (_tool == BoardToolMode.pen ||
+                                            _isShapeTool) &&
+                                        _activeColor == c
+                                    ? 2.6
+                                    : 1.3,
+                              ),
+                            ),
+                          ),
+                        ),
+                      GglButton(
+                        label: _strokeLabels[_widthIdx],
+                        compact: true,
+                        variant: WelkButtonVariant.secondary,
+                        onPressed: () {
+                          setState(
+                            () => _widthIdx =
+                                (_widthIdx + 1) % _strokeWidths.length,
+                          );
+                          _savePrefs();
+                        },
+                      ),
+                      const SizedBox(width: 5),
+                      GglButton(
+                        label: '钢笔',
+                        compact: true,
+                        variant: _tool == BoardToolMode.pen
+                            ? WelkButtonVariant.primary
+                            : WelkButtonVariant.secondary,
+                        onPressed: () => setState(() {
+                          _tool = BoardToolMode.pen;
+                          _showShapePicker = false;
+                        }),
+                      ),
+                      const SizedBox(width: 5),
+                      GglButton(
+                        label: _isShapeTool
+                            ? _shapeLabel(_shapeKindForTool(_tool))
+                            : '图形',
+                        compact: true,
+                        variant: (_isShapeTool || _showShapePicker)
+                            ? WelkButtonVariant.primary
+                            : WelkButtonVariant.secondary,
+                        onPressed: () => setState(() {
+                          _showShapePicker = !_showShapePicker;
+                          _showCanvasOpsMenu = false;
+                        }),
+                      ),
                       if (_tool == BoardToolMode.strokeEraser ||
-                          _tool == BoardToolMode.pixelEraser ||
-                          _tool == BoardToolMode.hand) {
-                        _tool = BoardToolMode.pen;
-                      }
-                    }),
-                    child: Container(
-                      width: compactLandscape ? 21 : 23,
-                      height: compactLandscape ? 21 : 23,
-                      margin: const EdgeInsets.only(right: 6),
-                      decoration: BoxDecoration(
-                        color: c,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: (_tool == BoardToolMode.pen ||
-                                      _tool == BoardToolMode.highlighter ||
-                                      _isShapeTool) &&
-                                  _activeColor == c
-                              ? colors.accent
-                              : colors.outline,
-                          width: (_tool == BoardToolMode.pen ||
-                                      _tool == BoardToolMode.highlighter ||
-                                      _isShapeTool) &&
-                                  _activeColor == c
-                              ? 2.8
-                              : 1.4,
+                          _tool == BoardToolMode.hand) ...[
+                        const SizedBox(width: 5),
+                        GglStatusTag(
+                          label: _tool == BoardToolMode.strokeEraser
+                              ? '橡皮中'
+                              : '移动中',
+                          variant: WelkBadgeVariant.warning,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              // 紧凑内嵌缩放控制（不占画布内部空间）
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: () => _stepZoom(-0.2),
+                    child: Padding(
+                      padding: const EdgeInsets.all(3),
+                      child: Icon(Icons.remove_rounded,
+                          size: 15, color: colors.ink),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: _resetView,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      child: Text(
+                        '${(_zoom * 100).round()}%',
+                        style: TextStyle(
+                          color: colors.ink,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                     ),
                   ),
-                _BoardChip(
-                  label: _strokeLabels[_widthIdx],
-                  active: false,
-                  compact: compactLandscape,
-                  onTap: () {
-                    setState(
-                      () => _widthIdx = (_widthIdx + 1) % _strokeWidths.length,
-                    );
-                    _savePrefs();
-                  },
-                ),
-                const SizedBox(width: 5),
-                _BoardChip(
-                  label: '钢笔',
-                  active: _tool == BoardToolMode.pen,
-                  compact: compactLandscape,
-                  onTap: () => setState(() {
-                    _tool = BoardToolMode.pen;
-                    _showShapePicker = false;
-                  }),
-                ),
-                const SizedBox(width: 5),
-                _BoardChip(
-                  label: '荧光',
-                  active: _tool == BoardToolMode.highlighter,
-                  compact: compactLandscape,
-                  onTap: () => setState(() {
-                    _tool = BoardToolMode.highlighter;
-                    _showShapePicker = false;
-                  }),
-                ),
-                const SizedBox(width: 5),
-                _BoardChip(
-                  label: _isShapeTool
-                      ? _shapeLabel(_shapeKindForTool(_tool))
-                      : '图形',
-                  active: _isShapeTool || _showShapePicker,
-                  compact: compactLandscape,
-                  onTap: () => setState(
-                    () => _showShapePicker = !_showShapePicker,
+                  GestureDetector(
+                    onTap: () => _stepZoom(0.2),
+                    child: Padding(
+                      padding: const EdgeInsets.all(3),
+                      child: Icon(Icons.add_rounded,
+                          size: 15, color: colors.ink),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 5),
-                _BoardChip(
-                  label: '橡皮',
-                  active: _tool == BoardToolMode.strokeEraser,
-                  compact: compactLandscape,
-                  onTap: () => setState(() {
-                    _tool = BoardToolMode.strokeEraser;
-                    _showShapePicker = false;
-                  }),
-                ),
-                const SizedBox(width: 5),
-                _BoardChip(
-                  label: '移动',
-                  active: _tool == BoardToolMode.hand,
-                  compact: compactLandscape,
-                  onTap: () => setState(() {
-                    _tool = BoardToolMode.hand;
-                    _showShapePicker = false;
-                  }),
-                ),
-                const SizedBox(width: 6),
-                _BoardChip(
-                  label: '撤销',
-                  active: false,
-                  compact: compactLandscape,
-                  disabled: _undoStack.isEmpty,
-                  onTap: _handleUndo,
-                ),
-                const SizedBox(width: 4),
-                _BoardChip(
-                  label: '重做',
-                  active: false,
-                  compact: compactLandscape,
-                  disabled: _redoStack.isEmpty,
-                  onTap: _handleRedo,
-                ),
-                const SizedBox(width: 4),
-                _BoardChip(
-                  label: '清笔迹',
-                  active: false,
-                  compact: compactLandscape,
-                  disabled: !_hasHandwriting,
-                  onTap: _clearHandwritingOnly,
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
@@ -1984,15 +1572,11 @@ class _SmartBoardPageState extends State<SmartBoardPage>
   Widget build(BuildContext context) {
     final colors = WelkTheme.of(context).resolveColors(context);
     final media = MediaQuery.of(context);
-    final isLandscapeNow =
-        (media.size.width > media.size.height && media.size.height < 560) ||
-            (kIsWeb && _isLandscape);
-    final plainProblem = _cards.problem != null
-        ? MathParser.renderPlainText(_cards.problem!.problemText)
+    final isLandscapeNow = _isLandscape ||
+        (media.size.width > media.size.height && media.size.height < 560);
+    final plainProblem = _problem != null
+        ? MathParser.renderPlainText(_problem!.problemText)
         : '';
-    final hasAnyAiBoard = _cards.ideas != null ||
-        _cards.diagnosis != null ||
-        _cards.solution != null;
 
     final overlayStyle = colors.isDark
         ? SystemUiOverlayStyle.light.copyWith(statusBarColor: Colors.transparent)
@@ -2004,7 +1588,7 @@ class _SmartBoardPageState extends State<SmartBoardPage>
         backgroundColor: colors.paper,
         body: Column(
           children: [
-            // 1. 顶部安全区满铺导航与 AI 操作栏
+            // 1. 顶部安全区满铺操作栏
             _buildTopToolbar(
               context,
               colors,
@@ -2012,7 +1596,7 @@ class _SmartBoardPageState extends State<SmartBoardPage>
               compactLandscape: isLandscapeNow,
             ),
 
-            // 2. 无限矢量画板主舞台（严格 ClipRect 隔离，绝不遮盖顶栏与底栏！）
+            // 2. 纯净大画布舞台（严格 ClipRect 隔离，绝不覆盖上下导航）
             Expanded(
               child: ClipRect(
                 child: LayoutBuilder(
@@ -2024,6 +1608,7 @@ class _SmartBoardPageState extends State<SmartBoardPage>
                     return Stack(
                       clipBehavior: Clip.hardEdge,
                       children: [
+                        // 手写与几何矢量画布（仅渲染纸张、学生笔迹、几何图与橡皮环）
                         Listener(
                           onPointerSignal: _onPointerSignal,
                           child: GestureDetector(
@@ -2042,13 +1627,7 @@ class _SmartBoardPageState extends State<SmartBoardPage>
                                 panY: _panY,
                                 zoom: _zoom,
                                 paperStyle: _paperStyle,
-                                cards: _cards,
-                                visibility: _visibility,
-                                problemPhoto: _problemPhotoImage,
-                                ideasReveal: _ideasRevealCtrl.value,
-                                diagnosisReveal: _diagnosisRevealCtrl.value,
-                                solutionReveal: _solutionRevealCtrl.value,
-                                draggingCardId: _draggingCardId,
+                                cards: const SmartBoardCardState(),
                                 eraserCursorWorld: _eraserCursorWorld,
                                 eraserCursorRadius:
                                     16.0 / math.max(0.4, _zoom),
@@ -2057,11 +1636,10 @@ class _SmartBoardPageState extends State<SmartBoardPage>
                           ),
                         ),
 
-                        // 空画板简洁引导
+                        // 空画板极简提示
                         if (_strokes.isEmpty &&
                             _shapes.isEmpty &&
-                            _cards.problem == null &&
-                            !hasAnyAiBoard &&
+                            !_hasAnyResult &&
                             _activeStroke == null &&
                             !_busyAi)
                           const IgnorePointer(
@@ -2069,11 +1647,11 @@ class _SmartBoardPageState extends State<SmartBoardPage>
                               child: Padding(
                                 padding: EdgeInsets.symmetric(horizontal: 24),
                                 child: Text(
-                                  '拍照或输入数学题 · 点击「思路」逐笔引导 · 写完点击「诊断」批改 · 点击「解题」完整板书',
+                                  '拍照框选数学题 · 点击「思路」引导 · 写完点「诊断」批改 · 点击「解题」直看答案',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Color(0xFF94A3B8),
-                                    fontSize: 12.8,
+                                    fontSize: 12.6,
                                     height: 1.5,
                                   ),
                                 ),
@@ -2081,17 +1659,57 @@ class _SmartBoardPageState extends State<SmartBoardPage>
                             ),
                           ),
 
-                        // 几何图形选择浮层
+                        // 统一 UI 库渲染的题目/思路/诊断/解题面板（自动适配 WelkUI / Skribble）
+                        if (_hasAnyResult)
+                          SmartBoardResultPanel(
+                            canvasSize: _canvasSize,
+                            activeTab: _activeResultTab,
+                            collapsed: _resultCollapsed,
+                            position: _resultPanelPos,
+                            onPositionChanged: (pos) =>
+                                setState(() => _resultPanelPos = pos),
+                            onTabChanged: (t) =>
+                                setState(() => _activeResultTab = t),
+                            onToggleCollapsed: () => setState(
+                              () => _resultCollapsed = !_resultCollapsed,
+                            ),
+                            onEditProblem: _openManualProblemDialog,
+                            onRecropFigure: _recropFigureManually,
+                            onCloseActiveTab: () =>
+                                setState(() => _resultCollapsed = true),
+                            problem: _problem,
+                            ideas: _ideas,
+                            diagnosis: _diagnosis,
+                            solution: _solution,
+                            extractedFigures: _extractedFigures,
+                            hasSourcePhoto: _croppedPhotoBytes != null,
+                            purifyFigures: _purifyFigures,
+                            onTogglePurifyFigures: () => setState(
+                              () => _purifyFigures = !_purifyFigures,
+                            ),
+                            revealProgress: _revealCtrl.value,
+                            isAnimating: _revealCtrl.isAnimating,
+                            traceSpeed: _traceSpeed,
+                            onToggleSpeed: _toggleTraceSpeed,
+                            onSkipAnimation: _skipRevealAnimation,
+                            onReplayAnimation: _startRevealAnimation,
+                          ),
+
+                        // 「画布操作」弹出面板
+                        if (_showCanvasOpsMenu)
+                          _buildCanvasOpsPopover(context, colors),
+
+                        // 几何图形选择条
                         if (_showShapePicker)
                           Positioned(
-                            left: 12,
-                            right: 12,
-                            bottom: 12,
+                            left: 10,
+                            right: 10,
+                            bottom: 10,
                             child: Center(
                               child: GglComicPanel(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 10,
-                                  vertical: 7,
+                                  vertical: 6,
                                 ),
                                 shadowOffset: const Offset(2, 2),
                                 child: Wrap(
@@ -2099,12 +1717,14 @@ class _SmartBoardPageState extends State<SmartBoardPage>
                                   runSpacing: 6,
                                   children: [
                                     for (final kind in BoardShapeKind.values)
-                                      _BoardChip(
+                                      GglButton(
                                         label: _shapeLabel(kind),
-                                        active: _isShapeTool &&
-                                            _shapeKindForTool(_tool) == kind,
                                         compact: true,
-                                        onTap: () => setState(() {
+                                        variant: _isShapeTool &&
+                                                _shapeKindForTool(_tool) == kind
+                                            ? WelkButtonVariant.primary
+                                            : WelkButtonVariant.secondary,
+                                        onPressed: () => setState(() {
                                           _lastShapeKind = kind;
                                           _tool = _toolForShape(kind);
                                           _showShapePicker = false;
@@ -2116,93 +1736,17 @@ class _SmartBoardPageState extends State<SmartBoardPage>
                             ),
                           ),
 
-                        // 左下角缩放 HUD
-                        Positioned(
-                          left: 10,
-                          bottom: 8,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: colors.paper.withValues(alpha: 0.94),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: colors.outline.withValues(alpha: 0.65),
-                                width: 1.2,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                GestureDetector(
-                                  onTap: () => _stepZoom(-0.2),
-                                  child: Icon(
-                                    Icons.remove_rounded,
-                                    size: 15,
-                                    color: colors.ink,
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                GestureDetector(
-                                  onTap: _resetZoomTo100,
-                                  child: Text(
-                                    '${(_zoom * 100).round()}%',
-                                    style: TextStyle(
-                                      color: colors.ink,
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                GestureDetector(
-                                  onTap: () => _stepZoom(0.2),
-                                  child: Icon(
-                                    Icons.add_rounded,
-                                    size: 15,
-                                    color: colors.ink,
-                                  ),
-                                ),
-                                Container(
-                                  width: 1,
-                                  height: 12,
-                                  margin:
-                                      const EdgeInsets.symmetric(horizontal: 6),
-                                  color: colors.outline.withValues(alpha: 0.3),
-                                ),
-                                GestureDetector(
-                                  onTap: _fitAllContent,
-                                  child: Icon(
-                                    Icons.fit_screen_rounded,
-                                    size: 15,
-                                    color: colors.ink,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-
-                        // 右下角 AI 加载 / 逐笔自动绘制控制条 / 重播入口
+                        // AI 处理中提示（UI 库面板）
                         if (_busyAi)
                           Positioned(
                             right: 10,
                             bottom: 8,
-                            child: Container(
+                            child: GglComicPanel(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 10,
                                 vertical: 6,
                               ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFEFF6FF),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: const Color(0xFF93C5FD),
-                                  width: 1.2,
-                                ),
-                              ),
+                              shadowOffset: const Offset(1.5, 1.5),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -2216,72 +1760,10 @@ class _SmartBoardPageState extends State<SmartBoardPage>
                                   const SizedBox(width: 7),
                                   Text(
                                     _busyAiLabel,
-                                    style: const TextStyle(
-                                      color: Color(0xFF1D4ED8),
-                                      fontSize: 11.8,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          )
-                        else if (_anyAiAnimating)
-                          Positioned(
-                            right: 10,
-                            bottom: 8,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 9,
-                                vertical: 5,
-                              ),
-                              decoration: BoxDecoration(
-                                color: colors.paper.withValues(alpha: 0.96),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: const Color(0xFF2563EB),
-                                  width: 1.2,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(
-                                    Icons.draw_rounded,
-                                    size: 14,
-                                    color: Color(0xFF2563EB),
-                                  ),
-                                  const SizedBox(width: 5),
-                                  const Text(
-                                    '自动绘制中',
                                     style: TextStyle(
-                                      color: Color(0xFF1D4ED8),
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 7),
-                                  GestureDetector(
-                                    onTap: _toggleTraceSpeed,
-                                    child: Text(
-                                      '${_traceSpeed.toStringAsFixed(0)}x',
-                                      style: TextStyle(
-                                        color: colors.ink,
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  GestureDetector(
-                                    onTap: _skipAllTraceAnimations,
-                                    child: const Text(
-                                      '立即画完',
-                                      style: TextStyle(
-                                        color: Color(0xFF059669),
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w800,
-                                      ),
+                                      color: colors.ink,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
                                     ),
                                   ),
                                 ],
@@ -2296,48 +1778,6 @@ class _SmartBoardPageState extends State<SmartBoardPage>
                               label: _floatingHint,
                               variant: WelkBadgeVariant.info,
                             ),
-                          )
-                        else if (hasAnyAiBoard)
-                          Positioned(
-                            right: 10,
-                            bottom: 8,
-                            child: GestureDetector(
-                              onTap: _replayLastTrace,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 9,
-                                  vertical: 5,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: colors.paper.withValues(alpha: 0.94),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color:
-                                        colors.outline.withValues(alpha: 0.65),
-                                    width: 1.2,
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.replay_rounded,
-                                      size: 14,
-                                      color: colors.ink,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      '重播绘制',
-                                      style: TextStyle(
-                                        color: colors.ink,
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
                           ),
                       ],
                     );
@@ -2346,7 +1786,7 @@ class _SmartBoardPageState extends State<SmartBoardPage>
               ),
             ),
 
-            // 3. 底部安全区满铺工具 Dock（手机横屏大画布模式下可折叠释放 100% 底部高度）
+            // 3. 极简底部工具栏（手机横屏大画布模式下可一键折叠）
             if (!(_immersiveDockHidden && isLandscapeNow))
               _buildBottomDock(
                 context,
@@ -2354,105 +1794,6 @@ class _SmartBoardPageState extends State<SmartBoardPage>
                 compactLandscape: isLandscapeNow,
               ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CompactActionBtn extends StatelessWidget {
-  const _CompactActionBtn({
-    required this.icon,
-    required this.label,
-    required this.bg,
-    required this.fg,
-    required this.outline,
-    required this.onTap,
-    this.disabled = false,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color bg;
-  final Color fg;
-  final Color outline;
-  final bool disabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Opacity(
-      opacity: disabled ? 0.48 : 1.0,
-      child: GestureDetector(
-        onTap: disabled ? null : onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: outline, width: 1.4),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 14, color: fg),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  color: fg,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _BoardChip extends StatelessWidget {
-  const _BoardChip({
-    required this.label,
-    required this.active,
-    required this.onTap,
-    this.disabled = false,
-    this.compact = false,
-  });
-
-  final String label;
-  final bool active;
-  final bool disabled;
-  final bool compact;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = WelkTheme.of(context).resolveColors(context);
-    return Opacity(
-      opacity: disabled ? 0.42 : 1.0,
-      child: GestureDetector(
-        onTap: disabled ? null : onTap,
-        child: Container(
-          padding: EdgeInsets.symmetric(
-            horizontal: compact ? 8 : 10,
-            vertical: compact ? 4.5 : 6,
-          ),
-          decoration: BoxDecoration(
-            color: active ? colors.accent : colors.paper,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: colors.outline, width: 1.4),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: active ? colors.onFill(colors.accent) : colors.ink,
-              fontSize: compact ? 11.5 : 12,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
         ),
       ),
     );
@@ -2478,74 +1819,125 @@ class _CaptureOptionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = WelkTheme.of(context).resolveColors(context);
     return GglComicPanel(
-      color: Color.alphaBlend(accent.withValues(alpha: 0.14), colors.paper),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-      shadowOffset: const Offset(2, 2),
       onTap: onTap,
+      padding: const EdgeInsets.all(12),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 28, color: colors.ink),
-          const SizedBox(height: 6),
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: accent,
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(color: colors.outline, width: 1.8),
+            ),
+            child: Icon(icon, size: 19, color: colors.onFill(accent)),
+          ),
+          const SizedBox(height: 8),
           Text(
             label,
             style: TextStyle(
               color: colors.ink,
-              fontSize: 14.5,
+              fontSize: 14,
               fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 2),
-          Text(
-            subtitle,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: AppTheme.mutedText(context),
-              fontSize: 11.5,
+            Text(
+              subtitle,
+              style: TextStyle(
+                color: AppTheme.mutedText(context),
+                fontSize: 11.5,
+              ),
             ),
-          ),
-        ],
-      ),
-    );
+          ],
+        ),
+      );
   }
 }
 
-class _LayerToggleRow extends StatelessWidget {
-  const _LayerToggleRow({
-    required this.label,
-    required this.available,
-    required this.value,
-    required this.onChanged,
+class _ManualProblemSheet extends StatefulWidget {
+  const _ManualProblemSheet({
+    required this.initialTitle,
+    required this.initialStem,
+    required this.onSubmit,
   });
 
-  final String label;
-  final bool available;
-  final bool value;
-  final ValueChanged<bool> onChanged;
+  final String initialTitle;
+  final String initialStem;
+  final void Function(String title, String stem) onSubmit;
+
+  @override
+  State<_ManualProblemSheet> createState() => _ManualProblemSheetState();
+}
+
+class _ManualProblemSheetState extends State<_ManualProblemSheet> {
+  late String _title;
+  late final TextEditingController _stemCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _title = widget.initialTitle;
+    _stemCtrl = TextEditingController(text: widget.initialStem);
+  }
+
+  @override
+  void dispose() {
+    _stemCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final colors = WelkTheme.of(context).resolveColors(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              available ? label : '$label（暂无内容）',
-              style: TextStyle(
-                color: available ? colors.ink : AppTheme.mutedText(context),
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GglInput(
+          label: '题目标题（选填）',
+          value: _title,
+          placeholder: '例如：二次函数压轴题',
+          onChanged: (v) => setState(() => _title = v),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          '题干内容（支持 LaTeX 如 \$x^2-4x+3=0\$）',
+          style: TextStyle(
+            color: colors.ink,
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _stemCtrl,
+          minLines: 4,
+          maxLines: 7,
+          decoration: InputDecoration(
+            hintText: '输入或粘贴数学题干...',
+            filled: true,
+            fillColor: colors.paper,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
             ),
           ),
-          WelkSwitch(
-            value: available && value,
-            label: (available && value) ? '显示' : '隐藏',
-            onChanged: available ? onChanged : null,
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 14),
+        GglBlockButton(
+          label: '保存到画板',
+          onPressed: () {
+            final text = _stemCtrl.text.trim();
+            if (text.isEmpty) {
+              GglFeedback.warning(context, '请输入数学题目内容');
+              return;
+            }
+            widget.onSubmit(_title.trim(), text);
+          },
+        ),
+      ],
     );
   }
 }

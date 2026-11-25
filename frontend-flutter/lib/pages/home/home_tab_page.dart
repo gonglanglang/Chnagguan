@@ -15,6 +15,7 @@ import '../../services/guoguanla_api.dart';
 import '../../widgets/ggl_comic_panel.dart';
 import '../../widgets/ggl_feedback.dart';
 import '../../widgets/ggl_skeleton.dart';
+import '../../widgets/ggl_skin_widgets.dart';
 import '../chapter_map/chapter_map_page.dart';
 import '../grade_chapters/grade_chapters_page.dart';
 import '../levels/levels_page.dart';
@@ -429,13 +430,12 @@ class _HomeTabPageState extends State<HomeTabPage> {
 
     return Scaffold(
       backgroundColor: AppTheme.pageBackground(context),
-      appBar: WelkAppBar(
+      appBar: GglAppBar(
         title: '过关啦',
-        layout: WelkAppBarLayout.comicStrip,
-        automaticallyImplyLeading: false,
+        centerTitle: false,
         actions: [
-          WelkIconButton(
-            icon: const Icon(Icons.layers_rounded),
+          GglIconButton(
+            icon: Icons.layers_rounded,
             label: '学习体系',
             onPressed: _openSystemDrawer,
           ),

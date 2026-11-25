@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:skribble/skribble.dart';
 import 'package:welkui_flutter/welkui_flutter.dart';
 
 import '../app/app_theme.dart';
@@ -8,19 +9,28 @@ class ThemeProvider extends ChangeNotifier {
   ThemeProvider(this._storage)
       : _isDarkMode = _storage.isDarkMode,
         _accentHex = _storage.themeHex,
-        _accentName = _storage.themeName;
+        _accentName = _storage.themeName,
+        _uiSkin = AppUiSkin.fromCode(_storage.uiSkin);
 
   final GlobalCache _storage;
   bool _isDarkMode;
   String _accentHex;
   String _accentName;
+  AppUiSkin _uiSkin;
 
   bool get isDarkMode => _isDarkMode;
   String get accentHex => _accentHex;
   String get accentName => _accentName;
   Color get accentColor => AppTheme.parseHexColor(_accentHex);
+  AppUiSkin get uiSkin => _uiSkin;
+  bool get isSkribble => _uiSkin == AppUiSkin.skribble;
 
   WelkThemeData get welkTheme => AppTheme.buildWelkTheme(
+        isDark: _isDarkMode,
+        accent: accentColor,
+      );
+
+  WiredThemeData get skribbleTheme => AppTheme.buildSkribbleTheme(
         isDark: _isDarkMode,
         accent: accentColor,
       );
@@ -28,7 +38,15 @@ class ThemeProvider extends ChangeNotifier {
   ThemeData get materialTheme => AppTheme.buildMaterialTheme(
         isDark: _isDarkMode,
         welk: welkTheme,
+        isSkribble: isSkribble,
       );
+
+  Future<void> setUiSkin(AppUiSkin skin) async {
+    if (_uiSkin == skin) return;
+    _uiSkin = skin;
+    await _storage.setUiSkin(skin.code);
+    notifyListeners();
+  }
 
   Future<void> setDarkMode(bool value) async {
     if (_isDarkMode == value) return;
@@ -66,8 +84,10 @@ class ThemeProvider extends ChangeNotifier {
     _isDarkMode = false;
     _accentHex = preset.hex;
     _accentName = preset.name;
+    _uiSkin = AppUiSkin.welkui;
     await _storage.setDarkMode(false);
     await _storage.setThemeColor(hex: preset.hex, name: preset.name);
+    await _storage.setUiSkin(AppUiSkin.welkui.code);
     notifyListeners();
   }
 }

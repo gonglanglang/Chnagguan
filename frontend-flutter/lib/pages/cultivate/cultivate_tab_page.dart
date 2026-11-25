@@ -14,6 +14,7 @@ import '../../services/guoguanla_api.dart';
 import '../../widgets/ggl_comic_panel.dart';
 import '../../widgets/ggl_feedback.dart';
 import '../../widgets/ggl_skeleton.dart';
+import '../../widgets/ggl_skin_widgets.dart';
 import '../video_detail/video_detail_page.dart';
 
 class CultivateTabPage extends StatefulWidget {
@@ -161,10 +162,9 @@ class _CultivateTabPageState extends State<CultivateTabPage> {
 
     return Scaffold(
       backgroundColor: AppTheme.pageBackground(context),
-      appBar: const WelkAppBar(
+      appBar: const GglAppBar(
         title: '修炼课堂',
-        layout: WelkAppBarLayout.comicStrip,
-        automaticallyImplyLeading: false,
+        centerTitle: false,
       ),
       body: RefreshIndicator(
         onRefresh: _refreshAll,

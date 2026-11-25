@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
+import 'package:skribble/skribble.dart';
 import 'package:welkui_flutter/welkui_flutter.dart';
 
 import 'app/app_config.dart';
@@ -95,30 +96,33 @@ class _GuoguanlaAppState extends State<GuoguanlaApp> {
         builder: (context, theme, _) {
           return WelkTheme(
             data: theme.welkTheme,
-            child: MaterialApp(
-              navigatorKey: rootNavigatorKey,
-              title: AppConfig.appName,
-              debugShowCheckedModeBanner: false,
-              theme: theme.materialTheme,
-              locale: const Locale('zh', 'CN'),
-              supportedLocales: const [
-                Locale('zh', 'CN'),
-                Locale('en', 'US'),
-              ],
-              localizationsDelegates: const [
-                GlobalMaterialLocalizations.delegate,
-                GlobalWidgetsLocalizations.delegate,
-                GlobalCupertinoLocalizations.delegate,
-              ],
-              builder: (context, child) {
-                return Stack(
-                  children: [
-                    ?child,
-                    const AppUpdateOverlay(),
-                  ],
-                );
-              },
-              home: const MainShellPage(),
+            child: WiredThemeScope(
+              data: theme.skribbleTheme,
+              child: MaterialApp(
+                navigatorKey: rootNavigatorKey,
+                title: AppConfig.appName,
+                debugShowCheckedModeBanner: false,
+                theme: theme.materialTheme,
+                locale: const Locale('zh', 'CN'),
+                supportedLocales: const [
+                  Locale('zh', 'CN'),
+                  Locale('en', 'US'),
+                ],
+                localizationsDelegates: const [
+                  GlobalMaterialLocalizations.delegate,
+                  GlobalWidgetsLocalizations.delegate,
+                  GlobalCupertinoLocalizations.delegate,
+                ],
+                builder: (context, child) {
+                  return Stack(
+                    children: [
+                      ?child,
+                      const AppUpdateOverlay(),
+                    ],
+                  );
+                },
+                home: const MainShellPage(),
+              ),
             ),
           );
         },

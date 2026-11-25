@@ -307,6 +307,8 @@ class AppUserProfile {
   const AppUserProfile({
     required this.id,
     required this.username,
+    this.phone = '',
+    this.email = '',
     required this.nickname,
     required this.avatarUrl,
     required this.gradeCode,
@@ -330,6 +332,8 @@ class AppUserProfile {
 
   final int id;
   final String username;
+  final String phone;
+  final String email;
   final String nickname;
   final String avatarUrl;
   final String gradeCode;
@@ -354,6 +358,8 @@ class AppUserProfile {
     return AppUserProfile(
       id: _asInt(json['id']),
       username: _asString(json['username']),
+      phone: _asString(json['phone']),
+      email: _asString(json['email']),
       nickname: _asString(json['nickname']),
       avatarUrl: _asString(json['avatarUrl']),
       gradeCode: _asString(json['gradeCode'], 'g7'),
@@ -381,6 +387,8 @@ class AppUserProfile {
   Map<String, dynamic> toJson() => {
         'id': id,
         'username': username,
+        'phone': phone,
+        'email': email,
         'nickname': nickname,
         'avatarUrl': avatarUrl,
         'gradeCode': gradeCode,
@@ -1361,6 +1369,40 @@ class BoardDiagramSpec {
       };
 }
 
+class BoardFigureBox {
+  const BoardFigureBox({
+    this.title = '原题配图',
+    required this.x,
+    required this.y,
+    required this.w,
+    required this.h,
+  });
+
+  final String title;
+  final double x;
+  final double y;
+  final double w;
+  final double h;
+
+  factory BoardFigureBox.fromJson(Map<String, dynamic> json) {
+    return BoardFigureBox(
+      title: _asString(json['title'], '原题配图'),
+      x: _asDouble(json['x']).clamp(0.0, 0.96),
+      y: _asDouble(json['y']).clamp(0.0, 0.96),
+      w: _asDouble(json['w'], 0.5).clamp(0.04, 1.0),
+      h: _asDouble(json['h'], 0.4).clamp(0.04, 1.0),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'title': title,
+        'x': x,
+        'y': y,
+        'w': w,
+        'h': h,
+      };
+}
+
 class AiRecognizeResult {
   const AiRecognizeResult({
     required this.title,
@@ -1372,6 +1414,7 @@ class AiRecognizeResult {
     this.targets = const [],
     this.hasFigure = false,
     this.figureNote = '',
+    this.figureBoxes = const [],
     this.diagrams = const [],
     this.modelUsed = '',
     this.latencyMs = 0,
@@ -1386,6 +1429,7 @@ class AiRecognizeResult {
   final List<String> targets;
   final bool hasFigure;
   final String figureNote;
+  final List<BoardFigureBox> figureBoxes;
   final List<BoardDiagramSpec> diagrams;
   final String modelUsed;
   final int latencyMs;
@@ -1400,6 +1444,7 @@ class AiRecognizeResult {
     List<String>? targets,
     bool? hasFigure,
     String? figureNote,
+    List<BoardFigureBox>? figureBoxes,
     List<BoardDiagramSpec>? diagrams,
   }) {
     return AiRecognizeResult(
@@ -1412,6 +1457,7 @@ class AiRecognizeResult {
       targets: targets ?? this.targets,
       hasFigure: hasFigure ?? this.hasFigure,
       figureNote: figureNote ?? this.figureNote,
+      figureBoxes: figureBoxes ?? this.figureBoxes,
       diagrams: diagrams ?? this.diagrams,
       modelUsed: modelUsed,
       latencyMs: latencyMs,
@@ -1420,6 +1466,7 @@ class AiRecognizeResult {
 
   factory AiRecognizeResult.fromJson(Map<String, dynamic> json) {
     final diagRaw = json['diagrams'] as List<dynamic>? ?? const [];
+    final boxRaw = json['figureBoxes'] as List<dynamic>? ?? const [];
     return AiRecognizeResult(
       title: _asString(json['title'], '数学解答题'),
       problemText: _asString(json['problemText']),
@@ -1428,8 +1475,12 @@ class AiRecognizeResult {
       difficulty: _asString(json['difficulty'], '中档'),
       knownConditions: _asStringList(json['knownConditions']),
       targets: _asStringList(json['targets']),
-      hasFigure: _asBool(json['hasFigure']),
+      hasFigure: _asBool(json['hasFigure']) || boxRaw.isNotEmpty,
       figureNote: _asString(json['figureNote']),
+      figureBoxes: boxRaw
+          .whereType<Map<String, dynamic>>()
+          .map(BoardFigureBox.fromJson)
+          .toList(),
       diagrams: diagRaw
           .whereType<Map<String, dynamic>>()
           .map(BoardDiagramSpec.fromJson)
@@ -1449,6 +1500,7 @@ class AiRecognizeResult {
         'targets': targets,
         'hasFigure': hasFigure,
         'figureNote': figureNote,
+        'figureBoxes': figureBoxes.map((e) => e.toJson()).toList(),
         'diagrams': diagrams.map((e) => e.toJson()).toList(),
         'modelUsed': modelUsed,
         'latencyMs': latencyMs,

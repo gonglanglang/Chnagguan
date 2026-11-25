@@ -16,6 +16,7 @@ import '../../services/guoguanla_api.dart';
 import '../../widgets/ggl_comic_panel.dart';
 import '../../widgets/ggl_feedback.dart';
 import '../../widgets/ggl_skeleton.dart';
+import '../../widgets/ggl_skin_widgets.dart';
 import '../about/about_page.dart';
 import '../chapter_map/chapter_map_page.dart';
 import '../essay_records/essay_records_page.dart';
@@ -335,10 +336,9 @@ class _MineTabPageState extends State<MineTabPage> {
 
     return Scaffold(
       backgroundColor: AppTheme.pageBackground(context),
-      appBar: const WelkAppBar(
+      appBar: const GglAppBar(
         title: '我的',
-        layout: WelkAppBarLayout.comicStrip,
-        automaticallyImplyLeading: false,
+        centerTitle: false,
       ),
       body: RefreshIndicator(
         onRefresh: _syncMineData,
@@ -517,7 +517,8 @@ class _MineTabPageState extends State<MineTabPage> {
                     _SettingTile(
                       icon: Icons.palette_outlined,
                       title: '主题设置',
-                      trailing: theme.accentName,
+                      trailing:
+                          '${theme.isSkribble ? 'Skribble' : 'WelkUI'} · ${theme.accentName}',
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) => const ThemeSettingsPage(),
@@ -526,7 +527,7 @@ class _MineTabPageState extends State<MineTabPage> {
                     ),
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 14),
-                      child: WelkDivider(variant: WelkDividerVariant.dashed),
+                      child: GglDivider(verticalPadding: 0),
                     ),
                     _SettingTile(
                       icon: Icons.cleaning_services_outlined,
@@ -536,7 +537,7 @@ class _MineTabPageState extends State<MineTabPage> {
                     ),
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 14),
-                      child: WelkDivider(variant: WelkDividerVariant.dashed),
+                      child: GglDivider(verticalPadding: 0),
                     ),
                     _SettingTile(
                       icon: Icons.wifi_tethering_rounded,
@@ -549,7 +550,7 @@ class _MineTabPageState extends State<MineTabPage> {
                     ),
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 14),
-                      child: WelkDivider(variant: WelkDividerVariant.dashed),
+                      child: GglDivider(verticalPadding: 0),
                     ),
                     _SettingTile(
                       icon: Icons.system_update_outlined,
@@ -559,7 +560,7 @@ class _MineTabPageState extends State<MineTabPage> {
                     ),
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 14),
-                      child: WelkDivider(variant: WelkDividerVariant.dashed),
+                      child: GglDivider(verticalPadding: 0),
                     ),
                     _SettingTile(
                       icon: Icons.info_outline_rounded,

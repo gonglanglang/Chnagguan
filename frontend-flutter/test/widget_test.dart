@@ -8,6 +8,7 @@ import 'package:guoguanla_app/pages/draw_answer/draw_answer_page.dart';
 import 'package:guoguanla_app/pages/grade_chapters/grade_chapters_page.dart';
 import 'package:guoguanla_app/pages/home/home_tab_page.dart';
 import 'package:guoguanla_app/pages/login/login_page.dart';
+import 'package:guoguanla_app/pages/profile/profile_page.dart';
 import 'package:guoguanla_app/pages/settings/theme_settings_page.dart';
 import 'package:guoguanla_app/pages/smart_board/smart_board_page.dart';
 import 'package:guoguanla_app/providers/theme_provider.dart';
@@ -19,6 +20,7 @@ import 'package:guoguanla_app/widgets/math_text.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:skribble/skribble.dart';
 import 'package:welkui_flutter/welkui_flutter.dart';
 
 void main() {
@@ -56,9 +58,9 @@ void main() {
     expect(find.textContaining('求解方程'), findsOneWidget);
   });
 
-  testWidgets('ThemeSettingsPage toggles dark mode and switches comic preset', (
-    WidgetTester tester,
-  ) async {
+  testWidgets(
+      'ThemeSettingsPage switches UI skin to Skribble immediately, toggles dark mode and preset',
+      (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     final storage = await GlobalCache.init();
     final themeProvider = ThemeProvider(storage);
@@ -69,23 +71,41 @@ void main() {
         child: Consumer<ThemeProvider>(
           builder: (context, theme, _) => WelkTheme(
             data: theme.welkTheme,
-            child: MaterialApp(
-              theme: theme.materialTheme,
-              home: const ThemeSettingsPage(),
+            child: WiredThemeScope(
+              data: theme.skribbleTheme,
+              child: MaterialApp(
+                theme: theme.materialTheme,
+                home: const ThemeSettingsPage(),
+              ),
             ),
           ),
         ),
       ),
     );
 
-    expect(find.text('主题设置'), findsOneWidget);
-    expect(find.text('暗黑漫画模式'), findsOneWidget);
+    expect(find.text('主题与皮肤设置'), findsOneWidget);
+    expect(find.text('WelkUI 漫画风'), findsOneWidget);
+    expect(find.text('Skribble 手绘风'), findsOneWidget);
+    expect(find.byType(WelkAppBar), findsOneWidget);
+    expect(find.byType(WiredAppBar), findsNothing);
     expect(themeProvider.isDarkMode, isFalse);
+    expect(themeProvider.isSkribble, isFalse);
 
-    await tester.tap(find.byType(WelkSwitch));
+    // 点击切换为 Skribble 手绘皮肤，应立即重渲染 Skribble 原生组件
+    await tester.tap(find.text('Skribble 手绘风'));
+    await tester.pumpAndSettle();
+    expect(themeProvider.isSkribble, isTrue);
+    expect(storage.uiSkin, 'skribble');
+    expect(find.byType(WiredAppBar), findsOneWidget);
+    expect(find.byType(WiredSwitch), findsOneWidget);
+    expect(find.byType(WiredProgress), findsWidgets);
+
+    // 切换暗黑模式
+    await tester.tap(find.byType(WiredSwitch));
     await tester.pumpAndSettle();
     expect(themeProvider.isDarkMode, isTrue);
 
+    // 切换强调色
     await tester.tap(find.text('元气暖黄'));
     await tester.pumpAndSettle();
     expect(themeProvider.accentHex, '#FFDA57');
@@ -285,27 +305,30 @@ void main() {
   });
 
   testWidgets(
-      'SmartBoardPage renders AI toolbar, draws manual problem and AI ideas/solution onto canvas',
+      'SmartBoardPage hides highlighter/model name, opens 画布操作 menu, renders AI cards with UI library & pure answer top',
       (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     final cache = await GlobalCache.init();
     final api = _FakeGuoguanlaApi();
-    final welk = AppTheme.buildWelkTheme(
-      isDark: false,
-      accent: AppTheme.presets.first.color,
-    );
+    final themeProvider = ThemeProvider(cache);
 
     await tester.pumpWidget(
       MultiProvider(
         providers: [
           Provider<GlobalCache>.value(value: cache),
           Provider<GuoguanlaApi>.value(value: api),
+          ChangeNotifierProvider<ThemeProvider>.value(value: themeProvider),
         ],
-        child: WelkTheme(
-          data: welk,
-          child: MaterialApp(
-            theme: AppTheme.buildMaterialTheme(isDark: false, welk: welk),
-            home: const SmartBoardPage(),
+        child: Consumer<ThemeProvider>(
+          builder: (context, theme, _) => WelkTheme(
+            data: theme.welkTheme,
+            child: WiredThemeScope(
+              data: theme.skribbleTheme,
+              child: MaterialApp(
+                theme: theme.materialTheme,
+                home: const SmartBoardPage(),
+              ),
+            ),
           ),
         ),
       ),
@@ -316,9 +339,22 @@ void main() {
     expect(find.text('思路'), findsOneWidget);
     expect(find.text('诊断'), findsOneWidget);
     expect(find.text('解题'), findsOneWidget);
-    expect(find.text('LongCat-2.5'), findsOneWidget);
+    expect(find.text('画布操作'), findsOneWidget);
+    // 已去除荧光与 LongCat-2.5 模型展示
+    expect(find.text('荧光'), findsNothing);
+    expect(find.text('LongCat-2.5'), findsNothing);
 
-    // Manually enter a math problem and paint onto board
+    // 点击「画布操作」展示橡皮、移动、撤销、清笔迹
+    await tester.tap(find.text('画布操作'));
+    await tester.pumpAndSettle();
+    expect(find.text('橡皮'), findsOneWidget);
+    expect(find.text('移动'), findsOneWidget);
+    expect(find.text('撤销'), findsOneWidget);
+    expect(find.text('清笔迹'), findsOneWidget);
+
+    // 关闭菜单并手动录入数学题
+    await tester.tap(find.text('画布操作').first);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('拍照'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('手动输入 / 编辑题干'));
@@ -328,26 +364,31 @@ void main() {
       find.byType(TextField).last,
       r'解方程 $x^2 - 5x + 6 = 0$',
     );
-    await tester.tap(find.text('放入画板'));
+    await tester.tap(find.text('保存到画板'));
     await tester.pumpAndSettle();
 
-    // Trigger AI Ideas coordinate-traced drawing (no answer leaked)
+    // 触发 AI 思路（UI 库面板展示，不泄露答案）
     await tester.tap(find.text('思路'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
-    expect(find.text('立即画完'), findsOneWidget);
-    await tester.tap(find.text('立即画完'));
+    expect(find.text('立即显示'), findsOneWidget);
+    await tester.tap(find.text('立即显示'));
     await tester.pumpAndSettle();
-    expect(find.text('重播绘制'), findsOneWidget);
+    expect(find.text('引导思路（不含答案）'), findsOneWidget);
+    expect(find.text('重播'), findsOneWidget);
 
-    // Trigger AI Solve full solution drawing
-    await tester.tap(find.text('解题'));
+    // 触发 AI 解题（顶部纯粹答案，下方解题思路）
+    await tester.tap(find.text('解题').first);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
-    expect(find.text('立即画完'), findsOneWidget);
-    await tester.tap(find.text('立即画完'));
+    await tester.tap(find.text('立即显示'));
     await tester.pumpAndSettle();
-    expect(find.text('重播绘制'), findsOneWidget);
+    expect(find.text('答案'), findsOneWidget);
+    expect(find.text('解题思路'), findsOneWidget);
+    // 验证纯答案位置严格位于「解题思路」上方
+    final answerTop = tester.getTopLeft(find.text('答案')).dy;
+    final ideaTop = tester.getTopLeft(find.text('解题思路')).dy;
+    expect(answerTop, lessThan(ideaTop));
   });
 
   testWidgets(
@@ -361,22 +402,25 @@ void main() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     final cache = await GlobalCache.init();
     final api = _FakeGuoguanlaApi();
-    final welk = AppTheme.buildWelkTheme(
-      isDark: false,
-      accent: AppTheme.presets.first.color,
-    );
+    final themeProvider = ThemeProvider(cache);
 
     await tester.pumpWidget(
       MultiProvider(
         providers: [
           Provider<GlobalCache>.value(value: cache),
           Provider<GuoguanlaApi>.value(value: api),
+          ChangeNotifierProvider<ThemeProvider>.value(value: themeProvider),
         ],
-        child: WelkTheme(
-          data: welk,
-          child: MaterialApp(
-            theme: AppTheme.buildMaterialTheme(isDark: false, welk: welk),
-            home: const SmartBoardPage(),
+        child: Consumer<ThemeProvider>(
+          builder: (context, theme, _) => WelkTheme(
+            data: theme.welkTheme,
+            child: WiredThemeScope(
+              data: theme.skribbleTheme,
+              child: MaterialApp(
+                theme: theme.materialTheme,
+                home: const SmartBoardPage(),
+              ),
+            ),
           ),
         ),
       ),
@@ -385,6 +429,7 @@ void main() {
 
     expect(find.text('竖屏'), findsOneWidget);
     expect(find.text('大画布'), findsOneWidget);
+    expect(find.text('画布操作'), findsOneWidget);
     expect(find.text('拍照'), findsOneWidget);
     expect(find.text('思路'), findsOneWidget);
     expect(find.text('诊断'), findsOneWidget);
@@ -394,11 +439,60 @@ void main() {
     await tester.tap(find.text('大画布'));
     await tester.pumpAndSettle();
     expect(find.text('显底栏'), findsOneWidget);
-    expect(find.text('清笔迹'), findsNothing);
+    expect(find.text('钢笔'), findsNothing);
+  });
+
+  testWidgets(
+      'ProfilePage removes 修仙境界 and supports binding phone & email without verification',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final cache = await GlobalCache.init();
+    final api = _FakeGuoguanlaApi();
+    final userProvider = UserProvider(storage: cache, api: api);
+    final themeProvider = ThemeProvider(cache);
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider<GlobalCache>.value(value: cache),
+          Provider<GuoguanlaApi>.value(value: api),
+          ChangeNotifierProvider<UserProvider>.value(value: userProvider),
+          ChangeNotifierProvider<ThemeProvider>.value(value: themeProvider),
+        ],
+        child: Consumer<ThemeProvider>(
+          builder: (context, theme, _) => WelkTheme(
+            data: theme.welkTheme,
+            child: WiredThemeScope(
+              data: theme.skribbleTheme,
+              child: MaterialApp(
+                theme: theme.materialTheme,
+                home: const ProfilePage(),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('当前修仙境界'), findsNothing);
+    expect(find.text('绑定手机号'), findsOneWidget);
+    expect(find.text('绑定邮箱'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).at(1), '13812345678');
+    await tester.enterText(find.byType(TextField).at(2), 'math@example.com');
+    await tester.tap(find.text('保存资料'));
+    await tester.pumpAndSettle();
+
+    expect(api.lastSavedPhone, '13812345678');
+    expect(api.lastSavedEmail, 'math@example.com');
   });
 }
 
 class _FakeGuoguanlaApi extends GuoguanlaApi {
+  String? lastSavedPhone;
+  String? lastSavedEmail;
+
   _FakeGuoguanlaApi()
       : super(
           ApiClient(
@@ -407,6 +501,65 @@ class _FakeGuoguanlaApi extends GuoguanlaApi {
             revisionGetter: () => 0,
           ),
         );
+
+  @override
+  Future<AppUserProfile> getProfile() async {
+    return const AppUserProfile(
+      id: 1,
+      username: 'stu_demo',
+      phone: '',
+      email: '',
+      nickname: '小测同学',
+      avatarUrl: '',
+      gradeCode: 'g8',
+      gradeName: '初二',
+      realmCode: 'zhuji',
+      realmName: '筑基',
+      realmOrder: 2,
+      difficultyLabel: '难度二',
+      realmPassedGates: 3,
+      realmTotalGates: 40,
+      examUnlockGates: 40,
+      examRemainingGates: 37,
+      examEligible: false,
+      examQuestionCount: 5,
+      examPassScore: 60,
+      passedGateCount: 3,
+    );
+  }
+
+  @override
+  Future<AppUserProfile> updateProfile({
+    required String nickname,
+    String? avatarUrl,
+    String? phone,
+    String? email,
+  }) async {
+    lastSavedPhone = phone;
+    lastSavedEmail = email;
+    return AppUserProfile(
+      id: 1,
+      username: 'stu_demo',
+      phone: phone ?? '',
+      email: email ?? '',
+      nickname: nickname,
+      avatarUrl: avatarUrl ?? '',
+      gradeCode: 'g8',
+      gradeName: '初二',
+      realmCode: 'zhuji',
+      realmName: '筑基',
+      realmOrder: 2,
+      difficultyLabel: '难度二',
+      realmPassedGates: 3,
+      realmTotalGates: 40,
+      examUnlockGates: 40,
+      examRemainingGates: 37,
+      examEligible: false,
+      examQuestionCount: 5,
+      examPassScore: 60,
+      passedGateCount: 3,
+    );
+  }
 
   @override
   Future<HomeSummary> getHomeSummary({List<int>? guestPassedIds}) async {

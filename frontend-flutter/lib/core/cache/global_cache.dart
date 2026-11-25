@@ -108,6 +108,15 @@ enum GlobalCacheKey {
       preserveOnCacheClear: true,
     ),
   ),
+  uiSkin(
+    GlobalCacheEntryMeta(
+      storageKey: 'ggl_ui_skin',
+      description: '界面 UI 组件库皮肤（welkui / skribble）',
+      category: GlobalCacheCategory.preference,
+      preserveOnAppUpdate: true,
+      preserveOnCacheClear: true,
+    ),
+  ),
   customApiBaseUrl(
     GlobalCacheEntryMeta(
       storageKey: 'ggl_custom_api_base_url',
@@ -278,6 +287,12 @@ class GlobalCache {
     await _prefs.setString(GlobalCacheKey.themeHex.storageKey, hex);
     await _prefs.setString(GlobalCacheKey.themeName.storageKey, name);
   }
+
+  String get uiSkin =>
+      _prefs.getString(GlobalCacheKey.uiSkin.storageKey) ?? 'welkui';
+
+  Future<void> setUiSkin(String skin) =>
+      _prefs.setString(GlobalCacheKey.uiSkin.storageKey, skin);
 
   String? get customApiBaseUrl {
     final v = _prefs.getString(GlobalCacheKey.customApiBaseUrl.storageKey);
@@ -455,6 +470,7 @@ class GlobalCache {
       'isDarkMode': isDarkMode,
       'themeHex': themeHex,
       'themeName': themeName,
+      'uiSkin': uiSkin,
       'customApiBaseUrl': customApiBaseUrl,
       'lastWatchedVideoLessons': lastWatchedVideoLessons,
       'lastAnnouncementVersion': lastAnnouncementVersion,

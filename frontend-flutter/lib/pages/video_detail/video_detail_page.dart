@@ -17,6 +17,7 @@ import '../../services/guoguanla_api.dart';
 import '../../widgets/ggl_comic_panel.dart';
 import '../../widgets/ggl_feedback.dart';
 import '../../widgets/ggl_skeleton.dart';
+import '../../widgets/ggl_skin_widgets.dart';
 import '../../widgets/image_preview_page.dart';
 import '../../widgets/math_text.dart';
 import '../login/login_page.dart';
@@ -199,15 +200,9 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
 
     return Scaffold(
       backgroundColor: AppTheme.pageBackground(context),
-      appBar: WelkAppBar(
+      appBar: GglAppBar(
         title: detail?.series.title ?? '修炼课堂',
-        centerTitle: true,
-        layout: WelkAppBarLayout.comicStrip,
-        leading: WelkIconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          label: '返回',
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        showBack: true,
       ),
       body: Column(
         children: [

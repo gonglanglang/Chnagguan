@@ -149,6 +149,8 @@ class GuoguanlaApi {
   Future<AppUserProfile> updateProfile({
     required String nickname,
     String? avatarUrl,
+    String? phone,
+    String? email,
   }) {
     return client.request<AppUserProfile>(
       path: '/app/user/profile',
@@ -156,6 +158,8 @@ class GuoguanlaApi {
       data: {
         'nickname': nickname,
         'avatarUrl': ?avatarUrl,
+        'phone': ?phone,
+        'email': ?email,
       },
       parser: (raw) => AppUserProfile.fromJson(_asMap(raw)),
     );

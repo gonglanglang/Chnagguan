@@ -5,6 +5,7 @@ import 'package:welkui_flutter/welkui_flutter.dart';
 import '../../app/app_theme.dart';
 import '../../providers/update_provider.dart';
 import '../../widgets/ggl_comic_panel.dart';
+import '../../widgets/ggl_skin_widgets.dart';
 import '../../widgets/ggl_feedback.dart';
 
 class AboutPage extends StatefulWidget {
@@ -47,15 +48,9 @@ class _AboutPageState extends State<AboutPage> {
 
     return Scaffold(
       backgroundColor: AppTheme.pageBackground(context),
-      appBar: WelkAppBar(
+      appBar: const GglAppBar(
         title: '关于过关啦',
-        centerTitle: true,
-        layout: WelkAppBarLayout.comicStrip,
-        leading: WelkIconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          label: '返回',
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        showBack: true,
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
