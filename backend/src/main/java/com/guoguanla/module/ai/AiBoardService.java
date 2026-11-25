@@ -28,7 +28,7 @@ public class AiBoardService {
     private static final String DEFAULT_MATH_SYSTEM_PROMPT = """
             你是「过关啦」中小学数学特级教研老师与智能画板板书专家，擅长初一至高三数学解答题识别、启发式思路点拨、学生手写步骤批改与清晰板书排版。
             严格遵守以下要求：
-            1. 仅输出合法 JSON 对象，不要附加 Markdown 解释或多余前后缀文字；
+            1. 仅输出合法 JSON 对象，不要附加 Markdown 解释或多余前后缀文字；JSON 字符串值内部如需引用词语请使用中文引号「」或“”，严禁使用未转义英文双引号；
             2. 数学公式使用标准简洁的 LaTeX（用 $...$ 包裹，如 $\\frac{1}{2}$、$x^2-3x+2=0$、$\\sqrt{3}$、$\\triangle ABC$、$\\angle A=60°$）或清晰 Unicode 数学符号，JSON 字符串内的反斜杠务必双写（\\\\frac、\\\\sqrt、\\\\times、\\\\triangle 等）；
             3. 语言精炼、条理清晰，适合直接排版绘制在学生手写白板上阅读；
             4. 当题目涉及几何图形、辅助线或函数坐标系图像时，尽可能在 diagrams 字段给出简洁准确的矢量绘图指令（画布坐标 0~320 x 0~220，留足边距）。
@@ -190,6 +190,7 @@ public class AiBoardService {
                         .maxTokens(cfg.getMaxTokens())
                         .timeoutSec(cfg.getTimeoutSec())
                         .disableThinking(true)
+                        .jsonObjectResponse(true)
                         .build()
         );
 
@@ -200,77 +201,97 @@ public class AiBoardService {
         return runBoardGuidance("IDEAS", req);
     }
 
+    public AiBoardVO.GuidanceVO diagnoseHandwriting(AiBoardAnalyzeReq req) {
+        if (req == null || req.getBoardImageBase64() == null || req.getBoardImageBase64().isBlank()) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "请先在画板上写下你的解题过程，再点击诊断");
+        }
+        return runBoardGuidance("DIAGNOSE", req);
+    }
+
+    public AiBoardVO.GuidanceVO solveProblem(AiBoardAnalyzeReq req) {
+        return runBoardGuidance("SOLVE", req);
+    }
+
     public AiBoardVO.GuidanceVO analyzeSolution(AiBoardAnalyzeReq req) {
-        return runBoardGuidance("ANALYZE", req);
+        return solveProblem(req);
     }
 
     private AiBoardVO.GuidanceVO runBoardGuidance(String mode, AiBoardAnalyzeReq req) {
         AiConfigService.RuntimeAiConfig cfg = requireReadyConfig();
         String problemText = req != null && req.getProblemText() != null ? req.getProblemText().trim() : "";
         List<String> images = new ArrayList<>();
-        boolean hasBoardImage = false;
         if (req != null && req.getProblemImageBase64() != null && !req.getProblemImageBase64().isBlank()) {
             images.add(normalizeImageDataUri(req.getProblemImageBase64(), null));
         }
         if (req != null && req.getBoardImageBase64() != null && !req.getBoardImageBase64().isBlank()) {
             images.add(normalizeImageDataUri(req.getBoardImageBase64(), "image/png"));
-            hasBoardImage = true;
         }
         if (problemText.isBlank() && images.isEmpty()) {
             throw new BizException(ErrorCode.BAD_REQUEST, "请先拍照识别题目、输入题干或在画板上写下题目");
         }
 
         boolean isIdeas = "IDEAS".equals(mode);
-        boolean hasHandwriting = Boolean.TRUE.equals(req != null ? req.getHasHandwriting() : null) || hasBoardImage;
+        boolean isDiagnose = "DIAGNOSE".equals(mode);
         StringBuilder prompt = new StringBuilder();
         if (isIdeas) {
-            prompt.append("任务：请为下方数学题生成适合直接绘制在白板上的【AI 解题思路导图】。\n");
-            prompt.append("要求：重在点拨破题突破口、条件转化、核心公式与辅助线思路，保留学生自行计算的空间，不要一次性直接跳到死记硬背的结论。\n");
+            prompt.append("任务：请为下方数学题生成简洁清晰的【解题思路引导】，用于逐笔手写绘制在白板上。\n");
+            prompt.append("硬性约束：\n");
+            prompt.append("1. 只引导学生思考方向、破题切入点、通用公式原型、辅助线做法与解题方法，绝不能直接算出最终数值或泄露最终答案！\n");
+            prompt.append("2. steps 控制在 3~5 步，每步简明精炼（1~2句话），只给通用公式或转化思路（如配方法公式、判别式、三角形面积公式），不要替学生算出最终得数；\n");
+            prompt.append("3. finalAnswer 必须留空字符串 \"\"；studentDiagnosis.status 设为 \"NONE\" 且内容留空；\n");
+            prompt.append("4. 若涉及几何或函数图像，请在 diagrams 给出 1 个准确坐标的矢量示意图（坐标 0~320 x 0~220），便于画板按坐标逐笔绘制。\n");
+        } else if (isDiagnose) {
+            prompt.append("任务：请批改【诊断】图片中学生在画板上手写的数学解题过程。\n");
+            prompt.append("硬性约束：\n");
+            prompt.append("1. 严禁直接给出完整解答步骤或泄露最终正确答案！finalAnswer 必须留空字符串 \"\"！\n");
+            prompt.append("2. 仔细阅读学生画板上的手写字迹与推导过程，在 studentDiagnosis 中准确判定 status（CORRECT 全部正确 / PARTIAL 思路对但未写完或有疏漏 / INCORRECT 存在错误），简明指出对在哪里、错在哪一步及错因；\n");
+            prompt.append("3. 在 steps 中按学生作答顺序逐条列出批注（例如：第1步正确/第2步符号有误，建议重算该项），仅提示检查方向，不直接剧透答案；\n");
+            prompt.append("4. 语言像老师红笔批改一样简短干脆，不要客套废话；diagrams 返回空数组 []。\n");
         } else {
-            prompt.append("任务：请为下方数学题生成适合直接绘制在白板上的【AI 解题过程分析与规范板书】。\n");
-            if (hasHandwriting) {
-                prompt.append("特别要求：附带的图片包含学生在画板上的手写作答草稿，请先仔细辨认学生写到哪一步、判断是否正确、指出具体错因（写入 studentDiagnosis），再给出完整规范的分步板书解答！\n");
-            } else {
-                prompt.append("说明：学生尚未在画板上书写解答，请将 studentDiagnosis.status 设为 \"NONE\"，并给出清晰、规范、可直接照着学习的逐行板书解题过程。\n");
-            }
+            prompt.append("任务：请直接给出下方数学题的【完整规范解题过程与最终答案】，用于逐笔板书绘制在白板上。\n");
+            prompt.append("要求：\n");
+            prompt.append("1. 语言精炼、格式规范（标准“解：/ 证明：”板书推导，无花哨修饰与多余客套）；\n");
+            prompt.append("2. steps 按实际推导逻辑给出清晰分步与关键数学算式，finalAnswer 写出明确最终答案；\n");
+            prompt.append("3. studentDiagnosis.status 设为 \"NONE\" 且内容留空；\n");
+            prompt.append("4. 若涉及几何图形或函数图像，请在 diagrams 给出 1 个准确坐标的矢量示意图（0~320 x 0~220）。\n");
         }
 
         if (!problemText.isBlank()) {
             prompt.append("\n【数学题目】\n").append(problemText).append("\n");
         } else {
-            prompt.append("\n【数学题目】请直接结合图片中的题目内容进行分析。\n");
+            prompt.append("\n【数学题目】请直接结合图片中的题目内容进行处理。\n");
         }
         if (req != null && req.getUserNotes() != null && !req.getUserNotes().isBlank()) {
-            prompt.append("\n【学生疑问/备注】\n").append(req.getUserNotes().trim()).append("\n");
+            prompt.append("\n【补充说明】\n").append(req.getUserNotes().trim()).append("\n");
         }
 
         prompt.append("""
 
-                请严格输出如下 JSON 格式（不要输出 Markdown 代码块以外的多余说明，JSON 内 LaTeX 反斜杠双写）：
+                请严格输出合法 JSON（不要输出 Markdown 以外的解释，JSON 字符串内 LaTeX 反斜杠双写）：
                 {
-                  "headline": "简明核心方法标题（如：配方法求最值 / 构造全等三角形）",
-                  "summary": "1~2 句总领点评或破题核心思想",
-                  "knowledgePoints": ["知识点1", "知识点2"],
+                  "headline": "简明核心方法或诊断结论（10~20字）",
+                  "summary": "1句话简短总领（不超过40字）",
+                  "knowledgePoints": ["知识点1"],
                   "studentDiagnosis": {
                     "status": "NONE 或 CORRECT 或 PARTIAL 或 INCORRECT",
-                    "comment": "对学生手写过程的点评（未作答可简述建议起步方式）",
-                    "mistakePoint": "具体错误步骤定位（无错可留空）",
-                    "suggestion": "下一步修改或完善建议"
+                    "comment": "对学生手写过程的简明总体判定（非诊断模式留空）",
+                    "mistakePoint": "具体错误步骤定位（无错或非诊断模式留空）",
+                    "suggestion": "自主检查或订正方向（不给答案，非诊断模式留空）"
                   },
                   "steps": [
                     {
                       "stepNo": 1,
-                      "title": "步骤小标题（如：审题列关系 / 构造辅助线）",
-                      "content": "该步骤的文字说明或推理依据",
-                      "formula": "该步骤的关键数学式子，支持 $...$，无则留空",
-                      "highlight": "本步得分点或易错提醒，无则留空"
+                      "title": "简短步骤标题（4~10字）",
+                      "content": "该步骤的简洁文字引导/批注/推理说明",
+                      "formula": "该步骤的关键数学公式或算式，支持 $...$，无则留空",
+                      "highlight": "简短要点提示，无则留空"
                     }
                   ],
-                  "finalAnswer": "最终答案（若为解题思路模式可写关键检验标准或目标表达式）",
-                  "pitfalls": ["易错点提醒1", "易错点提醒2"],
+                  "finalAnswer": "仅解题模式填写明确最终答案；思路模式与诊断模式必须为空字符串",
+                  "pitfalls": ["易错点提醒（最多2条，简短）"],
                   "diagrams": [
                     {
-                      "title": "辅助线/函数草图标题（不需要画图时返回空数组 []）",
+                      "title": "示意图标题（不需要画图时返回 []）",
                       "width": 320,
                       "height": 220,
                       "primitives": [
@@ -278,9 +299,7 @@ public class AiBoardService {
                         {"type": "arrow", "x1": 50, "y1": 205, "x2": 50, "y2": 20, "color": "#334155"},
                         {"type": "polyline", "points": [[60,170],[110,95],[160,60],[210,95],[260,170]], "color": "#2563EB"},
                         {"type": "line", "x1": 160, "y1": 40, "x2": 160, "y2": 190, "color": "#DC2626", "dashed": true},
-                        {"type": "point", "x": 160, "y": 60, "label": "顶点P", "color": "#DC2626"},
-                        {"type": "text", "x": 286, "y": 176, "text": "x", "color": "#334155"},
-                        {"type": "text", "x": 58, "y": 28, "text": "y", "color": "#334155"}
+                        {"type": "point", "x": 160, "y": 60, "label": "C", "color": "#DC2626"}
                       ]
                     }
                   ]
@@ -300,6 +319,7 @@ public class AiBoardService {
                         .maxTokens(cfg.getMaxTokens())
                         .timeoutSec(cfg.getTimeoutSec())
                         .disableThinking(true)
+                        .jsonObjectResponse(true)
                         .build()
         );
 
@@ -420,14 +440,20 @@ public class AiBoardService {
             }
         }
 
+        boolean hideFinalAnswer = "IDEAS".equalsIgnoreCase(mode) || "DIAGNOSE".equalsIgnoreCase(mode);
+        String defaultHeadline = switch (mode == null ? "" : mode.toUpperCase(Locale.ROOT)) {
+            case "IDEAS" -> "解题思路";
+            case "DIAGNOSE" -> "手写诊断";
+            default -> "规范解题";
+        };
         return AiBoardVO.GuidanceVO.builder()
                 .mode(mode)
-                .headline(textOf(root, "headline", "IDEAS".equals(mode) ? "AI 解题思路" : "AI 规范解题过程"))
+                .headline(textOf(root, "headline", defaultHeadline))
                 .summary(textOf(root, "summary", ""))
                 .knowledgePoints(readStringList(root.path("knowledgePoints")))
                 .studentDiagnosis(diagnosis)
                 .steps(steps)
-                .finalAnswer(textOf(root, "finalAnswer", ""))
+                .finalAnswer(hideFinalAnswer ? "" : textOf(root, "finalAnswer", ""))
                 .pitfalls(readStringList(root.path("pitfalls")))
                 .diagrams(readDiagrams(root.path("diagrams")))
                 .modelUsed(modelUsed)

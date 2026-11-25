@@ -463,15 +463,38 @@ class GuoguanlaApi {
     );
   }
 
-  Future<AiBoardGuidance> analyzeBoardSolution({
+  Future<AiBoardGuidance> diagnoseBoardHandwriting({
+    String? problemText,
+    required String boardImageBase64,
+    String? problemImageBase64,
+    String? userNotes,
+  }) {
+    return client.request<AiBoardGuidance>(
+      path: '/app/ai/board/diagnose',
+      method: 'POST',
+      timeout: const Duration(seconds: 120),
+      data: {
+        if (problemText != null && problemText.trim().isNotEmpty)
+          'problemText': problemText.trim(),
+        'boardImageBase64': boardImageBase64,
+        if (problemImageBase64 != null && problemImageBase64.isNotEmpty)
+          'problemImageBase64': problemImageBase64,
+        if (userNotes != null && userNotes.trim().isNotEmpty)
+          'userNotes': userNotes.trim(),
+        'hasHandwriting': true,
+      },
+      parser: (raw) => AiBoardGuidance.fromJson(_asMap(raw)),
+    );
+  }
+
+  Future<AiBoardGuidance> solveBoardProblem({
     String? problemText,
     String? boardImageBase64,
     String? problemImageBase64,
     String? userNotes,
-    bool hasHandwriting = false,
   }) {
     return client.request<AiBoardGuidance>(
-      path: '/app/ai/board/analyze',
+      path: '/app/ai/board/solve',
       method: 'POST',
       timeout: const Duration(seconds: 120),
       data: {
@@ -483,9 +506,24 @@ class GuoguanlaApi {
           'problemImageBase64': problemImageBase64,
         if (userNotes != null && userNotes.trim().isNotEmpty)
           'userNotes': userNotes.trim(),
-        'hasHandwriting': hasHandwriting,
+        'hasHandwriting': false,
       },
       parser: (raw) => AiBoardGuidance.fromJson(_asMap(raw)),
+    );
+  }
+
+  Future<AiBoardGuidance> analyzeBoardSolution({
+    String? problemText,
+    String? boardImageBase64,
+    String? problemImageBase64,
+    String? userNotes,
+    bool hasHandwriting = false,
+  }) {
+    return solveBoardProblem(
+      problemText: problemText,
+      boardImageBase64: boardImageBase64,
+      problemImageBase64: problemImageBase64,
+      userNotes: userNotes,
     );
   }
 

@@ -566,15 +566,17 @@ class _DrawAnswerPageState extends State<DrawAnswerPage> {
   Widget build(BuildContext context) {
     final colors = WelkTheme.of(context).resolveColors(context);
     final plainStem = MathParser.renderPlainText(widget.stem);
+    final overlayStyle = colors.isDark
+        ? SystemUiOverlayStyle.light.copyWith(statusBarColor: Colors.transparent)
+        : SystemUiOverlayStyle.dark.copyWith(statusBarColor: Colors.transparent);
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFFCFDFF),
-      body: SafeArea(
-        child: Column(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: overlayStyle,
+      child: Scaffold(
+        backgroundColor: colors.paper,
+        body: Column(
           children: [
             Container(
-              height: 54,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
               decoration: BoxDecoration(
                 color: colors.paper,
                 border: Border(
@@ -584,211 +586,226 @@ class _DrawAnswerPageState extends State<DrawAnswerPage> {
                   ),
                 ),
               ),
-              child: Row(
-                children: [
-                  WelkButton(
-                    size: WelkButtonSize.small,
-                    variant: WelkButtonVariant.secondary,
-                    onPressed: _saving ? null : _handleBack,
-                    child: const Text('返回'),
-                  ),
-                  const SizedBox(width: 8),
-                  if (plainStem.isNotEmpty)
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: _showStemDialog,
-                        child: Container(
-                          height: 36,
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          decoration: BoxDecoration(
-                            color: colors.muted,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: colors.outline,
-                              width: 1.5,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              const GglStatusTag(
-                                label: '题干',
-                                variant: WelkBadgeVariant.info,
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  plainStem,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: colors.ink,
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w600,
+              child: SafeArea(
+                top: true,
+                bottom: false,
+                left: true,
+                right: true,
+                child: SizedBox(
+                  height: 48,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: Row(
+                      children: [
+                        WelkButton(
+                          size: WelkButtonSize.small,
+                          variant: WelkButtonVariant.secondary,
+                          onPressed: _saving ? null : _handleBack,
+                          child: const Text('返回'),
+                        ),
+                        const SizedBox(width: 8),
+                        if (plainStem.isNotEmpty)
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: _showStemDialog,
+                              child: Container(
+                                height: 34,
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 10),
+                                decoration: BoxDecoration(
+                                  color: colors.muted,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: colors.outline,
+                                    width: 1.5,
                                   ),
                                 ),
+                                child: Row(
+                                  children: [
+                                    const GglStatusTag(
+                                      label: '题干',
+                                      variant: WelkBadgeVariant.info,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        plainStem,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: colors.ink,
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ],
-                          ),
+                            ),
+                          )
+                        else
+                          const Spacer(),
+                        const SizedBox(width: 8),
+                        WelkButton(
+                          size: WelkButtonSize.small,
+                          variant: WelkButtonVariant.success,
+                          onPressed: _saving ? null : _handleSave,
+                          child: Text(_saving ? '保存中...' : '完成保存'),
                         ),
-                      ),
-                    )
-                  else
-                    const Spacer(),
-                  const SizedBox(width: 8),
-                  WelkButton(
-                    size: WelkButtonSize.small,
-                    variant: WelkButtonVariant.success,
-                    onPressed: _saving ? null : _handleSave,
-                    child: Text(_saving ? '保存中...' : '完成保存'),
+                      ],
+                    ),
                   ),
-                ],
+                ),
               ),
             ),
 
             Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  _canvasSize = Size(
-                    constraints.maxWidth,
-                    constraints.maxHeight,
-                  );
-                  return Stack(
-                    children: [
-                      Listener(
-                        onPointerSignal: _onPointerSignal,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onScaleStart: _onScaleStart,
-                          onScaleUpdate: _onScaleUpdate,
-                          onScaleEnd: _onScaleEnd,
-                          child: CustomPaint(
-                            size: Size.infinite,
-                            painter: SmartBoardPainter(
-                              strokes: _strokes,
-                              shapes: _shapes,
-                              activeStroke: _activeStroke,
-                              activeShape: _activeShape,
-                              panX: _panX,
-                              panY: _panY,
-                              zoom: _zoom,
-                              paperStyle: _paperStyle,
-                              eraserCursorWorld: _eraserCursorWorld,
-                              eraserCursorRadius: 16.0 / math.max(0.4, _zoom),
-                            ),
-                          ),
-                        ),
-                      ),
-                      if (!_hasContent &&
-                          _activeStroke == null &&
-                          _activeShape == null &&
-                          _tool != BoardToolMode.hand)
-                        const IgnorePointer(
-                          child: Center(
-                            child: Text(
-                              '平滑手写画板 · 写至边缘自动延申 · 支持几何辅助线与双指缩放',
-                              style: TextStyle(
-                                color: Color(0xFF94A3B8),
-                                fontSize: 13.5,
+              child: ClipRect(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    _canvasSize = Size(
+                      constraints.maxWidth,
+                      constraints.maxHeight,
+                    );
+                    return Stack(
+                      clipBehavior: Clip.hardEdge,
+                      children: [
+                        Listener(
+                          onPointerSignal: _onPointerSignal,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onScaleStart: _onScaleStart,
+                            onScaleUpdate: _onScaleUpdate,
+                            onScaleEnd: _onScaleEnd,
+                            child: CustomPaint(
+                              size: Size.infinite,
+                              painter: SmartBoardPainter(
+                                strokes: _strokes,
+                                shapes: _shapes,
+                                activeStroke: _activeStroke,
+                                activeShape: _activeShape,
+                                panX: _panX,
+                                panY: _panY,
+                                zoom: _zoom,
+                                paperStyle: _paperStyle,
+                                eraserCursorWorld: _eraserCursorWorld,
+                                eraserCursorRadius:
+                                    16.0 / math.max(0.4, _zoom),
                               ),
                             ),
                           ),
                         ),
+                        if (!_hasContent &&
+                            _activeStroke == null &&
+                            _activeShape == null &&
+                            _tool != BoardToolMode.hand)
+                          const IgnorePointer(
+                            child: Center(
+                              child: Text(
+                                '平滑手写画板 · 写至边缘自动延申 · 支持几何辅助线与双指缩放',
+                                style: TextStyle(
+                                  color: Color(0xFF94A3B8),
+                                  fontSize: 13.5,
+                                ),
+                              ),
+                            ),
+                          ),
 
-                      if (_showShapePicker)
+                        if (_showShapePicker)
+                          Positioned(
+                            bottom: 12,
+                            left: 12,
+                            right: 12,
+                            child: Center(
+                              child: GglComicPanel(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 6,
+                                ),
+                                shadowOffset: const Offset(2, 2),
+                                child: Wrap(
+                                  spacing: 6,
+                                  runSpacing: 6,
+                                  children: [
+                                    for (final kind in BoardShapeKind.values)
+                                      _ToolChip(
+                                        label: _shapeLabel(kind),
+                                        active: _isShapeTool &&
+                                            _shapeKindForTool(_tool) == kind,
+                                        onTap: () => setState(() {
+                                          _lastShapeKind = kind;
+                                          _tool = _toolForShape(kind);
+                                          _showShapePicker = false;
+                                        }),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+
                         Positioned(
-                          bottom: 12,
                           left: 12,
-                          right: 12,
-                          child: Center(
-                            child: GglComicPanel(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 6,
-                              ),
-                              shadowOffset: const Offset(2, 2),
-                              child: Wrap(
-                                spacing: 6,
-                                runSpacing: 6,
-                                children: [
-                                  for (final kind in BoardShapeKind.values)
-                                    _ToolChip(
-                                      label: _shapeLabel(kind),
-                                      active: _isShapeTool &&
-                                          _shapeKindForTool(_tool) == kind,
-                                      onTap: () => setState(() {
-                                        _lastShapeKind = kind;
-                                        _tool = _toolForShape(kind);
-                                        _showShapePicker = false;
-                                      }),
-                                    ),
-                                ],
-                              ),
+                          bottom: 12,
+                          child: GglComicPanel(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
                             ),
-                          ),
-                        ),
-
-                      Positioned(
-                        left: 12,
-                        bottom: 12,
-                        child: GglComicPanel(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          shadowOffset: const Offset(2, 2),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              GestureDetector(
-                                onTap: _resetZoomTo100,
-                                child: Text(
-                                  '${(_zoom * 100).round()}%',
-                                  style: TextStyle(
-                                    color: colors.ink,
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w800,
+                            shadowOffset: const Offset(2, 2),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                GestureDetector(
+                                  onTap: _resetZoomTo100,
+                                  child: Text(
+                                    '${(_zoom * 100).round()}%',
+                                    style: TextStyle(
+                                      color: colors.ink,
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w800,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              Container(
-                                width: 1.5,
-                                height: 14,
-                                margin:
-                                    const EdgeInsets.symmetric(horizontal: 8),
-                                color: colors.outline.withValues(alpha: 0.4),
-                              ),
-                              GestureDetector(
-                                onTap: _fitContentOrReset,
-                                child: Icon(
-                                  Icons.fit_screen_rounded,
-                                  size: 16,
-                                  color: colors.ink,
+                                Container(
+                                  width: 1.5,
+                                  height: 14,
+                                  margin:
+                                      const EdgeInsets.symmetric(horizontal: 8),
+                                  color: colors.outline.withValues(alpha: 0.4),
                                 ),
-                              ),
-                            ],
+                                GestureDetector(
+                                  onTap: _fitContentOrReset,
+                                  child: Icon(
+                                    Icons.fit_screen_rounded,
+                                    size: 16,
+                                    color: colors.ink,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
 
-                      if (_extendHint.isNotEmpty)
-                        Positioned(
-                          bottom: 14,
-                          right: 14,
-                          child: GglStatusTag(
-                            label: _extendHint,
-                            variant: WelkBadgeVariant.info,
+                        if (_extendHint.isNotEmpty)
+                          Positioned(
+                            bottom: 14,
+                            right: 14,
+                            child: GglStatusTag(
+                              label: _extendHint,
+                              variant: WelkBadgeVariant.info,
+                            ),
                           ),
-                        ),
-                    ],
-                  );
-                },
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
 
-            // Bottom professional brush & geometry dock
+            // Bottom professional brush & geometry dock (full safe-area fill)
             Container(
-              height: 48,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
               decoration: BoxDecoration(
                 color: colors.paper,
                 border: Border(
@@ -798,129 +815,144 @@ class _DrawAnswerPageState extends State<DrawAnswerPage> {
                   ),
                 ),
               ),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    for (final c in _penColors)
-                      GestureDetector(
-                        onTap: () => setState(() {
-                          _activeColor = c;
-                          if (_tool == BoardToolMode.strokeEraser ||
-                              _tool == BoardToolMode.hand) {
-                            _tool = BoardToolMode.pen;
-                          }
-                        }),
-                        child: Container(
-                          width: 24,
-                          height: 24,
-                          margin: const EdgeInsets.only(right: 6),
-                          decoration: BoxDecoration(
-                            color: c,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: (_tool == BoardToolMode.pen ||
-                                          _tool == BoardToolMode.highlighter ||
-                                          _isShapeTool) &&
-                                      _activeColor == c
-                                  ? colors.accent
-                                  : colors.outline,
-                              width: (_tool == BoardToolMode.pen ||
-                                          _tool == BoardToolMode.highlighter ||
-                                          _isShapeTool) &&
-                                      _activeColor == c
-                                  ? 3
-                                  : 1.5,
+              child: SafeArea(
+                top: false,
+                bottom: true,
+                left: true,
+                right: true,
+                child: SizedBox(
+                  height: 44,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          for (final c in _penColors)
+                            GestureDetector(
+                              onTap: () => setState(() {
+                                _activeColor = c;
+                                if (_tool == BoardToolMode.strokeEraser ||
+                                    _tool == BoardToolMode.hand) {
+                                  _tool = BoardToolMode.pen;
+                                }
+                              }),
+                              child: Container(
+                                width: 22,
+                                height: 22,
+                                margin: const EdgeInsets.only(right: 6),
+                                decoration: BoxDecoration(
+                                  color: c,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: (_tool == BoardToolMode.pen ||
+                                                _tool ==
+                                                    BoardToolMode.highlighter ||
+                                                _isShapeTool) &&
+                                            _activeColor == c
+                                        ? colors.accent
+                                        : colors.outline,
+                                    width: (_tool == BoardToolMode.pen ||
+                                                _tool ==
+                                                    BoardToolMode.highlighter ||
+                                                _isShapeTool) &&
+                                            _activeColor == c
+                                        ? 2.8
+                                        : 1.4,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          _ToolChip(
+                            label: '粗细:${_strokeLabels[_widthIdx]}',
+                            active: false,
+                            onTap: () => setState(
+                              () => _widthIdx =
+                                  (_widthIdx + 1) % _strokeWidths.length,
                             ),
                           ),
-                        ),
+                          const SizedBox(width: 5),
+                          _ToolChip(
+                            label: '荧光',
+                            active: _tool == BoardToolMode.highlighter,
+                            onTap: () => setState(() {
+                              _tool = _tool == BoardToolMode.highlighter
+                                  ? BoardToolMode.pen
+                                  : BoardToolMode.highlighter;
+                              _showShapePicker = false;
+                            }),
+                          ),
+                          const SizedBox(width: 5),
+                          _ToolChip(
+                            label: _isShapeTool
+                                ? '图形:${_shapeLabel(_shapeKindForTool(_tool))}'
+                                : '几何图形',
+                            active: _isShapeTool || _showShapePicker,
+                            onTap: () => setState(
+                              () => _showShapePicker = !_showShapePicker,
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          _ToolChip(
+                            label: '纸张',
+                            active: false,
+                            onTap: _cyclePaperStyle,
+                          ),
+                          const SizedBox(width: 5),
+                          _ToolChip(
+                            label: '移动',
+                            active: _tool == BoardToolMode.hand,
+                            onTap: () => setState(() {
+                              _tool = _tool == BoardToolMode.hand
+                                  ? BoardToolMode.pen
+                                  : BoardToolMode.hand;
+                              _showShapePicker = false;
+                            }),
+                          ),
+                          const SizedBox(width: 5),
+                          _ToolChip(
+                            label: '笔画擦',
+                            active: _tool == BoardToolMode.strokeEraser,
+                            onTap: () => setState(() {
+                              _tool = _tool == BoardToolMode.strokeEraser
+                                  ? BoardToolMode.pen
+                                  : BoardToolMode.strokeEraser;
+                              _showShapePicker = false;
+                            }),
+                          ),
+                          const SizedBox(width: 5),
+                          _ToolChip(
+                            label: '撤销',
+                            active: false,
+                            disabled: _undoStack.isEmpty || _saving,
+                            onTap: _handleUndo,
+                          ),
+                          const SizedBox(width: 5),
+                          _ToolChip(
+                            label: '重做',
+                            active: false,
+                            disabled: _redoStack.isEmpty || _saving,
+                            onTap: _handleRedo,
+                          ),
+                          const SizedBox(width: 5),
+                          _ToolChip(
+                            label: '清空',
+                            active: false,
+                            disabled: !_hasContent || _saving,
+                            onTap: () {
+                              _pushUndoCheckpoint();
+                              setState(() {
+                                _strokes.clear();
+                                _shapes.clear();
+                                _activeStroke = null;
+                                _activeShape = null;
+                              });
+                            },
+                          ),
+                        ],
                       ),
-                    _ToolChip(
-                      label: '粗细:${_strokeLabels[_widthIdx]}',
-                      active: false,
-                      onTap: () => setState(
-                        () => _widthIdx = (_widthIdx + 1) % _strokeWidths.length,
-                      ),
                     ),
-                    const SizedBox(width: 5),
-                    _ToolChip(
-                      label: '荧光',
-                      active: _tool == BoardToolMode.highlighter,
-                      onTap: () => setState(() {
-                        _tool = _tool == BoardToolMode.highlighter
-                            ? BoardToolMode.pen
-                            : BoardToolMode.highlighter;
-                        _showShapePicker = false;
-                      }),
-                    ),
-                    const SizedBox(width: 5),
-                    _ToolChip(
-                      label: _isShapeTool
-                          ? '图形:${_shapeLabel(_shapeKindForTool(_tool))}'
-                          : '几何图形',
-                      active: _isShapeTool || _showShapePicker,
-                      onTap: () => setState(
-                        () => _showShapePicker = !_showShapePicker,
-                      ),
-                    ),
-                    const SizedBox(width: 5),
-                    _ToolChip(
-                      label: '纸张',
-                      active: false,
-                      onTap: _cyclePaperStyle,
-                    ),
-                    const SizedBox(width: 5),
-                    _ToolChip(
-                      label: '移动',
-                      active: _tool == BoardToolMode.hand,
-                      onTap: () => setState(() {
-                        _tool = _tool == BoardToolMode.hand
-                            ? BoardToolMode.pen
-                            : BoardToolMode.hand;
-                        _showShapePicker = false;
-                      }),
-                    ),
-                    const SizedBox(width: 5),
-                    _ToolChip(
-                      label: '笔画擦',
-                      active: _tool == BoardToolMode.strokeEraser,
-                      onTap: () => setState(() {
-                        _tool = _tool == BoardToolMode.strokeEraser
-                            ? BoardToolMode.pen
-                            : BoardToolMode.strokeEraser;
-                        _showShapePicker = false;
-                      }),
-                    ),
-                    const SizedBox(width: 5),
-                    _ToolChip(
-                      label: '撤销',
-                      active: false,
-                      disabled: _undoStack.isEmpty || _saving,
-                      onTap: _handleUndo,
-                    ),
-                    const SizedBox(width: 5),
-                    _ToolChip(
-                      label: '重做',
-                      active: false,
-                      disabled: _redoStack.isEmpty || _saving,
-                      onTap: _handleRedo,
-                    ),
-                    const SizedBox(width: 5),
-                    _ToolChip(
-                      label: '清空',
-                      active: false,
-                      disabled: !_hasContent || _saving,
-                      onTap: () {
-                        _pushUndoCheckpoint();
-                        setState(() {
-                          _strokes.clear();
-                          _shapes.clear();
-                          _activeStroke = null;
-                          _activeShape = null;
-                        });
-                      },
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),

@@ -271,24 +271,28 @@ class BoardLayerVisibility {
     this.showProblemCard = true,
     this.showPhotoCard = true,
     this.showIdeasCard = true,
+    this.showDiagnosisCard = true,
     this.showSolutionCard = true,
   });
 
   final bool showProblemCard;
   final bool showPhotoCard;
   final bool showIdeasCard;
+  final bool showDiagnosisCard;
   final bool showSolutionCard;
 
   BoardLayerVisibility copyWith({
     bool? showProblemCard,
     bool? showPhotoCard,
     bool? showIdeasCard,
+    bool? showDiagnosisCard,
     bool? showSolutionCard,
   }) {
     return BoardLayerVisibility(
       showProblemCard: showProblemCard ?? this.showProblemCard,
       showPhotoCard: showPhotoCard ?? this.showPhotoCard,
       showIdeasCard: showIdeasCard ?? this.showIdeasCard,
+      showDiagnosisCard: showDiagnosisCard ?? this.showDiagnosisCard,
       showSolutionCard: showSolutionCard ?? this.showSolutionCard,
     );
   }
@@ -297,6 +301,7 @@ class BoardLayerVisibility {
 enum BoardCardId {
   problem,
   ideas,
+  diagnosis,
   solution,
 }
 
@@ -304,23 +309,29 @@ class SmartBoardCardState {
   const SmartBoardCardState({
     this.problem,
     this.ideas,
+    this.diagnosis,
     this.solution,
-    this.problemPos = const Offset(28, 24),
-    this.ideasPos = const Offset(28, 320),
-    this.solutionPos = const Offset(480, 24),
-    this.problemWidth = 420,
-    this.ideasWidth = 420,
-    this.solutionWidth = 460,
+    this.problemPos = const Offset(24, 20),
+    this.ideasPos = const Offset(24, 290),
+    this.diagnosisPos = const Offset(430, 20),
+    this.solutionPos = const Offset(430, 290),
+    this.problemWidth = 380,
+    this.ideasWidth = 380,
+    this.diagnosisWidth = 360,
+    this.solutionWidth = 420,
   });
 
   final AiRecognizeResult? problem;
   final AiBoardGuidance? ideas;
+  final AiBoardGuidance? diagnosis;
   final AiBoardGuidance? solution;
   final Offset problemPos;
   final Offset ideasPos;
+  final Offset diagnosisPos;
   final Offset solutionPos;
   final double problemWidth;
   final double ideasWidth;
+  final double diagnosisWidth;
   final double solutionWidth;
 
   SmartBoardCardState copyWith({
@@ -328,24 +339,31 @@ class SmartBoardCardState {
     bool clearProblem = false,
     AiBoardGuidance? ideas,
     bool clearIdeas = false,
+    AiBoardGuidance? diagnosis,
+    bool clearDiagnosis = false,
     AiBoardGuidance? solution,
     bool clearSolution = false,
     Offset? problemPos,
     Offset? ideasPos,
+    Offset? diagnosisPos,
     Offset? solutionPos,
     double? problemWidth,
     double? ideasWidth,
+    double? diagnosisWidth,
     double? solutionWidth,
   }) {
     return SmartBoardCardState(
       problem: clearProblem ? null : (problem ?? this.problem),
       ideas: clearIdeas ? null : (ideas ?? this.ideas),
+      diagnosis: clearDiagnosis ? null : (diagnosis ?? this.diagnosis),
       solution: clearSolution ? null : (solution ?? this.solution),
       problemPos: problemPos ?? this.problemPos,
       ideasPos: ideasPos ?? this.ideasPos,
+      diagnosisPos: diagnosisPos ?? this.diagnosisPos,
       solutionPos: solutionPos ?? this.solutionPos,
       problemWidth: problemWidth ?? this.problemWidth,
       ideasWidth: ideasWidth ?? this.ideasWidth,
+      diagnosisWidth: diagnosisWidth ?? this.diagnosisWidth,
       solutionWidth: solutionWidth ?? this.solutionWidth,
     );
   }

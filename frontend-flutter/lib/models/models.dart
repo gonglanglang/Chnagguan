@@ -1547,6 +1547,8 @@ class AiBoardGuidance {
   final int latencyMs;
 
   bool get isIdeas => mode.toUpperCase() == 'IDEAS';
+  bool get isDiagnose => mode.toUpperCase() == 'DIAGNOSE';
+  bool get isSolve => !isIdeas && !isDiagnose;
 
   factory AiBoardGuidance.fromJson(Map<String, dynamic> json) {
     final stepsRaw = json['steps'] as List<dynamic>? ?? const [];

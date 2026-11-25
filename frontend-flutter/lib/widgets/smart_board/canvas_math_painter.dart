@@ -35,9 +35,21 @@ class _LaidOutLine {
   final double height;
 }
 
-/// 高精度 Canvas 数学公式矢量排版渲染器。
-/// 支持将 LaTeX 分式（分子/分数线/分母）、上下标、根号与中英文数学题干
-/// 直接绘制到无限画板 Canvas 与离屏 PNG 上，任意缩放均保持矢量锐利。
+class MathPaintResult {
+  const MathPaintResult({
+    required this.height,
+    this.penTip,
+  });
+
+  final double height;
+  final Offset? penTip;
+}
+
+/// 高精度 Canvas 数学公式矢量排版与逐笔书写渲染器。
+/// 支持：
+/// 1. 真上下分式、真上下标、根号与中英文数学混排自动折行；
+/// 2. [paintProgressive] 支持 0.0~1.0 逐字/逐符号实时书写（分子→分数线→分母），
+///    并返回当前笔尖所处的精确坐标，用于驱动“拟真手写自动绘制”动画。
 class CanvasMathPainter {
   CanvasMathPainter._();
 
@@ -61,7 +73,8 @@ class CanvasMathPainter {
     final fontSize = baseStyle.fontSize ?? 14.0;
     final lineHeight = fontSize * (baseStyle.height ?? 1.48);
     final effectiveStyle = baseStyle.copyWith(
-      fontFamilyFallback: baseStyle.fontFamilyFallback ?? AppTheme.cjkFontFallback,
+      fontFamilyFallback:
+          baseStyle.fontFamilyFallback ?? AppTheme.cjkFontFallback,
     );
     final scriptStyle = effectiveStyle.copyWith(
       fontSize: fontSize * 0.72,
@@ -72,7 +85,6 @@ class CanvasMathPainter {
       height: 1.12,
     );
 
-    // 拆分长文本 token 为可自然换行的字符/英文词元，确保中英混排自动折行不溢出
     final atomicTokens = <MathToken>[];
     for (final tok in tokens) {
       if (tok.type != MathTokenType.text) {
@@ -192,7 +204,14 @@ class CanvasMathPainter {
     return lines;
   }
 
-  /// 测量在给定最大宽度下渲染所需的高度
+  /// 估算一段数学文本的书写权重（用于匀速逐字手写动画时间分配）
+  static double estimateWriteWeight(String raw) {
+    final cleaned = raw.trim();
+    if (cleaned.isEmpty) return 0;
+    return math.max(4.0, cleaned.length.toDouble());
+  }
+
+  /// 测量给定最大宽度下渲染所需的总高度
   static double measureHeight(
     String raw, {
     required double maxWidth,
@@ -209,7 +228,7 @@ class CanvasMathPainter {
     return total;
   }
 
-  /// 将数学公式文本绘制到 Canvas 指定位置，并返回实际占用高度
+  /// 全量绘制数学公式文本
   static double paint(
     Canvas canvas,
     String raw, {
@@ -218,12 +237,57 @@ class CanvasMathPainter {
     required TextStyle style,
     double lineSpacing = 3.0,
   }) {
+    return paintProgressive(
+      canvas,
+      raw,
+      origin: origin,
+      maxWidth: maxWidth,
+      style: style,
+      lineSpacing: lineSpacing,
+      progress: 1.0,
+    ).height;
+  }
+
+  /// 逐笔坐标书写模式绘制数学公式文本（progress: 0.0 -> 1.0），返回高度与当前笔尖精确世界坐标
+  static MathPaintResult paintProgressive(
+    Canvas canvas,
+    String raw, {
+    required Offset origin,
+    required double maxWidth,
+    required TextStyle style,
+    double lineSpacing = 3.0,
+    double progress = 1.0,
+  }) {
     final lines = _layoutLines(raw, maxWidth, style);
-    if (lines.isEmpty) return 0;
+    if (lines.isEmpty) return const MathPaintResult(height: 0);
+
+    var totalHeight = 0.0;
+    var totalWidthWeight = 0.0;
+    for (var i = 0; i < lines.length; i++) {
+      totalHeight += lines[i].height;
+      if (i < lines.length - 1) totalHeight += lineSpacing;
+      for (final item in lines[i].items) {
+        totalWidthWeight +=
+            item.token.type == MathTokenType.frac ? item.width * 2.2 : math.max(6.0, item.width);
+      }
+    }
+
+    final clamped = progress.clamp(0.0, 1.0);
+    if (clamped <= 0.0001) {
+      return MathPaintResult(height: totalHeight);
+    }
+
     final lineColor = style.color ?? const Color(0xFF111827);
     final barPaint = Paint()
       ..color = lineColor
-      ..strokeWidth = 1.25;
+      ..strokeWidth = 1.25
+      ..strokeCap = StrokeCap.round;
+
+    final budget = clamped >= 0.999
+        ? double.infinity
+        : totalWidthWeight * clamped;
+    var consumed = 0.0;
+    Offset? activePenTip;
 
     var y = origin.dy;
     for (var lineIdx = 0; lineIdx < lines.length; lineIdx++) {
@@ -232,46 +296,88 @@ class CanvasMathPainter {
       final midY = y + line.height / 2;
 
       for (final item in line.items) {
+        final itemWeight = item.token.type == MathTokenType.frac
+            ? item.width * 2.2
+            : math.max(6.0, item.width);
+
+        if (consumed >= budget) {
+          return MathPaintResult(height: totalHeight, penTip: activePenTip);
+        }
+
+        final remaining = budget - consumed;
+        final localT = budget.isInfinite
+            ? 1.0
+            : (remaining / itemWeight).clamp(0.0, 1.0);
+        consumed += itemWeight;
+
         switch (item.token.type) {
           case MathTokenType.text:
-            final tp = item.mainPainter!;
-            tp.paint(canvas, Offset(x, midY - tp.height / 2));
           case MathTokenType.sup:
-            final tp = item.mainPainter!;
-            tp.paint(
-              canvas,
-              Offset(x, midY - tp.height / 2 + item.baselineOffset),
-            );
           case MathTokenType.sub:
             final tp = item.mainPainter!;
-            tp.paint(
-              canvas,
-              Offset(x, midY - tp.height / 2 + item.baselineOffset),
-            );
+            final topY = midY - tp.height / 2 + item.baselineOffset;
+            if (localT >= 0.999) {
+              tp.paint(canvas, Offset(x, topY));
+            } else {
+              final clipW = math.max(1.0, item.width * localT);
+              canvas.save();
+              canvas.clipRect(Rect.fromLTWH(x, topY - 2, clipW, tp.height + 4));
+              tp.paint(canvas, Offset(x, topY));
+              canvas.restore();
+              // 拟真运笔微小上下律动
+              final jitter = math.sin(localT * math.pi * 4) * 2.4;
+              activePenTip = Offset(x + clipW, topY + tp.height * 0.68 + jitter);
+            }
           case MathTokenType.frac:
             final numTp = item.numPainter!;
             final denTp = item.denPainter!;
             final innerW = item.width - 4;
             final barY = midY;
-            numTp.paint(
-              canvas,
-              Offset(
-                x + (item.width - numTp.width) / 2,
-                barY - numTp.height - 2.2,
-              ),
-            );
-            canvas.drawLine(
-              Offset(x + 2, barY),
-              Offset(x + 2 + innerW, barY),
-              barPaint,
-            );
-            denTp.paint(
-              canvas,
-              Offset(
-                x + (item.width - denTp.width) / 2,
-                barY + 2.2,
-              ),
-            );
+            final numX = x + (item.width - numTp.width) / 2;
+            final numY = barY - numTp.height - 2.2;
+            final denX = x + (item.width - denTp.width) / 2;
+            final denY = barY + 2.2;
+
+            if (localT >= 0.999) {
+              numTp.paint(canvas, Offset(numX, numY));
+              canvas.drawLine(
+                Offset(x + 2, barY),
+                Offset(x + 2 + innerW, barY),
+                barPaint,
+              );
+              denTp.paint(canvas, Offset(denX, denY));
+            } else if (localT < 0.42) {
+              // 阶段1：写分子
+              final nt = (localT / 0.42).clamp(0.0, 1.0);
+              final cw = math.max(1.0, numTp.width * nt);
+              canvas.save();
+              canvas.clipRect(Rect.fromLTWH(numX, numY - 2, cw, numTp.height + 4));
+              numTp.paint(canvas, Offset(numX, numY));
+              canvas.restore();
+              activePenTip = Offset(numX + cw, numY + numTp.height * 0.7);
+            } else if (localT < 0.62) {
+              // 阶段2：从左向右画分数线
+              numTp.paint(canvas, Offset(numX, numY));
+              final bt = ((localT - 0.42) / 0.20).clamp(0.0, 1.0);
+              final endX = x + 2 + innerW * bt;
+              canvas.drawLine(Offset(x + 2, barY), Offset(endX, barY), barPaint);
+              activePenTip = Offset(endX, barY);
+            } else {
+              // 阶段3：写分母
+              numTp.paint(canvas, Offset(numX, numY));
+              canvas.drawLine(
+                Offset(x + 2, barY),
+                Offset(x + 2 + innerW, barY),
+                barPaint,
+              );
+              final dt = ((localT - 0.62) / 0.38).clamp(0.0, 1.0);
+              final cw = math.max(1.0, denTp.width * dt);
+              canvas.save();
+              canvas.clipRect(Rect.fromLTWH(denX, denY - 2, cw, denTp.height + 4));
+              denTp.paint(canvas, Offset(denX, denY));
+              canvas.restore();
+              activePenTip = Offset(denX + cw, denY + denTp.height * 0.7);
+            }
           case MathTokenType.lineBreak:
             break;
         }
@@ -284,6 +390,6 @@ class CanvasMathPainter {
       }
     }
 
-    return y - origin.dy;
+    return MathPaintResult(height: totalHeight, penTip: activePenTip);
   }
 }

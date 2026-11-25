@@ -10,21 +10,24 @@ import 'board_diagram_painter.dart';
 import 'board_models.dart';
 import 'canvas_math_painter.dart';
 
-/// 计算每张世界坐标板书卡片的精确外接矩形（供命中测试、防重叠自动排版与视野对焦使用）
+/// 计算每块世界坐标白板板书区域的精确外接矩形（供拖动命中、防重叠排版、自动对焦与导出使用）
 class SmartBoardLayoutMetrics {
   const SmartBoardLayoutMetrics({
     this.problemRect,
     this.ideasRect,
+    this.diagnosisRect,
     this.solutionRect,
   });
 
   final Rect? problemRect;
   final Rect? ideasRect;
+  final Rect? diagnosisRect;
   final Rect? solutionRect;
 
   Rect? rectOf(BoardCardId id) => switch (id) {
         BoardCardId.problem => problemRect,
         BoardCardId.ideas => ideasRect,
+        BoardCardId.diagnosis => diagnosisRect,
         BoardCardId.solution => solutionRect,
       };
 
@@ -35,7 +38,7 @@ class SmartBoardLayoutMetrics {
   }) {
     Rect? pRect;
     if (cards.problem != null && visibility.showProblemCard) {
-      final h = measureProblemCardHeight(
+      final h = measureProblemHeight(
         cards.problem!,
         cards.problemWidth,
         hasPhoto: problemPhoto != null && visibility.showPhotoCard,
@@ -50,7 +53,7 @@ class SmartBoardLayoutMetrics {
 
     Rect? iRect;
     if (cards.ideas != null && visibility.showIdeasCard) {
-      final h = measureGuidanceCardHeight(cards.ideas!, cards.ideasWidth);
+      final h = measureGuidanceHeight(cards.ideas!, cards.ideasWidth);
       iRect = Rect.fromLTWH(
         cards.ideasPos.dx,
         cards.ideasPos.dy,
@@ -59,9 +62,20 @@ class SmartBoardLayoutMetrics {
       );
     }
 
+    Rect? dRect;
+    if (cards.diagnosis != null && visibility.showDiagnosisCard) {
+      final h = measureGuidanceHeight(cards.diagnosis!, cards.diagnosisWidth);
+      dRect = Rect.fromLTWH(
+        cards.diagnosisPos.dx,
+        cards.diagnosisPos.dy,
+        cards.diagnosisWidth,
+        h,
+      );
+    }
+
     Rect? sRect;
     if (cards.solution != null && visibility.showSolutionCard) {
-      final h = measureGuidanceCardHeight(cards.solution!, cards.solutionWidth);
+      final h = measureGuidanceHeight(cards.solution!, cards.solutionWidth);
       sRect = Rect.fromLTWH(
         cards.solutionPos.dx,
         cards.solutionPos.dy,
@@ -73,160 +87,169 @@ class SmartBoardLayoutMetrics {
     return SmartBoardLayoutMetrics(
       problemRect: pRect,
       ideasRect: iRect,
+      diagnosisRect: dRect,
       solutionRect: sRect,
     );
   }
 
-  static double measureProblemCardHeight(
+  static double measureProblemHeight(
     AiRecognizeResult problem,
     double width, {
     bool hasPhoto = false,
   }) {
-    final contentW = width - 32;
-    var h = 50.0; // Header + padding
+    final contentW = width - 24;
+    var h = 34.0;
     if (problem.problemText.isNotEmpty) {
       h += CanvasMathPainter.measureHeight(
-        problem.problemText,
-        maxWidth: contentW,
-        style: _problemBodyStyle,
-      );
-      h += 12;
+            problem.problemText,
+            maxWidth: contentW,
+            style: _problemBodyStyle,
+          ) +
+          10;
     }
     if (problem.knownConditions.isNotEmpty) {
-      h += 22;
+      h += 18;
       for (final c in problem.knownConditions) {
         h += CanvasMathPainter.measureHeight(
-              '• $c',
-              maxWidth: contentW - 10,
-              style: _metaBodyStyle,
+              '· $c',
+              maxWidth: contentW - 8,
+              style: _subtleMetaStyle,
             ) +
-            4;
+            3;
       }
-      h += 8;
+      h += 6;
     }
     if (problem.targets.isNotEmpty) {
-      h += 22;
+      h += 18;
       for (final t in problem.targets) {
         h += CanvasMathPainter.measureHeight(
-              '▸ $t',
-              maxWidth: contentW - 10,
-              style: _metaBodyStyle,
+              '→ $t',
+              maxWidth: contentW - 8,
+              style: _subtleMetaStyle,
             ) +
-            4;
+            3;
       }
-      h += 8;
+      h += 6;
     }
     if (hasPhoto) {
-      h += 164;
+      h += 156;
     }
     if (problem.diagrams.isNotEmpty) {
-      h += problem.diagrams.length * 196.0;
+      h += problem.diagrams.length * 188.0;
     }
-    return math.max(120, h + 12);
+    return math.max(96, h + 10);
   }
 
-  static double measureGuidanceCardHeight(
+  static double measureGuidanceHeight(
     AiBoardGuidance guidance,
     double width,
   ) {
-    final contentW = width - 32;
-    var h = 54.0; // Header bar + top padding
+    final contentW = width - 24;
+    var h = 36.0;
+
     if (guidance.summary.isNotEmpty) {
       h += CanvasMathPainter.measureHeight(
             guidance.summary,
-            maxWidth: contentW - 16,
+            maxWidth: contentW,
             style: _summaryStyle,
           ) +
-          22;
+          8;
     }
-    if (guidance.studentDiagnosis != null &&
-        (guidance.studentDiagnosis!.comment.isNotEmpty ||
-            guidance.studentDiagnosis!.mistakePoint.isNotEmpty)) {
-      final d = guidance.studentDiagnosis!;
-      h += 26;
-      if (d.comment.isNotEmpty) {
+
+    final diag = guidance.studentDiagnosis;
+    if (guidance.isDiagnose &&
+        diag != null &&
+        (diag.comment.isNotEmpty || diag.mistakePoint.isNotEmpty)) {
+      h += 22;
+      if (diag.comment.isNotEmpty) {
         h += CanvasMathPainter.measureHeight(
-              d.comment,
-              maxWidth: contentW - 20,
-              style: _metaBodyStyle,
+              diag.comment,
+              maxWidth: contentW - 8,
+              style: _stepBodyStyle,
             ) +
-            6;
+            5;
       }
-      if (d.mistakePoint.isNotEmpty) {
+      if (diag.mistakePoint.isNotEmpty) {
         h += CanvasMathPainter.measureHeight(
-              '定位：${d.mistakePoint}',
-              maxWidth: contentW - 20,
-              style: _metaBodyStyle,
+              '错因：${diag.mistakePoint}',
+              maxWidth: contentW - 8,
+              style: _stepBodyStyle,
             ) +
-            6;
+            5;
       }
-      if (d.suggestion.isNotEmpty) {
+      if (diag.suggestion.isNotEmpty) {
         h += CanvasMathPainter.measureHeight(
-              '建议：${d.suggestion}',
-              maxWidth: contentW - 20,
-              style: _metaBodyStyle,
+              '建议：${diag.suggestion}',
+              maxWidth: contentW - 8,
+              style: _stepBodyStyle,
             ) +
-            6;
+            5;
       }
-      h += 16;
+      h += 8;
     }
 
     for (final step in guidance.steps) {
-      h += 26; // Step header pill
+      final header = step.title.isNotEmpty
+          ? '${step.stepNo}. ${step.title}'
+          : '${step.stepNo}.';
+      h += CanvasMathPainter.measureHeight(
+            header,
+            maxWidth: contentW,
+            style: _stepTitleStyle,
+          ) +
+          4;
       if (step.content.isNotEmpty) {
         h += CanvasMathPainter.measureHeight(
               step.content,
-              maxWidth: contentW - 22,
+              maxWidth: contentW - 14,
               style: _stepBodyStyle,
             ) +
-            6;
+            4;
       }
       if (step.formula.isNotEmpty) {
         h += CanvasMathPainter.measureHeight(
               step.formula,
-              maxWidth: contentW - 34,
-              style: _formulaBoxStyle,
-            ) +
-            20;
-      }
-      if (step.highlight.isNotEmpty) {
-        h += CanvasMathPainter.measureHeight(
-              '💡 ${step.highlight}',
-              maxWidth: contentW - 24,
-              style: _tipStyle,
+              maxWidth: contentW - 18,
+              style: _formulaStyle,
             ) +
             8;
       }
-      h += 12;
-    }
-
-    if (guidance.finalAnswer.isNotEmpty) {
-      h += 24 +
-          CanvasMathPainter.measureHeight(
-            guidance.finalAnswer,
-            maxWidth: contentW - 24,
-            style: _answerStyle,
-          ) +
-          20;
-    }
-
-    if (guidance.pitfalls.isNotEmpty) {
-      h += 24;
-      for (final pit in guidance.pitfalls) {
+      if (step.highlight.isNotEmpty) {
         h += CanvasMathPainter.measureHeight(
-              '⚠ $pit',
+              '注：${step.highlight}',
               maxWidth: contentW - 14,
-              style: _tipStyle,
+              style: _noteStyle,
             ) +
             4;
       }
-      h += 10;
+      h += 8;
+    }
+
+    if (guidance.isSolve && guidance.finalAnswer.isNotEmpty) {
+      h += CanvasMathPainter.measureHeight(
+            '答：${guidance.finalAnswer}',
+            maxWidth: contentW,
+            style: _answerStyle,
+          ) +
+          14;
+    }
+
+    if (guidance.pitfalls.isNotEmpty) {
+      for (final pit in guidance.pitfalls) {
+        h += CanvasMathPainter.measureHeight(
+              '注意：$pit',
+              maxWidth: contentW - 4,
+              style: _noteStyle,
+            ) +
+            4;
+      }
+      h += 4;
     }
 
     if (guidance.diagrams.isNotEmpty) {
-      h += guidance.diagrams.length * 198.0;
+      h += guidance.diagrams.length * 190.0;
     }
-    return math.max(140, h + 14);
+    return math.max(96, h + 10);
   }
 }
 
@@ -238,19 +261,27 @@ const TextStyle _problemBodyStyle = TextStyle(
   fontFamilyFallback: AppTheme.cjkFontFallback,
 );
 
-const TextStyle _metaBodyStyle = TextStyle(
-  color: Color(0xFF334155),
-  fontSize: 12.8,
-  height: 1.48,
+const TextStyle _subtleMetaStyle = TextStyle(
+  color: Color(0xFF475569),
+  fontSize: 12.6,
+  height: 1.46,
   fontWeight: FontWeight.w500,
   fontFamilyFallback: AppTheme.cjkFontFallback,
 );
 
 const TextStyle _summaryStyle = TextStyle(
-  color: Color(0xFF1E293B),
+  color: Color(0xFF334155),
   fontSize: 13.0,
-  height: 1.45,
+  height: 1.46,
   fontWeight: FontWeight.w600,
+  fontFamilyFallback: AppTheme.cjkFontFallback,
+);
+
+const TextStyle _stepTitleStyle = TextStyle(
+  color: Color(0xFF0F172A),
+  fontSize: 13.6,
+  height: 1.45,
+  fontWeight: FontWeight.w800,
   fontFamilyFallback: AppTheme.cjkFontFallback,
 );
 
@@ -262,29 +293,39 @@ const TextStyle _stepBodyStyle = TextStyle(
   fontFamilyFallback: AppTheme.cjkFontFallback,
 );
 
-const TextStyle _formulaBoxStyle = TextStyle(
+const TextStyle _formulaStyle = TextStyle(
   color: Color(0xFF1D4ED8),
-  fontSize: 14.2,
+  fontSize: 14.4,
   height: 1.52,
   fontWeight: FontWeight.w700,
   fontFamilyFallback: AppTheme.cjkFontFallback,
 );
 
 const TextStyle _answerStyle = TextStyle(
-  color: Color(0xFF065F46),
-  fontSize: 14.4,
-  height: 1.5,
+  color: Color(0xFF0F172A),
+  fontSize: 14.6,
+  height: 1.52,
   fontWeight: FontWeight.w800,
   fontFamilyFallback: AppTheme.cjkFontFallback,
 );
 
-const TextStyle _tipStyle = TextStyle(
-  color: Color(0xFFB45309),
+const TextStyle _noteStyle = TextStyle(
+  color: Color(0xFF64748B),
   fontSize: 12.2,
-  height: 1.42,
-  fontWeight: FontWeight.w600,
+  height: 1.44,
+  fontWeight: FontWeight.w500,
   fontFamilyFallback: AppTheme.cjkFontFallback,
 );
+
+class _WriteTask {
+  const _WriteTask({
+    required this.weight,
+    required this.paint,
+  });
+
+  final double weight;
+  final Offset? Function(Canvas canvas, double localT) paint;
+}
 
 class SmartBoardPainter extends CustomPainter {
   const SmartBoardPainter({
@@ -300,6 +341,7 @@ class SmartBoardPainter extends CustomPainter {
     this.visibility = const BoardLayerVisibility(),
     this.problemPhoto,
     this.ideasReveal = 1.0,
+    this.diagnosisReveal = 1.0,
     this.solutionReveal = 1.0,
     this.draggingCardId,
     this.eraserCursorWorld,
@@ -318,6 +360,7 @@ class SmartBoardPainter extends CustomPainter {
   final BoardLayerVisibility visibility;
   final ui.Image? problemPhoto;
   final double ideasReveal;
+  final double diagnosisReveal;
   final double solutionReveal;
   final BoardCardId? draggingCardId;
   final Offset? eraserCursorWorld;
@@ -325,7 +368,11 @@ class SmartBoardPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 1. 纸张背景与底纹
+    // 强硬裁剪画板视口边界，确保板书与笔迹永不越界覆盖顶栏或底栏导航！
+    canvas.save();
+    canvas.clipRect(Offset.zero & size);
+
+    // 1. 纸张底纹
     paintPaperBackground(
       canvas,
       size,
@@ -346,11 +393,14 @@ class SmartBoardPainter extends CustomPainter {
       problemPhoto: problemPhoto,
     );
 
-    // 3. 绘制题目板书卡
+    Offset? activeAiPenTip;
+    Color activeAiPenColor = const Color(0xFF1D4ED8);
+
+    // 3. 题目板书区（极简干净白板风）
     if (cards.problem != null &&
         visibility.showProblemCard &&
         metrics.problemRect != null) {
-      paintProblemCard(
+      paintProblemBlock(
         canvas,
         cards.problem!,
         metrics.problemRect!,
@@ -359,33 +409,58 @@ class SmartBoardPainter extends CustomPainter {
       );
     }
 
-    // 4. 绘制 AI 解题思路板书卡（带逐行动画进度）
+    // 4. AI 解题思路区（蓝笔引导 · 逐字逐笔按坐标手写绘制，不给答案）
     if (cards.ideas != null &&
         visibility.showIdeasCard &&
         metrics.ideasRect != null) {
-      paintGuidanceCard(
+      final tip = paintGuidanceBlock(
         canvas,
         cards.ideas!,
         metrics.ideasRect!,
         revealProgress: ideasReveal,
         highlighted: draggingCardId == BoardCardId.ideas,
       );
+      if (tip != null) {
+        activeAiPenTip = tip;
+        activeAiPenColor = const Color(0xFF1D4ED8);
+      }
     }
 
-    // 5. 绘制 AI 解题过程分析板书卡（带逐行动画进度）
+    // 5. AI 手写诊断区（红/绿批改笔 · 仅诊断对错不给答案）
+    if (cards.diagnosis != null &&
+        visibility.showDiagnosisCard &&
+        metrics.diagnosisRect != null) {
+      final tip = paintGuidanceBlock(
+        canvas,
+        cards.diagnosis!,
+        metrics.diagnosisRect!,
+        revealProgress: diagnosisReveal,
+        highlighted: draggingCardId == BoardCardId.diagnosis,
+      );
+      if (tip != null) {
+        activeAiPenTip = tip;
+        activeAiPenColor = const Color(0xFFDC2626);
+      }
+    }
+
+    // 6. AI 完整解题区（规范钢笔板书 · 逐字逐笔按坐标绘制完整过程与答案）
     if (cards.solution != null &&
         visibility.showSolutionCard &&
         metrics.solutionRect != null) {
-      paintGuidanceCard(
+      final tip = paintGuidanceBlock(
         canvas,
         cards.solution!,
         metrics.solutionRect!,
         revealProgress: solutionReveal,
         highlighted: draggingCardId == BoardCardId.solution,
       );
+      if (tip != null) {
+        activeAiPenTip = tip;
+        activeAiPenColor = const Color(0xFF0F172A);
+      }
     }
 
-    // 6. 绘制几何图形与坐标系
+    // 7. 几何图形与坐标系
     for (final shape in shapes) {
       paintShape(canvas, shape);
     }
@@ -393,7 +468,7 @@ class SmartBoardPainter extends CustomPainter {
       paintShape(canvas, activeShape!);
     }
 
-    // 7. 绘制学生手写笔迹（先荧光笔后普通笔，保持文字清透）
+    // 8. 学生手写笔迹（先荧光笔后钢笔）
     for (final s in strokes) {
       if (s.isHighlighter) paintStroke(canvas, s);
     }
@@ -407,7 +482,12 @@ class SmartBoardPainter extends CustomPainter {
       paintStroke(canvas, activeStroke!);
     }
 
-    // 8. 橡皮擦光标环提示
+    // 9. 拟真动态书写笔尖（AI 正在坐标逐笔绘制时跟随显示）
+    if (activeAiPenTip != null) {
+      _paintActivePenNib(canvas, activeAiPenTip, activeAiPenColor);
+    }
+
+    // 10. 橡皮擦光标环
     if (eraserCursorWorld != null) {
       canvas.drawCircle(
         eraserCursorWorld!,
@@ -427,10 +507,51 @@ class SmartBoardPainter extends CustomPainter {
     }
 
     canvas.restore();
+    canvas.restore();
   }
 
   @override
   bool shouldRepaint(SmartBoardPainter oldDelegate) => true;
+
+  static void _paintActivePenNib(Canvas canvas, Offset tip, Color inkColor) {
+    // 笔尖着墨微光
+    canvas.drawCircle(
+      tip,
+      5.5,
+      Paint()..color = inkColor.withValues(alpha: 0.22),
+    );
+    canvas.drawCircle(tip, 2.3, Paint()..color = inkColor);
+
+    // 倾斜的极简手写笔杆（向右上方 45 度倾斜）
+    final nibNeck = tip + const Offset(6, -8);
+    final bodyTop = tip + const Offset(22, -30);
+
+    // 金属笔尖三角
+    final nibPath = Path()
+      ..moveTo(tip.dx, tip.dy)
+      ..lineTo(nibNeck.dx - 3.2, nibNeck.dy - 2.4)
+      ..lineTo(nibNeck.dx + 3.2, nibNeck.dy + 2.4)
+      ..close();
+    canvas.drawPath(nibPath, Paint()..color = const Color(0xFF94A3B8));
+
+    // 笔杆
+    canvas.drawLine(
+      nibNeck,
+      bodyTop,
+      Paint()
+        ..color = inkColor
+        ..strokeWidth = 6.2
+        ..strokeCap = StrokeCap.round,
+    );
+    canvas.drawLine(
+      nibNeck,
+      bodyTop,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.35)
+        ..strokeWidth = 1.5
+        ..strokeCap = StrokeCap.round,
+    );
+  }
 
   static void paintPaperBackground(
     Canvas canvas,
@@ -440,7 +561,10 @@ class SmartBoardPainter extends CustomPainter {
     required double panY,
     required double zoom,
   }) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFFFCFDFF));
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()..color = const Color(0xFFFCFDFF),
+    );
     if (paperStyle == BoardPaperStyle.plain) return;
 
     const baseStep = 36.0;
@@ -504,7 +628,6 @@ class SmartBoardPainter extends CustomPainter {
       ..isAntiAlias = true
       ..style = PaintingStyle.stroke;
 
-    // 二次贝塞尔平滑曲线，消除折线锯齿
     final path = BoardDiagramPainter.buildSmoothPath(s.points);
     canvas.drawPath(path, paint);
   }
@@ -548,7 +671,6 @@ class SmartBoardPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
 
-    // X 轴 & Y 轴带箭头
     BoardDiagramPainter.drawArrowLine(
       canvas,
       Offset(rect.left, cy),
@@ -564,7 +686,6 @@ class SmartBoardPainter extends CustomPainter {
       headLen: 9,
     );
 
-    // 刻度线
     const tickStep = 28.0;
     final tickPaint = Paint()
       ..color = paint.color.withValues(alpha: 0.65)
@@ -603,28 +724,25 @@ class SmartBoardPainter extends CustomPainter {
     drawAxisText('O', Offset(cx - 14, cy + 4));
   }
 
-  static void paintProblemCard(
+  /// 极简干净的题目白板区（无花哨边框与阴影）
+  static void paintProblemBlock(
     Canvas canvas,
     AiRecognizeResult problem,
     Rect rect, {
     ui.Image? photo,
     bool highlighted = false,
   }) {
-    _paintCardShell(
+    _paintMinimalBlockFrame(
       canvas,
       rect,
-      headerColor: const Color(0xFFE0F2FE),
-      borderColor:
-          highlighted ? const Color(0xFF0284C7) : const Color(0xFF1E293B),
-      title: '题目板书 · ${problem.title}',
-      badgeText: '${problem.subjectTag} · ${problem.difficulty}',
-      badgeBg: const Color(0xFF0284C7),
-      badgeFg: Colors.white,
+      accent: const Color(0xFF334155),
+      title: '题目 · ${problem.title}',
+      highlighted: highlighted,
     );
 
-    final contentW = rect.width - 32;
-    var y = rect.top + 48;
-    final x = rect.left + 16;
+    final contentW = rect.width - 24;
+    var y = rect.top + 32;
+    final x = rect.left + 14;
 
     if (problem.problemText.isNotEmpty) {
       y += CanvasMathPainter.paint(
@@ -634,45 +752,44 @@ class SmartBoardPainter extends CustomPainter {
         maxWidth: contentW,
         style: _problemBodyStyle,
       );
-      y += 10;
+      y += 8;
     }
 
     if (problem.knownConditions.isNotEmpty) {
-      y = _paintMiniSectionTitle(canvas, '已知条件', Offset(x, y), const Color(0xFF0369A1));
+      y = _paintMiniLabel(canvas, '已知：', Offset(x, y), const Color(0xFF475569));
       for (final cond in problem.knownConditions) {
         y += CanvasMathPainter.paint(
           canvas,
-          '• $cond',
+          '· $cond',
           origin: Offset(x + 6, y),
-          maxWidth: contentW - 10,
-          style: _metaBodyStyle,
+          maxWidth: contentW - 8,
+          style: _subtleMetaStyle,
         );
-        y += 4;
+        y += 3;
       }
-      y += 6;
+      y += 5;
     }
 
     if (problem.targets.isNotEmpty) {
-      y = _paintMiniSectionTitle(canvas, '求解目标', Offset(x, y), const Color(0xFF0F766E));
+      y = _paintMiniLabel(canvas, '求/证：', Offset(x, y), const Color(0xFF475569));
       for (final target in problem.targets) {
         y += CanvasMathPainter.paint(
           canvas,
-          '▸ $target',
+          '→ $target',
           origin: Offset(x + 6, y),
-          maxWidth: contentW - 10,
-          style: _metaBodyStyle,
+          maxWidth: contentW - 8,
+          style: _subtleMetaStyle,
         );
-        y += 4;
+        y += 3;
       }
-      y += 6;
+      y += 5;
     }
 
     if (photo != null) {
-      final photoRect = Rect.fromLTWH(x, y, contentW, 152);
-      final rrect = RRect.fromRectAndRadius(photoRect, const Radius.circular(8));
+      final photoRect = Rect.fromLTWH(x, y, contentW, 146);
+      final rrect = RRect.fromRectAndRadius(photoRect, const Radius.circular(6));
       canvas.save();
       canvas.clipRRect(rrect);
-      canvas.drawRect(photoRect, Paint()..color = const Color(0xFFF1F5F9));
       final srcSize = Size(photo.width.toDouble(), photo.height.toDouble());
       final fitted = applyBoxFit(BoxFit.contain, srcSize, photoRect.size);
       final dst = Alignment.center.inscribe(fitted.destination, photoRect);
@@ -688,19 +805,20 @@ class SmartBoardPainter extends CustomPainter {
         Paint()
           ..color = const Color(0xFFCBD5E1)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.2,
+          ..strokeWidth = 1.0,
       );
-      y += 162;
+      y += 156;
     }
 
     for (final diagram in problem.diagrams) {
-      final dRect = Rect.fromLTWH(x, y, contentW, 186);
+      final dRect = Rect.fromLTWH(x, y, contentW, 180);
       BoardDiagramPainter.paintDiagram(canvas, diagram, dRect);
-      y += 196;
+      y += 188;
     }
   }
 
-  static void paintGuidanceCard(
+  /// 极简白板 AI 板书块（支持坐标级逐字/逐笔自动手写与矢量作图动画，返回实时笔尖坐标）
+  static Offset? paintGuidanceBlock(
     Canvas canvas,
     AiBoardGuidance guidance,
     Rect rect, {
@@ -708,405 +826,437 @@ class SmartBoardPainter extends CustomPainter {
     bool highlighted = false,
   }) {
     final isIdeas = guidance.isIdeas;
-    final accent = isIdeas ? const Color(0xFFD97706) : const Color(0xFF059669);
-    final headerBg =
-        isIdeas ? const Color(0xFFFEF3C7) : const Color(0xFFD1FAE5);
-    final titlePrefix = isIdeas ? '💡 AI 解题思路' : '✨ AI 解题分析与板书';
+    final isDiagnose = guidance.isDiagnose;
+    final accent = isIdeas
+        ? const Color(0xFF1D4ED8) // 思路：教研蓝笔
+        : (isDiagnose
+            ? const Color(0xFFDC2626) // 诊断：老师批改红笔
+            : const Color(0xFF0F172A)); // 解题：规范黑钢笔
+    final labelPrefix = isIdeas ? '思路' : (isDiagnose ? '诊断' : '解题');
 
-    final clampedReveal = revealProgress.clamp(0.05, 1.0);
-    final visibleRect = clampedReveal >= 0.999
-        ? rect
-        : Rect.fromLTWH(
-            rect.left,
-            rect.top,
-            rect.width,
-            math.max(66.0, rect.height * clampedReveal),
-          );
+    final clampedReveal = revealProgress.clamp(0.0, 1.0);
+    if (clampedReveal <= 0.001) return null;
 
-    canvas.save();
-    if (clampedReveal < 0.999) {
-      canvas.clipRRect(
-        RRect.fromRectAndRadius(visibleRect, const Radius.circular(14)),
-      );
-    }
-
-    _paintCardShell(
+    // 极简左细线 + 极轻标题与拖动手柄
+    _paintMinimalBlockFrame(
       canvas,
       rect,
-      headerColor: headerBg,
-      borderColor: highlighted ? accent : const Color(0xFF1E293B),
-      title: '$titlePrefix · ${guidance.headline}',
-      badgeText: guidance.knowledgePoints.isNotEmpty
-          ? guidance.knowledgePoints.first
-          : (isIdeas ? '启发思路' : '规范板书'),
-      badgeBg: accent,
-      badgeFg: Colors.white,
+      accent: accent,
+      title: '$labelPrefix · ${guidance.headline}',
+      highlighted: highlighted,
     );
 
-    final contentW = rect.width - 32;
-    var y = rect.top + 48;
-    final x = rect.left + 16;
+    final contentW = rect.width - 24;
+    final x = rect.left + 14;
+    var y = rect.top + 34;
 
-    // 1. 总领点评
+    // 按顺序编译所有板书书写与矢量绘图任务，实现真正的一笔一画连续绘制
+    final tasks = <_WriteTask>[];
+
+    final bodyInk = isIdeas
+        ? _stepBodyStyle.copyWith(color: const Color(0xFF1E3A8A))
+        : (isDiagnose
+            ? _stepBodyStyle.copyWith(color: const Color(0xFF7F1D1D))
+            : _stepBodyStyle);
+    final titleInk = _stepTitleStyle.copyWith(color: accent);
+    final formulaInk = _formulaStyle.copyWith(
+      color: isDiagnose ? const Color(0xFFB91C1C) : const Color(0xFF1D4ED8),
+    );
+
     if (guidance.summary.isNotEmpty) {
-      final sumH = CanvasMathPainter.measureHeight(
-        guidance.summary,
-        maxWidth: contentW - 16,
+      final startY = y;
+      final sumText = guidance.summary;
+      final h = CanvasMathPainter.measureHeight(
+        sumText,
+        maxWidth: contentW,
         style: _summaryStyle,
       );
-      final box = Rect.fromLTWH(x, y, contentW, sumH + 14);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(box, const Radius.circular(8)),
-        Paint()..color = headerBg.withValues(alpha: 0.45),
+      tasks.add(
+        _WriteTask(
+          weight: CanvasMathPainter.estimateWriteWeight(sumText),
+          paint: (c, t) => CanvasMathPainter.paintProgressive(
+            c,
+            sumText,
+            origin: Offset(x, startY),
+            maxWidth: contentW,
+            style: _summaryStyle.copyWith(
+              color: isIdeas ? const Color(0xFF1E40AF) : const Color(0xFF334155),
+            ),
+            progress: t,
+          ).penTip,
+        ),
       );
-      canvas.drawLine(
-        Offset(box.left + 3, box.top + 5),
-        Offset(box.left + 3, box.bottom - 5),
-        Paint()
-          ..color = accent
-          ..strokeWidth = 3.2
-          ..strokeCap = StrokeCap.round,
-      );
-      CanvasMathPainter.paint(
-        canvas,
-        guidance.summary,
-        origin: Offset(x + 12, y + 7),
-        maxWidth: contentW - 16,
-        style: _summaryStyle,
-      );
-      y += sumH + 22;
+      y += h + 8;
     }
 
-    // 2. 学生手写过程诊断卡
+    // 诊断模式专属：简洁批改印章与定位（无花哨背景盒，绝不给答案）
     final diag = guidance.studentDiagnosis;
-    if (diag != null &&
+    if (isDiagnose &&
+        diag != null &&
         (diag.comment.isNotEmpty || diag.mistakePoint.isNotEmpty)) {
       final isCorrect = diag.status == 'CORRECT';
       final isWrong = diag.status == 'INCORRECT';
-      final diagAccent = isCorrect
+      final statusColor = isCorrect
           ? const Color(0xFF059669)
           : (isWrong ? const Color(0xFFDC2626) : const Color(0xFFD97706));
-      final diagBg = isCorrect
-          ? const Color(0xFFECFDF5)
-          : (isWrong ? const Color(0xFFFEF2F2) : const Color(0xFFFFFBEB));
-      final diagLabel = switch (diag.status) {
-        'CORRECT' => '手写诊断 · 步骤正确',
-        'PARTIAL' => '手写诊断 · 部分正确',
-        'INCORRECT' => '手写诊断 · 发现错误',
-        _ => '起步建议',
+      final verdictText = switch (diag.status) {
+        'CORRECT' => '✓ 过程正确',
+        'PARTIAL' => '△ 部分正确（可继续完善）',
+        'INCORRECT' => '✗ 发现错误步骤',
+        _ => '批改诊断',
       };
 
-      var innerH = 22.0;
-      if (diag.comment.isNotEmpty) {
-        innerH += CanvasMathPainter.measureHeight(
-              diag.comment,
-              maxWidth: contentW - 20,
-              style: _metaBodyStyle,
-            ) +
-            5;
-      }
-      if (diag.mistakePoint.isNotEmpty) {
-        innerH += CanvasMathPainter.measureHeight(
-              '定位：${diag.mistakePoint}',
-              maxWidth: contentW - 20,
-              style: _metaBodyStyle,
-            ) +
-            5;
-      }
-      if (diag.suggestion.isNotEmpty) {
-        innerH += CanvasMathPainter.measureHeight(
-              '建议：${diag.suggestion}',
-              maxWidth: contentW - 20,
-              style: _metaBodyStyle,
-            ) +
-            5;
-      }
-
-      final diagRect = Rect.fromLTWH(x, y, contentW, innerH + 10);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(diagRect, const Radius.circular(8)),
-        Paint()..color = diagBg,
+      final vy = y;
+      tasks.add(
+        _WriteTask(
+          weight: 8,
+          paint: (c, t) => CanvasMathPainter.paintProgressive(
+            c,
+            verdictText,
+            origin: Offset(x, vy),
+            maxWidth: contentW,
+            style: _stepTitleStyle.copyWith(color: statusColor),
+            progress: t,
+          ).penTip,
+        ),
       );
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(diagRect, const Radius.circular(8)),
-        Paint()
-          ..color = diagAccent.withValues(alpha: 0.65)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.3,
-      );
+      y += 22;
 
-      var dy = y + 7;
-      dy = _paintMiniSectionTitle(canvas, diagLabel, Offset(x + 10, dy), diagAccent);
       if (diag.comment.isNotEmpty) {
-        dy += CanvasMathPainter.paint(
-          canvas,
+        final cy = y;
+        final ch = CanvasMathPainter.measureHeight(
           diag.comment,
-          origin: Offset(x + 10, dy),
-          maxWidth: contentW - 20,
-          style: _metaBodyStyle,
-        );
-        dy += 4;
-      }
-      if (diag.mistakePoint.isNotEmpty) {
-        dy += CanvasMathPainter.paint(
-          canvas,
-          '定位：${diag.mistakePoint}',
-          origin: Offset(x + 10, dy),
-          maxWidth: contentW - 20,
-          style: _metaBodyStyle.copyWith(color: const Color(0xFFB91C1C)),
-        );
-        dy += 4;
-      }
-      if (diag.suggestion.isNotEmpty) {
-        CanvasMathPainter.paint(
-          canvas,
-          '建议：${diag.suggestion}',
-          origin: Offset(x + 10, dy),
-          maxWidth: contentW - 20,
-          style: _metaBodyStyle.copyWith(color: const Color(0xFF0F766E)),
-        );
-      }
-      y = diagRect.bottom + 10;
-    }
-
-    // 3. 分步板书绘制（含序号胶囊 + 流程竖线 + 公式高亮块）
-    for (var i = 0; i < guidance.steps.length; i++) {
-      final step = guidance.steps[i];
-      final stepStartY = y;
-
-      // 步骤圆标
-      final badgeCenter = Offset(x + 10, y + 10);
-      canvas.drawCircle(badgeCenter, 9.5, Paint()..color = accent);
-      final noTp = TextPainter(
-        text: TextSpan(
-          text: '${step.stepNo}',
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 10.5,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      noTp.paint(
-        canvas,
-        Offset(
-          badgeCenter.dx - noTp.width / 2,
-          badgeCenter.dy - noTp.height / 2,
-        ),
-      );
-
-      final titleTp = TextPainter(
-        text: TextSpan(
-          text: step.title.isNotEmpty ? step.title : '第 ${step.stepNo} 步',
-          style: const TextStyle(
-            color: Color(0xFF0F172A),
-            fontSize: 13.5,
-            fontWeight: FontWeight.w800,
-            fontFamilyFallback: AppTheme.cjkFontFallback,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-        maxLines: 1,
-        ellipsis: '...',
-      )..layout(maxWidth: contentW - 28);
-      titleTp.paint(canvas, Offset(x + 25, y + 1));
-      y += 24;
-
-      if (step.content.isNotEmpty) {
-        y += CanvasMathPainter.paint(
-          canvas,
-          step.content,
-          origin: Offset(x + 22, y),
-          maxWidth: contentW - 22,
+          maxWidth: contentW - 8,
           style: _stepBodyStyle,
         );
-        y += 5;
+        tasks.add(
+          _WriteTask(
+            weight: CanvasMathPainter.estimateWriteWeight(diag.comment),
+            paint: (c, t) => CanvasMathPainter.paintProgressive(
+              c,
+              diag.comment,
+              origin: Offset(x + 4, cy),
+              maxWidth: contentW - 8,
+              style: _stepBodyStyle,
+              progress: t,
+            ).penTip,
+          ),
+        );
+        y += ch + 5;
       }
 
-      if (step.formula.isNotEmpty) {
-        final fh = CanvasMathPainter.measureHeight(
-          step.formula,
-          maxWidth: contentW - 36,
-          style: _formulaBoxStyle,
+      if (diag.mistakePoint.isNotEmpty) {
+        final my = y;
+        final txt = '错因：${diag.mistakePoint}';
+        final mh = CanvasMathPainter.measureHeight(
+          txt,
+          maxWidth: contentW - 8,
+          style: _stepBodyStyle,
         );
-        final fBox = Rect.fromLTWH(x + 20, y, contentW - 20, fh + 12);
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(fBox, const Radius.circular(7)),
-          Paint()..color = const Color(0xFFEFF6FF),
+        tasks.add(
+          _WriteTask(
+            weight: CanvasMathPainter.estimateWriteWeight(txt),
+            paint: (c, t) => CanvasMathPainter.paintProgressive(
+              c,
+              txt,
+              origin: Offset(x + 4, my),
+              maxWidth: contentW - 8,
+              style: _stepBodyStyle.copyWith(color: const Color(0xFFB91C1C)),
+              progress: t,
+            ).penTip,
+          ),
         );
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(fBox, const Radius.circular(7)),
-          Paint()
-            ..color = const Color(0xFFBFDBFE)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.0,
-        );
-        CanvasMathPainter.paint(
-          canvas,
-          step.formula,
-          origin: Offset(x + 28, y + 6),
-          maxWidth: contentW - 36,
-          style: _formulaBoxStyle,
-        );
-        y = fBox.bottom + 6;
+        y += mh + 5;
       }
 
-      if (step.highlight.isNotEmpty) {
-        y += CanvasMathPainter.paint(
-          canvas,
-          '💡 ${step.highlight}',
-          origin: Offset(x + 22, y),
-          maxWidth: contentW - 24,
-          style: _tipStyle,
+      if (diag.suggestion.isNotEmpty) {
+        final sy = y;
+        final txt = '建议：${diag.suggestion}';
+        final sh = CanvasMathPainter.measureHeight(
+          txt,
+          maxWidth: contentW - 8,
+          style: _stepBodyStyle,
         );
-        y += 5;
-      }
-
-      // 步骤连接线
-      if (i < guidance.steps.length - 1) {
-        canvas.drawLine(
-          Offset(x + 10, stepStartY + 21),
-          Offset(x + 10, y + 4),
-          Paint()
-            ..color = accent.withValues(alpha: 0.32)
-            ..strokeWidth = 1.8,
+        tasks.add(
+          _WriteTask(
+            weight: CanvasMathPainter.estimateWriteWeight(txt),
+            paint: (c, t) => CanvasMathPainter.paintProgressive(
+              c,
+              txt,
+              origin: Offset(x + 4, sy),
+              maxWidth: contentW - 8,
+              style: _stepBodyStyle.copyWith(color: const Color(0xFF0F766E)),
+              progress: t,
+            ).penTip,
+          ),
         );
+        y += sh + 5;
       }
       y += 8;
     }
 
-    // 4. 最终结论
-    if (guidance.finalAnswer.isNotEmpty) {
-      final ansH = CanvasMathPainter.measureHeight(
-        guidance.finalAnswer,
-        maxWidth: contentW - 24,
-        style: _answerStyle,
+    // 分步书写任务
+    for (final step in guidance.steps) {
+      final header = step.title.isNotEmpty
+          ? '${step.stepNo}. ${step.title}'
+          : '${step.stepNo}.';
+      final hy = y;
+      final hh = CanvasMathPainter.measureHeight(
+        header,
+        maxWidth: contentW,
+        style: titleInk,
       );
-      final aBox = Rect.fromLTWH(x, y, contentW, ansH + 34);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(aBox, const Radius.circular(9)),
-        Paint()..color = const Color(0xFFECFDF5),
+      tasks.add(
+        _WriteTask(
+          weight: CanvasMathPainter.estimateWriteWeight(header),
+          paint: (c, t) => CanvasMathPainter.paintProgressive(
+            c,
+            header,
+            origin: Offset(x, hy),
+            maxWidth: contentW,
+            style: titleInk,
+            progress: t,
+          ).penTip,
+        ),
       );
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(aBox, const Radius.circular(9)),
-        Paint()
-          ..color = const Color(0xFF10B981)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.4,
-      );
-      final labelY = _paintMiniSectionTitle(
-        canvas,
-        isIdeas ? '目标检验 / 关键结论' : '最终答案',
-        Offset(x + 10, y + 7),
-        const Color(0xFF047857),
-      );
-      CanvasMathPainter.paint(
-        canvas,
-        guidance.finalAnswer,
-        origin: Offset(x + 10, labelY),
-        maxWidth: contentW - 24,
-        style: _answerStyle,
-      );
-      y = aBox.bottom + 10;
-    }
+      y += hh + 4;
 
-    // 5. 易错点提醒
-    if (guidance.pitfalls.isNotEmpty) {
-      y = _paintMiniSectionTitle(canvas, '易错警示', Offset(x, y), const Color(0xFFB45309));
-      for (final pit in guidance.pitfalls) {
-        y += CanvasMathPainter.paint(
-          canvas,
-          '⚠ $pit',
-          origin: Offset(x + 4, y),
+      if (step.content.isNotEmpty) {
+        final cy = y;
+        final ch = CanvasMathPainter.measureHeight(
+          step.content,
           maxWidth: contentW - 14,
-          style: _tipStyle,
+          style: bodyInk,
         );
-        y += 4;
+        tasks.add(
+          _WriteTask(
+            weight: CanvasMathPainter.estimateWriteWeight(step.content),
+            paint: (c, t) => CanvasMathPainter.paintProgressive(
+              c,
+              step.content,
+              origin: Offset(x + 12, cy),
+              maxWidth: contentW - 14,
+              style: bodyInk,
+              progress: t,
+            ).penTip,
+          ),
+        );
+        y += ch + 4;
       }
-      y += 6;
+
+      if (step.formula.isNotEmpty) {
+        final fy = y;
+        final fh = CanvasMathPainter.measureHeight(
+          step.formula,
+          maxWidth: contentW - 18,
+          style: formulaInk,
+        );
+        tasks.add(
+          _WriteTask(
+            weight: CanvasMathPainter.estimateWriteWeight(step.formula) * 1.35,
+            paint: (c, t) => CanvasMathPainter.paintProgressive(
+              c,
+              step.formula,
+              origin: Offset(x + 16, fy),
+              maxWidth: contentW - 18,
+              style: formulaInk,
+              progress: t,
+            ).penTip,
+          ),
+        );
+        y += fh + 8;
+      }
+
+      if (step.highlight.isNotEmpty) {
+        final ny = y;
+        final txt = '注：${step.highlight}';
+        final nh = CanvasMathPainter.measureHeight(
+          txt,
+          maxWidth: contentW - 14,
+          style: _noteStyle,
+        );
+        tasks.add(
+          _WriteTask(
+            weight: CanvasMathPainter.estimateWriteWeight(txt),
+            paint: (c, t) => CanvasMathPainter.paintProgressive(
+              c,
+              txt,
+              origin: Offset(x + 12, ny),
+              maxWidth: contentW - 14,
+              style: _noteStyle,
+              progress: t,
+            ).penTip,
+          ),
+        );
+        y += nh + 4;
+      }
+      y += 8;
     }
 
-    // 6. 矢量几何 / 函数示意图
+    // 仅解题模式显示最终答案（带简洁双下划线）
+    if (guidance.isSolve && guidance.finalAnswer.isNotEmpty) {
+      final ay = y;
+      final ansTxt = '答：${guidance.finalAnswer}';
+      final ah = CanvasMathPainter.measureHeight(
+        ansTxt,
+        maxWidth: contentW,
+        style: _answerStyle,
+      );
+      tasks.add(
+        _WriteTask(
+          weight: CanvasMathPainter.estimateWriteWeight(ansTxt) * 1.2,
+          paint: (c, t) {
+            final res = CanvasMathPainter.paintProgressive(
+              c,
+              ansTxt,
+              origin: Offset(x, ay),
+              maxWidth: contentW,
+              style: _answerStyle,
+              progress: t,
+            );
+            if (t > 0.85) {
+              final lineT = ((t - 0.85) / 0.15).clamp(0.0, 1.0);
+              final lineW = math.min(contentW, 180.0) * lineT;
+              final underPaint = Paint()
+                ..color = const Color(0xFF059669)
+                ..strokeWidth = 1.4;
+              c.drawLine(
+                Offset(x, ay + ah + 3),
+                Offset(x + lineW, ay + ah + 3),
+                underPaint,
+              );
+              c.drawLine(
+                Offset(x, ay + ah + 6.5),
+                Offset(x + lineW, ay + ah + 6.5),
+                underPaint,
+              );
+            }
+            return res.penTip;
+          },
+        ),
+      );
+      y += ah + 14;
+    }
+
+    if (guidance.pitfalls.isNotEmpty) {
+      for (final pit in guidance.pitfalls) {
+        final py = y;
+        final txt = '注意：$pit';
+        final ph = CanvasMathPainter.measureHeight(
+          txt,
+          maxWidth: contentW - 4,
+          style: _noteStyle,
+        );
+        tasks.add(
+          _WriteTask(
+            weight: CanvasMathPainter.estimateWriteWeight(txt),
+            paint: (c, t) => CanvasMathPainter.paintProgressive(
+              c,
+              txt,
+              origin: Offset(x, py),
+              maxWidth: contentW - 4,
+              style: _noteStyle,
+              progress: t,
+            ).penTip,
+          ),
+        );
+        y += ph + 4;
+      }
+      y += 4;
+    }
+
+    // 坐标级逐笔自动绘制矢量几何/坐标系示意图！
     for (final diagram in guidance.diagrams) {
-      final dRect = Rect.fromLTWH(x, y, contentW, 188);
-      BoardDiagramPainter.paintDiagram(canvas, diagram, dRect);
-      y += 198;
+      final dRect = Rect.fromLTWH(x, y, contentW, 182);
+      tasks.add(
+        _WriteTask(
+          weight: math.max(36.0, diagram.primitives.length * 10.0),
+          paint: (c, t) => BoardDiagramPainter.paintDiagramProgressive(
+            c,
+            diagram,
+            dRect,
+            progress: t,
+          ),
+        ),
+      );
+      y += 190;
     }
 
-    canvas.restore();
+    if (tasks.isEmpty) return null;
+    final totalW = tasks.fold<double>(0.0, (a, b) => a + b.weight);
+    final budget =
+        clampedReveal >= 0.999 ? double.infinity : totalW * clampedReveal;
+
+    var consumed = 0.0;
+    Offset? activeTip;
+    for (final task in tasks) {
+      if (consumed >= budget) break;
+      final localT = budget.isInfinite
+          ? 1.0
+          : ((budget - consumed) / task.weight).clamp(0.0, 1.0);
+      consumed += task.weight;
+      final tip = task.paint(canvas, localT);
+      if (tip != null && localT < 0.999) {
+        activeTip = tip;
+      }
+    }
+    return activeTip;
   }
 
-  static void _paintCardShell(
+  /// 极简克制的白板分区框架：淡白半透纸面 + 左侧 2.5px 标识竖线 + 极轻标题与拖动手柄
+  static void _paintMinimalBlockFrame(
     Canvas canvas,
     Rect rect, {
-    required Color headerColor,
-    required Color borderColor,
+    required Color accent,
     required String title,
-    required String badgeText,
-    required Color badgeBg,
-    required Color badgeFg,
+    bool highlighted = false,
   }) {
-    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(14));
-    // 漫画硬阴影
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(8));
+    // 极轻半透明纸背，保证盖在点阵/方格纸上清晰可读但不突兀
     canvas.drawRRect(
-      rrect.shift(const Offset(3.5, 3.5)),
-      Paint()..color = const Color(0xFF0F172A).withValues(alpha: 0.14),
+      rrect,
+      Paint()..color = Colors.white.withValues(alpha: 0.88),
     );
-    // 卡片纯白底
-    canvas.drawRRect(rrect, Paint()..color = Colors.white);
-
-    // 标题栏底色
-    final headerRect = Rect.fromLTWH(rect.left, rect.top, rect.width, 38);
-    canvas.save();
-    canvas.clipRRect(rrect);
-    canvas.drawRect(headerRect, Paint()..color = headerColor);
-    canvas.drawLine(
-      Offset(rect.left, rect.top + 38),
-      Offset(rect.right, rect.top + 38),
+    // 细边框（拖动时稍加深提示）
+    canvas.drawRRect(
+      rrect,
       Paint()
-        ..color = borderColor
-        ..strokeWidth = 1.6,
+        ..color = highlighted
+            ? accent.withValues(alpha: 0.85)
+            : const Color(0xFFE2E8F0)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = highlighted ? 1.8 : 1.0,
     );
-    canvas.restore();
+    // 左侧 2.5px 标识竖线
+    canvas.drawLine(
+      Offset(rect.left + 2, rect.top + 8),
+      Offset(rect.left + 2, rect.bottom - 8),
+      Paint()
+        ..color = accent.withValues(alpha: 0.72)
+        ..strokeWidth = 2.6
+        ..strokeCap = StrokeCap.round,
+    );
 
-    // 徽章
-    final badgeTp = TextPainter(
-      text: TextSpan(
-        text: badgeText,
+    // 顶部极简标题 + 右侧极轻拖动手柄
+    final handleTp = TextPainter(
+      text: const TextSpan(
+        text: '⋮⋮',
         style: TextStyle(
-          color: badgeFg,
-          fontSize: 10.5,
-          fontWeight: FontWeight.w800,
-          fontFamilyFallback: AppTheme.cjkFontFallback,
+          color: Color(0xFF94A3B8),
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
         ),
       ),
       textDirection: TextDirection.ltr,
-      maxLines: 1,
-    )..layout(maxWidth: 130);
-    final badgeW = badgeTp.width + 14;
-    final badgeRect = Rect.fromLTWH(
-      rect.right - badgeW - 10,
-      rect.top + 9,
-      badgeW,
-      20,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(badgeRect, const Radius.circular(6)),
-      Paint()..color = badgeBg,
-    );
-    badgeTp.paint(
-      canvas,
-      Offset(badgeRect.left + 7, badgeRect.top + (20 - badgeTp.height) / 2),
-    );
+    )..layout();
+    handleTp.paint(canvas, Offset(rect.right - handleTp.width - 10, rect.top + 7));
 
-    // 标题文字（左侧带抓手图标提示可拖动）
     final titleTp = TextPainter(
       text: TextSpan(
-        text: '⋮⋮ $title',
-        style: const TextStyle(
-          color: Color(0xFF0F172A),
-          fontSize: 12.8,
+        text: title,
+        style: TextStyle(
+          color: accent,
+          fontSize: 12.6,
           fontWeight: FontWeight.w800,
           fontFamilyFallback: AppTheme.cjkFontFallback,
         ),
@@ -1114,23 +1264,20 @@ class SmartBoardPainter extends CustomPainter {
       textDirection: TextDirection.ltr,
       maxLines: 1,
       ellipsis: '...',
-    )..layout(maxWidth: math.max(60, rect.width - badgeW - 34));
-    titleTp.paint(
-      canvas,
-      Offset(rect.left + 12, rect.top + (38 - titleTp.height) / 2),
-    );
+    )..layout(maxWidth: math.max(60, rect.width - handleTp.width - 32));
+    titleTp.paint(canvas, Offset(rect.left + 14, rect.top + 7));
 
-    // 外描边
-    canvas.drawRRect(
-      rrect,
+    // 极细标题底分割线
+    canvas.drawLine(
+      Offset(rect.left + 12, rect.top + 27),
+      Offset(rect.right - 12, rect.top + 27),
       Paint()
-        ..color = borderColor
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.0,
+        ..color = const Color(0xFFE2E8F0)
+        ..strokeWidth = 0.9,
     );
   }
 
-  static double _paintMiniSectionTitle(
+  static double _paintMiniLabel(
     Canvas canvas,
     String title,
     Offset pos,
@@ -1141,21 +1288,19 @@ class SmartBoardPainter extends CustomPainter {
         text: title,
         style: TextStyle(
           color: color,
-          fontSize: 11.8,
-          fontWeight: FontWeight.w800,
+          fontSize: 11.6,
+          fontWeight: FontWeight.w700,
           fontFamilyFallback: AppTheme.cjkFontFallback,
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
     tp.paint(canvas, pos);
-    return pos.dy + tp.height + 3;
+    return pos.dy + tp.height + 2;
   }
 }
 
-/// 离屏高清渲染画板内容为 PNG 字节流：
-/// - [includeAiCards] = false 时仅渲染题目板书 + 学生笔迹 + 几何图形（最适合提交给 AI 诊断手写过程，避免旧 AI 解答干扰）；
-/// - [includeAiCards] = true 时渲染完整画板（包含题目、学生笔迹、几何图、AI 思路与 AI 过程板书）。
+/// 离屏高清渲染画板为 PNG
 Future<Uint8List> renderSmartBoardToPng({
   required List<BoardStroke> strokes,
   required List<BoardShape> shapes,
@@ -1191,6 +1336,7 @@ Future<Uint8List> renderSmartBoardToPng({
     showProblemCard: includeProblemCard && visibility.showProblemCard,
     showPhotoCard: includeProblemCard && visibility.showPhotoCard,
     showIdeasCard: includeAiCards && visibility.showIdeasCard,
+    showDiagnosisCard: includeAiCards && visibility.showDiagnosisCard,
     showSolutionCard: includeAiCards && visibility.showSolutionCard,
   );
   final metrics = SmartBoardLayoutMetrics.compute(
@@ -1200,6 +1346,7 @@ Future<Uint8List> renderSmartBoardToPng({
   );
   if (metrics.problemRect != null) includeRect(metrics.problemRect!);
   if (metrics.ideasRect != null) includeRect(metrics.ideasRect!);
+  if (metrics.diagnosisRect != null) includeRect(metrics.diagnosisRect!);
   if (metrics.solutionRect != null) includeRect(metrics.solutionRect!);
 
   if (!minX.isFinite || !minY.isFinite) {
@@ -1230,7 +1377,7 @@ Future<Uint8List> renderSmartBoardToPng({
   if (cards.problem != null &&
       exportVis.showProblemCard &&
       metrics.problemRect != null) {
-    SmartBoardPainter.paintProblemCard(
+    SmartBoardPainter.paintProblemBlock(
       canvas,
       cards.problem!,
       metrics.problemRect!,
@@ -1240,16 +1387,25 @@ Future<Uint8List> renderSmartBoardToPng({
   if (cards.ideas != null &&
       exportVis.showIdeasCard &&
       metrics.ideasRect != null) {
-    SmartBoardPainter.paintGuidanceCard(
+    SmartBoardPainter.paintGuidanceBlock(
       canvas,
       cards.ideas!,
       metrics.ideasRect!,
     );
   }
+  if (cards.diagnosis != null &&
+      exportVis.showDiagnosisCard &&
+      metrics.diagnosisRect != null) {
+    SmartBoardPainter.paintGuidanceBlock(
+      canvas,
+      cards.diagnosis!,
+      metrics.diagnosisRect!,
+    );
+  }
   if (cards.solution != null &&
       exportVis.showSolutionCard &&
       metrics.solutionRect != null) {
-    SmartBoardPainter.paintGuidanceCard(
+    SmartBoardPainter.paintGuidanceBlock(
       canvas,
       cards.solution!,
       metrics.solutionRect!,

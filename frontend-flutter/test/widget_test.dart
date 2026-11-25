@@ -312,33 +312,89 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('拍照识题'), findsOneWidget);
-    expect(find.text('AI 解题思路'), findsOneWidget);
-    expect(find.text('AI 解题过程'), findsOneWidget);
-    expect(find.text('模型 LongCat-2.5'), findsOneWidget);
+    expect(find.text('拍照'), findsOneWidget);
+    expect(find.text('思路'), findsOneWidget);
+    expect(find.text('诊断'), findsOneWidget);
+    expect(find.text('解题'), findsOneWidget);
+    expect(find.text('LongCat-2.5'), findsOneWidget);
 
     // Manually enter a math problem and paint onto board
-    await tester.tap(find.text('拍照识题'));
+    await tester.tap(find.text('拍照'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('手动输入 / 编辑数学题干'));
+    await tester.tap(find.text('手动输入 / 编辑题干'));
     await tester.pumpAndSettle();
 
     await tester.enterText(
       find.byType(TextField).last,
       r'解方程 $x^2 - 5x + 6 = 0$',
     );
-    await tester.tap(find.text('绘制到画板'));
+    await tester.tap(find.text('放入画板'));
     await tester.pumpAndSettle();
 
-    // Trigger AI Ideas drawing onto board
-    await tester.tap(find.text('AI 解题思路'));
+    // Trigger AI Ideas coordinate-traced drawing (no answer leaked)
+    await tester.tap(find.text('思路'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('立即画完'), findsOneWidget);
+    await tester.tap(find.text('立即画完'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('AI 解题思路已绘制'), findsOneWidget);
+    expect(find.text('重播绘制'), findsOneWidget);
 
-    // Trigger AI Solution Analysis drawing onto board
-    await tester.tap(find.text('AI 解题过程'));
+    // Trigger AI Solve full solution drawing
+    await tester.tap(find.text('解题'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('立即画完'), findsOneWidget);
+    await tester.tap(find.text('立即画完'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('AI 解题过程分析已绘制'), findsOneWidget);
+    expect(find.text('重播绘制'), findsOneWidget);
+  });
+
+  testWidgets(
+      'SmartBoardPage renders compact single-row toolbar in phone landscape with large canvas',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(844, 390);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final cache = await GlobalCache.init();
+    final api = _FakeGuoguanlaApi();
+    final welk = AppTheme.buildWelkTheme(
+      isDark: false,
+      accent: AppTheme.presets.first.color,
+    );
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider<GlobalCache>.value(value: cache),
+          Provider<GuoguanlaApi>.value(value: api),
+        ],
+        child: WelkTheme(
+          data: welk,
+          child: MaterialApp(
+            theme: AppTheme.buildMaterialTheme(isDark: false, welk: welk),
+            home: const SmartBoardPage(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('竖屏'), findsOneWidget);
+    expect(find.text('大画布'), findsOneWidget);
+    expect(find.text('拍照'), findsOneWidget);
+    expect(find.text('思路'), findsOneWidget);
+    expect(find.text('诊断'), findsOneWidget);
+    expect(find.text('解题'), findsOneWidget);
+
+    // Toggle immersive big-canvas mode hides bottom dock cleanly
+    await tester.tap(find.text('大画布'));
+    await tester.pumpAndSettle();
+    expect(find.text('显底栏'), findsOneWidget);
+    expect(find.text('清笔迹'), findsNothing);
   });
 }
 
@@ -410,20 +466,19 @@ class _FakeGuoguanlaApi extends GuoguanlaApi {
           formula: r'$(x-2)(x-3)=0$',
         ),
       ],
-      finalAnswer: '分别令两个因式为 0',
+      finalAnswer: '',
     );
   }
 
   @override
-  Future<AiBoardGuidance> analyzeBoardSolution({
+  Future<AiBoardGuidance> solveBoardProblem({
     String? problemText,
     String? boardImageBase64,
     String? problemImageBase64,
     String? userNotes,
-    bool hasHandwriting = false,
   }) async {
     return const AiBoardGuidance(
-      mode: 'ANALYZE',
+      mode: 'SOLVE',
       headline: '规范分步求解',
       summary: '因式分解法一步到位。',
       knowledgePoints: ['一元二次方程'],

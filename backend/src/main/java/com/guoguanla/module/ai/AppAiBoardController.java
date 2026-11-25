@@ -39,15 +39,27 @@ public class AppAiBoardController {
         return Result.ok(aiBoardService.recognizeProblemUpload(file, extraHint));
     }
 
-    @Operation(summary = "AI 生成启发式解题思路（可直接绘制到画板）")
+    @Operation(summary = "AI 生成启发式解题思路（仅给思路/公式/方法，不直接给答案）")
     @PostMapping("/board/ideas")
     public Result<AiBoardVO.GuidanceVO> generateIdeas(@RequestBody AiBoardAnalyzeReq req) {
         return Result.ok(aiBoardService.generateIdeas(req));
     }
 
-    @Operation(summary = "AI 分析画板解题过程与手写批改（可直接绘制到画板）")
+    @Operation(summary = "AI 诊断学生手写解题过程（仅诊断对错与错因，不直接给答案）")
+    @PostMapping("/board/diagnose")
+    public Result<AiBoardVO.GuidanceVO> diagnoseHandwriting(@RequestBody AiBoardAnalyzeReq req) {
+        return Result.ok(aiBoardService.diagnoseHandwriting(req));
+    }
+
+    @Operation(summary = "AI 直接绘制完整规范解题过程与答案")
+    @PostMapping("/board/solve")
+    public Result<AiBoardVO.GuidanceVO> solveProblem(@RequestBody AiBoardAnalyzeReq req) {
+        return Result.ok(aiBoardService.solveProblem(req));
+    }
+
+    @Operation(summary = "兼容旧路径：AI 解题过程分析")
     @PostMapping("/board/analyze")
     public Result<AiBoardVO.GuidanceVO> analyzeSolution(@RequestBody AiBoardAnalyzeReq req) {
-        return Result.ok(aiBoardService.analyzeSolution(req));
+        return Result.ok(aiBoardService.solveProblem(req));
     }
 }

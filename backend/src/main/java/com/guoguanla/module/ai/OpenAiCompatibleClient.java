@@ -47,6 +47,12 @@ public class OpenAiCompatibleClient {
          * 若上游服务商不支持该扩展字段返回 HTTP 400，客户端自动去除后无缝重试。
          */
         private boolean disableThinking;
+
+        /**
+         * 可选：是否启用 OpenAI 标准 JSON Object 结构化输出约束（response_format={"type":"json_object"}），
+         * 防止中文文本内出现未转义英文引号导致 JSON 解析失败；上游不支持时自动降级重试。
+         */
+        private boolean jsonObjectResponse;
     }
 
     @Data
@@ -59,18 +65,25 @@ public class OpenAiCompatibleClient {
 
     public ChatCallResult chat(ChatCallRequest req) {
         try {
-            return executeChat(req, req.isDisableThinking());
+            return executeChat(req, req.isDisableThinking(), req.isJsonObjectResponse());
         } catch (BizException e) {
-            if (req.isDisableThinking() && e.getMessage() != null
-                    && (e.getMessage().contains("HTTP 400") || e.getMessage().contains("thinking"))) {
-                log.info("Upstream rejected thinking parameter, retrying with standard OpenAI payload: model={}", req.getModel());
-                return executeChat(req, false);
+            boolean hasExtra = req.isDisableThinking() || req.isJsonObjectResponse();
+            if (hasExtra && e.getMessage() != null
+                    && (e.getMessage().contains("HTTP 400")
+                    || e.getMessage().contains("thinking")
+                    || e.getMessage().contains("response_format"))) {
+                log.info("Upstream rejected extended parameters, retrying with minimal OpenAI payload: model={}", req.getModel());
+                return executeChat(req, false, false);
             }
             throw e;
         }
     }
 
-    private ChatCallResult executeChat(ChatCallRequest req, boolean includeDisableThinking) {
+    private ChatCallResult executeChat(
+            ChatCallRequest req,
+            boolean includeDisableThinking,
+            boolean includeJsonObjectFormat
+    ) {
         long start = System.currentTimeMillis();
         HttpURLConnection conn = null;
         try {
@@ -105,6 +118,9 @@ public class OpenAiCompatibleClient {
             payload.put("stream", false);
             if (includeDisableThinking) {
                 payload.put("thinking", Map.of("type", "disabled"));
+            }
+            if (includeJsonObjectFormat) {
+                payload.put("response_format", Map.of("type", "json_object"));
             }
 
             byte[] bodyBytes = objectMapper.writeValueAsString(payload).getBytes(StandardCharsets.UTF_8);

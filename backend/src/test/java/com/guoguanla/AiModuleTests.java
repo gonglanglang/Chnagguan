@@ -109,13 +109,28 @@ class AiModuleTests {
                   "diagrams": []
                 }
                 """;
-        AiBoardVO.GuidanceVO guidance = aiBoardService.parseGuidanceResult("ANALYZE", rawGuidance, "LongCat-2.5", 500L);
+        AiBoardVO.GuidanceVO guidance = aiBoardService.parseGuidanceResult("SOLVE", rawGuidance, "LongCat-2.5", 500L);
         assertThat(guidance.getHeadline()).isEqualTo("配方法与求根公式");
         assertThat(guidance.getStudentDiagnosis()).isNotNull();
         assertThat(guidance.getStudentDiagnosis().getStatus()).isEqualTo("PARTIAL");
         assertThat(guidance.getSteps()).hasSize(2);
         assertThat(guidance.getSteps().get(0).getFormula()).contains("\\times");
         assertThat(guidance.getFinalAnswer()).contains("\\frac{5}{2}");
+
+        // 思路模式与诊断模式必须屏蔽最终答案
+        AiBoardVO.GuidanceVO ideasOnly = aiBoardService.parseGuidanceResult("IDEAS", rawGuidance, "LongCat-2.5", 300L);
+        assertThat(ideasOnly.getFinalAnswer()).isEmpty();
+        AiBoardVO.GuidanceVO diagOnly = aiBoardService.parseGuidanceResult("DIAGNOSE", rawGuidance, "LongCat-2.5", 300L);
+        assertThat(diagOnly.getFinalAnswer()).isEmpty();
+    }
+
+    @Test
+    void diagnoseEndpointRequiresHandwritingImage() throws Exception {
+        mockMvc.perform(post("/api/app/ai/board/diagnose")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"problemText\":\"解方程 x^2-1=0\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400));
     }
 
     @Test
