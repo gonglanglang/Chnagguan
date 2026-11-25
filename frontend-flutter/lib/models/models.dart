@@ -1199,3 +1199,394 @@ class AppVersionInfo {
     );
   }
 }
+
+double? _asNullableDouble(dynamic v) {
+  if (v == null) return null;
+  if (v is double) return v;
+  if (v is num) return v.toDouble();
+  return double.tryParse(v.toString());
+}
+
+double _asDouble(dynamic v, [double fallback = 0]) =>
+    _asNullableDouble(v) ?? fallback;
+
+class AiBoardStatus {
+  const AiBoardStatus({
+    required this.enabled,
+    required this.configured,
+    required this.modelName,
+    required this.supportsVision,
+    required this.message,
+  });
+
+  final bool enabled;
+  final bool configured;
+  final String modelName;
+  final bool supportsVision;
+  final String message;
+
+  bool get ready => enabled && configured;
+
+  factory AiBoardStatus.fromJson(Map<String, dynamic> json) {
+    return AiBoardStatus(
+      enabled: _asBool(json['enabled']),
+      configured: _asBool(json['configured']),
+      modelName: _asString(json['modelName']),
+      supportsVision: _asBool(json['supportsVision']),
+      message: _asString(json['message']),
+    );
+  }
+}
+
+class DiagramPrimitive {
+  const DiagramPrimitive({
+    required this.type,
+    this.x1,
+    this.y1,
+    this.x2,
+    this.y2,
+    this.cx,
+    this.cy,
+    this.r,
+    this.x,
+    this.y,
+    this.points = const [],
+    this.label,
+    this.text,
+    this.color = '#1E293B',
+    this.fillColor,
+    this.dashed = false,
+  });
+
+  final String type;
+  final double? x1;
+  final double? y1;
+  final double? x2;
+  final double? y2;
+  final double? cx;
+  final double? cy;
+  final double? r;
+  final double? x;
+  final double? y;
+  final List<List<double>> points;
+  final String? label;
+  final String? text;
+  final String color;
+  final String? fillColor;
+  final bool dashed;
+
+  factory DiagramPrimitive.fromJson(Map<String, dynamic> json) {
+    final rawPts = json['points'] as List<dynamic>? ?? const [];
+    final pts = <List<double>>[];
+    for (final item in rawPts) {
+      if (item is List && item.length >= 2) {
+        final px = _asNullableDouble(item[0]);
+        final py = _asNullableDouble(item[1]);
+        if (px != null && py != null) {
+          pts.add(<double>[px, py]);
+        }
+      }
+    }
+    return DiagramPrimitive(
+      type: _asString(json['type']).toLowerCase(),
+      x1: _asNullableDouble(json['x1']),
+      y1: _asNullableDouble(json['y1']),
+      x2: _asNullableDouble(json['x2']),
+      y2: _asNullableDouble(json['y2']),
+      cx: _asNullableDouble(json['cx']),
+      cy: _asNullableDouble(json['cy']),
+      r: _asNullableDouble(json['r']),
+      x: _asNullableDouble(json['x']),
+      y: _asNullableDouble(json['y']),
+      points: pts,
+      label: _asNullableString(json['label']),
+      text: _asNullableString(json['text']),
+      color: _asString(json['color'], '#1E293B'),
+      fillColor: _asNullableString(json['fillColor']),
+      dashed: _asBool(json['dashed']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'type': type,
+        if (x1 != null) 'x1': x1,
+        if (y1 != null) 'y1': y1,
+        if (x2 != null) 'x2': x2,
+        if (y2 != null) 'y2': y2,
+        if (cx != null) 'cx': cx,
+        if (cy != null) 'cy': cy,
+        if (r != null) 'r': r,
+        if (x != null) 'x': x,
+        if (y != null) 'y': y,
+        if (points.isNotEmpty) 'points': points,
+        if (label != null) 'label': label,
+        if (text != null) 'text': text,
+        'color': color,
+        if (fillColor != null) 'fillColor': fillColor,
+        'dashed': dashed,
+      };
+}
+
+class BoardDiagramSpec {
+  const BoardDiagramSpec({
+    required this.title,
+    this.width = 320,
+    this.height = 220,
+    required this.primitives,
+  });
+
+  final String title;
+  final double width;
+  final double height;
+  final List<DiagramPrimitive> primitives;
+
+  factory BoardDiagramSpec.fromJson(Map<String, dynamic> json) {
+    final primsRaw = json['primitives'] as List<dynamic>? ?? const [];
+    return BoardDiagramSpec(
+      title: _asString(json['title'], '示意图'),
+      width: _asDouble(json['width'], 320),
+      height: _asDouble(json['height'], 220),
+      primitives: primsRaw
+          .whereType<Map<String, dynamic>>()
+          .map(DiagramPrimitive.fromJson)
+          .toList(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'title': title,
+        'width': width,
+        'height': height,
+        'primitives': primitives.map((e) => e.toJson()).toList(),
+      };
+}
+
+class AiRecognizeResult {
+  const AiRecognizeResult({
+    required this.title,
+    required this.problemText,
+    required this.subjectTag,
+    required this.questionType,
+    required this.difficulty,
+    this.knownConditions = const [],
+    this.targets = const [],
+    this.hasFigure = false,
+    this.figureNote = '',
+    this.diagrams = const [],
+    this.modelUsed = '',
+    this.latencyMs = 0,
+  });
+
+  final String title;
+  final String problemText;
+  final String subjectTag;
+  final String questionType;
+  final String difficulty;
+  final List<String> knownConditions;
+  final List<String> targets;
+  final bool hasFigure;
+  final String figureNote;
+  final List<BoardDiagramSpec> diagrams;
+  final String modelUsed;
+  final int latencyMs;
+
+  AiRecognizeResult copyWith({
+    String? title,
+    String? problemText,
+    String? subjectTag,
+    String? questionType,
+    String? difficulty,
+    List<String>? knownConditions,
+    List<String>? targets,
+    bool? hasFigure,
+    String? figureNote,
+    List<BoardDiagramSpec>? diagrams,
+  }) {
+    return AiRecognizeResult(
+      title: title ?? this.title,
+      problemText: problemText ?? this.problemText,
+      subjectTag: subjectTag ?? this.subjectTag,
+      questionType: questionType ?? this.questionType,
+      difficulty: difficulty ?? this.difficulty,
+      knownConditions: knownConditions ?? this.knownConditions,
+      targets: targets ?? this.targets,
+      hasFigure: hasFigure ?? this.hasFigure,
+      figureNote: figureNote ?? this.figureNote,
+      diagrams: diagrams ?? this.diagrams,
+      modelUsed: modelUsed,
+      latencyMs: latencyMs,
+    );
+  }
+
+  factory AiRecognizeResult.fromJson(Map<String, dynamic> json) {
+    final diagRaw = json['diagrams'] as List<dynamic>? ?? const [];
+    return AiRecognizeResult(
+      title: _asString(json['title'], '数学解答题'),
+      problemText: _asString(json['problemText']),
+      subjectTag: _asString(json['subjectTag'], '数学'),
+      questionType: _asString(json['questionType'], '解答题'),
+      difficulty: _asString(json['difficulty'], '中档'),
+      knownConditions: _asStringList(json['knownConditions']),
+      targets: _asStringList(json['targets']),
+      hasFigure: _asBool(json['hasFigure']),
+      figureNote: _asString(json['figureNote']),
+      diagrams: diagRaw
+          .whereType<Map<String, dynamic>>()
+          .map(BoardDiagramSpec.fromJson)
+          .toList(),
+      modelUsed: _asString(json['modelUsed']),
+      latencyMs: _asInt(json['latencyMs']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'title': title,
+        'problemText': problemText,
+        'subjectTag': subjectTag,
+        'questionType': questionType,
+        'difficulty': difficulty,
+        'knownConditions': knownConditions,
+        'targets': targets,
+        'hasFigure': hasFigure,
+        'figureNote': figureNote,
+        'diagrams': diagrams.map((e) => e.toJson()).toList(),
+        'modelUsed': modelUsed,
+        'latencyMs': latencyMs,
+      };
+}
+
+class AiStudentDiagnosis {
+  const AiStudentDiagnosis({
+    required this.status,
+    required this.comment,
+    this.mistakePoint = '',
+    this.suggestion = '',
+  });
+
+  final String status;
+  final String comment;
+  final String mistakePoint;
+  final String suggestion;
+
+  factory AiStudentDiagnosis.fromJson(Map<String, dynamic> json) {
+    return AiStudentDiagnosis(
+      status: _asString(json['status'], 'NONE').toUpperCase(),
+      comment: _asString(json['comment']),
+      mistakePoint: _asString(json['mistakePoint']),
+      suggestion: _asString(json['suggestion']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'status': status,
+        'comment': comment,
+        'mistakePoint': mistakePoint,
+        'suggestion': suggestion,
+      };
+}
+
+class AiBoardStep {
+  const AiBoardStep({
+    required this.stepNo,
+    required this.title,
+    required this.content,
+    this.formula = '',
+    this.highlight = '',
+  });
+
+  final int stepNo;
+  final String title;
+  final String content;
+  final String formula;
+  final String highlight;
+
+  factory AiBoardStep.fromJson(Map<String, dynamic> json) {
+    return AiBoardStep(
+      stepNo: _asInt(json['stepNo'], 1),
+      title: _asString(json['title']),
+      content: _asString(json['content']),
+      formula: _asString(json['formula']),
+      highlight: _asString(json['highlight']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'stepNo': stepNo,
+        'title': title,
+        'content': content,
+        'formula': formula,
+        'highlight': highlight,
+      };
+}
+
+class AiBoardGuidance {
+  const AiBoardGuidance({
+    required this.mode,
+    required this.headline,
+    this.summary = '',
+    this.knowledgePoints = const [],
+    this.studentDiagnosis,
+    this.steps = const [],
+    this.finalAnswer = '',
+    this.pitfalls = const [],
+    this.diagrams = const [],
+    this.modelUsed = '',
+    this.latencyMs = 0,
+  });
+
+  final String mode;
+  final String headline;
+  final String summary;
+  final List<String> knowledgePoints;
+  final AiStudentDiagnosis? studentDiagnosis;
+  final List<AiBoardStep> steps;
+  final String finalAnswer;
+  final List<String> pitfalls;
+  final List<BoardDiagramSpec> diagrams;
+  final String modelUsed;
+  final int latencyMs;
+
+  bool get isIdeas => mode.toUpperCase() == 'IDEAS';
+
+  factory AiBoardGuidance.fromJson(Map<String, dynamic> json) {
+    final stepsRaw = json['steps'] as List<dynamic>? ?? const [];
+    final diagRaw = json['diagrams'] as List<dynamic>? ?? const [];
+    final stuDiagRaw = json['studentDiagnosis'];
+    return AiBoardGuidance(
+      mode: _asString(json['mode'], 'IDEAS').toUpperCase(),
+      headline: _asString(json['headline'], 'AI 板书指导'),
+      summary: _asString(json['summary']),
+      knowledgePoints: _asStringList(json['knowledgePoints']),
+      studentDiagnosis: stuDiagRaw is Map<String, dynamic>
+          ? AiStudentDiagnosis.fromJson(stuDiagRaw)
+          : null,
+      steps: stepsRaw
+          .whereType<Map<String, dynamic>>()
+          .map(AiBoardStep.fromJson)
+          .toList(),
+      finalAnswer: _asString(json['finalAnswer']),
+      pitfalls: _asStringList(json['pitfalls']),
+      diagrams: diagRaw
+          .whereType<Map<String, dynamic>>()
+          .map(BoardDiagramSpec.fromJson)
+          .toList(),
+      modelUsed: _asString(json['modelUsed']),
+      latencyMs: _asInt(json['latencyMs']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'mode': mode,
+        'headline': headline,
+        'summary': summary,
+        'knowledgePoints': knowledgePoints,
+        if (studentDiagnosis != null)
+          'studentDiagnosis': studentDiagnosis!.toJson(),
+        'steps': steps.map((e) => e.toJson()).toList(),
+        'finalAnswer': finalAnswer,
+        'pitfalls': pitfalls,
+        'diagrams': diagrams.map((e) => e.toJson()).toList(),
+        'modelUsed': modelUsed,
+        'latencyMs': latencyMs,
+      };
+}

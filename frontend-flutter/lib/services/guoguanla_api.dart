@@ -408,6 +408,87 @@ class GuoguanlaApi {
     );
   }
 
+  // ==================== AI Smart Board ====================
+
+  Future<AiBoardStatus> getAiBoardStatus() {
+    return client.request<AiBoardStatus>(
+      path: '/app/ai/status',
+      method: 'GET',
+      timeout: const Duration(seconds: 10),
+      parser: (raw) => AiBoardStatus.fromJson(_asMap(raw)),
+    );
+  }
+
+  Future<AiRecognizeResult> recognizeMathProblem({
+    required Uint8List imageBytes,
+    required String filename,
+    String? extraHint,
+  }) {
+    return client.uploadBytes<AiRecognizeResult>(
+      path: '/app/ai/recognize-problem/upload',
+      bytes: imageBytes,
+      filename: filename,
+      extraFields: {
+        if (extraHint != null && extraHint.trim().isNotEmpty)
+          'extraHint': extraHint.trim(),
+      },
+      timeout: const Duration(seconds: 90),
+      parser: (raw) => AiRecognizeResult.fromJson(_asMap(raw)),
+    );
+  }
+
+  Future<AiBoardGuidance> generateBoardIdeas({
+    String? problemText,
+    String? boardImageBase64,
+    String? problemImageBase64,
+    String? userNotes,
+    bool hasHandwriting = false,
+  }) {
+    return client.request<AiBoardGuidance>(
+      path: '/app/ai/board/ideas',
+      method: 'POST',
+      timeout: const Duration(seconds: 90),
+      data: {
+        if (problemText != null && problemText.trim().isNotEmpty)
+          'problemText': problemText.trim(),
+        if (boardImageBase64 != null && boardImageBase64.isNotEmpty)
+          'boardImageBase64': boardImageBase64,
+        if (problemImageBase64 != null && problemImageBase64.isNotEmpty)
+          'problemImageBase64': problemImageBase64,
+        if (userNotes != null && userNotes.trim().isNotEmpty)
+          'userNotes': userNotes.trim(),
+        'hasHandwriting': hasHandwriting,
+      },
+      parser: (raw) => AiBoardGuidance.fromJson(_asMap(raw)),
+    );
+  }
+
+  Future<AiBoardGuidance> analyzeBoardSolution({
+    String? problemText,
+    String? boardImageBase64,
+    String? problemImageBase64,
+    String? userNotes,
+    bool hasHandwriting = false,
+  }) {
+    return client.request<AiBoardGuidance>(
+      path: '/app/ai/board/analyze',
+      method: 'POST',
+      timeout: const Duration(seconds: 120),
+      data: {
+        if (problemText != null && problemText.trim().isNotEmpty)
+          'problemText': problemText.trim(),
+        if (boardImageBase64 != null && boardImageBase64.isNotEmpty)
+          'boardImageBase64': boardImageBase64,
+        if (problemImageBase64 != null && problemImageBase64.isNotEmpty)
+          'problemImageBase64': problemImageBase64,
+        if (userNotes != null && userNotes.trim().isNotEmpty)
+          'userNotes': userNotes.trim(),
+        'hasHandwriting': hasHandwriting,
+      },
+      parser: (raw) => AiBoardGuidance.fromJson(_asMap(raw)),
+    );
+  }
+
   // ==================== App Version ====================
 
   Future<AppVersionInfo> checkLatestVersion({

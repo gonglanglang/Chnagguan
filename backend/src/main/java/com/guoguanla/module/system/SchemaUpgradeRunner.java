@@ -69,6 +69,7 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
         backfillEssayGateKeys();
         upgradeNoticeCopy();
         ensureAppVersionConfigs();
+        ensureAiConfigs();
     }
 
     private void ensureEduRealmTable() {
@@ -316,6 +317,18 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
         ensureConfig("app_update_notes", "1. 初始正式版发布，支持六大修仙境界闯关与错题巩固\n2. 支持在线检测新版本更新", "App最新版本更新日志");
         ensureConfig("app_download_url", "", "App最新APK下载地址");
         ensureConfig("app_force_update", "false", "App是否强制更新");
+    }
+
+    private void ensureAiConfigs() {
+        ensureConfig("ai_enabled", "true", "是否启用学生端 AI 智能手写画板");
+        ensureConfig("ai_base_url", "https://api.longcat.chat/openai", "OpenAI 兼容格式 AI 接口根地址");
+        ensureConfig("ai_api_key", "", "AI 服务 API 密钥（仅服务端保存，脱敏展示）");
+        ensureConfig("ai_model", "LongCat-2.5", "默认 AI 模型名称");
+        ensureConfig("ai_vision_model", "", "视觉识图模型名称（留空则复用默认模型）");
+        ensureConfig("ai_temperature", "0.2", "AI 采样温度（0.0~1.5，数学求解建议 0.2）");
+        ensureConfig("ai_max_tokens", "4096", "AI 单次最大输出 Token 数");
+        ensureConfig("ai_timeout_sec", "90", "AI 上游请求超时时间（秒）");
+        ensureConfig("ai_system_prompt", "", "自定义 AI 数学助教系统提示词（留空使用内置教研提示词）");
     }
 
     private void ensureConfig(String key, String value, String desc) {

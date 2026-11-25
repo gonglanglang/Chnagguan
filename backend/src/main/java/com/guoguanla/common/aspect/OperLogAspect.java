@@ -64,6 +64,7 @@ public class OperLogAspect {
         String detailJson = "{}";
         try {
             detailJson = objectMapper.writeValueAsString(Map.of("args", safeArgs));
+            detailJson = detailJson.replaceAll("(?i)(\"(?:apiKey|password|secret|accessKeySecret|token)\"\\s*:\\s*\")([^\"]*)(\")", "$1***$3");
             if (detailJson.length() > 4000) {
                 detailJson = objectMapper.writeValueAsString(Map.of("truncated", true, "summary", operLog.action()));
             }

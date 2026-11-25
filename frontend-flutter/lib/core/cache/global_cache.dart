@@ -143,6 +143,24 @@ enum GlobalCacheKey {
       preserveOnAppUpdate: true,
       preserveOnCacheClear: true,
     ),
+  ),
+  smartBoardPrefs(
+    GlobalCacheEntryMeta(
+      storageKey: 'ggl_smart_board_prefs',
+      description: '智能手写画板个人偏好（默认纸张底纹、笔触粗细与橡皮模式）',
+      category: GlobalCacheCategory.preference,
+      preserveOnAppUpdate: true,
+      preserveOnCacheClear: true,
+    ),
+  ),
+  smartBoardDraft(
+    GlobalCacheEntryMeta(
+      storageKey: 'ggl_smart_board_draft',
+      description: '首页 AI 智能手写画板最近草稿快照（含题目、笔迹、几何图元与 AI 板书，可在清理缓存时释放）',
+      category: GlobalCacheCategory.temporary,
+      preserveOnAppUpdate: true,
+      preserveOnCacheClear: false,
+    ),
   );
 
   const GlobalCacheKey(this.meta);
@@ -383,7 +401,49 @@ class GlobalCache {
     return previous.isNotEmpty;
   }
 
-  // ==================== 5. 缓存统计、快照与安全清理 ====================
+  // ==================== 5. 智能手写画板偏好与草稿 (preference / temporary) ====================
+
+  Map<String, dynamic> get smartBoardPrefs {
+    final raw = _prefs.getString(GlobalCacheKey.smartBoardPrefs.storageKey);
+    if (raw == null || raw.isEmpty) return const <String, dynamic>{};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) return decoded;
+    } catch (_) {
+      // 忽略损坏的偏好缓存
+    }
+    return const <String, dynamic>{};
+  }
+
+  Future<void> setSmartBoardPrefs(Map<String, dynamic> prefs) async {
+    await _prefs.setString(
+      GlobalCacheKey.smartBoardPrefs.storageKey,
+      jsonEncode(prefs),
+    );
+  }
+
+  Map<String, dynamic>? get smartBoardDraft {
+    final raw = _prefs.getString(GlobalCacheKey.smartBoardDraft.storageKey);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) return decoded;
+    } catch (_) {
+      // 忽略损坏草稿
+    }
+    return null;
+  }
+
+  Future<void> setSmartBoardDraft(Map<String, dynamic>? draft) async {
+    final key = GlobalCacheKey.smartBoardDraft.storageKey;
+    if (draft == null || draft.isEmpty) {
+      await _prefs.remove(key);
+    } else {
+      await _prefs.setString(key, jsonEncode(draft));
+    }
+  }
+
+  // ==================== 6. 缓存统计、快照与安全清理 ====================
 
   /// 导出全局缓存对象当前状态摘要（已对 Token 脱敏，便于调试排查）
   Map<String, Object?> snapshot() {
@@ -399,6 +459,8 @@ class GlobalCache {
       'lastWatchedVideoLessons': lastWatchedVideoLessons,
       'lastAnnouncementVersion': lastAnnouncementVersion,
       'lastInstalledAppVersion': lastInstalledAppVersion,
+      'hasSmartBoardDraft': smartBoardDraft != null,
+      'smartBoardPrefs': smartBoardPrefs,
     };
   }
 

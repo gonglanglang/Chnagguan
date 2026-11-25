@@ -4,6 +4,7 @@ import 'package:guoguanla_app/core/utils/format_utils.dart';
 import 'package:guoguanla_app/core/utils/math_parser.dart';
 import 'package:guoguanla_app/core/utils/update_utils.dart';
 import 'package:guoguanla_app/models/models.dart';
+import 'package:guoguanla_app/widgets/smart_board/board_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -182,6 +183,56 @@ void main() {
       expect(cache.shouldAutoShowAnnouncement('1.0.15+115'), isTrue);
       await cache.markAnnouncementShown('1.0.15+115');
       expect(cache.shouldAutoShowAnnouncement('1.0.15+115'), isFalse);
+    });
+
+    test('persists smartBoardPrefs and releases smartBoardDraft on cache clear',
+        () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final cache = await GlobalCache.init();
+
+      await cache.setSmartBoardPrefs({'paper': 'grid', 'widthIdx': 2});
+      await cache.setSmartBoardDraft({
+        'problem': {'title': '测试题', 'problemText': r'解方程 $x^2=4$'},
+      });
+
+      expect(cache.smartBoardPrefs['paper'], 'grid');
+      expect(cache.smartBoardDraft?['problem'], isNotNull);
+
+      await cache.clearTemporaryCache();
+      expect(cache.smartBoardPrefs['paper'], 'grid');
+      expect(cache.smartBoardDraft, isNull);
+    });
+  });
+
+  group('SmartBoard Models', () {
+    test('serializes strokes/shapes and supports accurate stroke eraser hitTest',
+        () {
+      final stroke = BoardStroke(
+        colorValue: 0xFF2563EB,
+        width: 3.4,
+        points: const [Offset(10, 10), Offset(110, 10)],
+      );
+      expect(stroke.hitTest(const Offset(60, 12), 8), isTrue);
+      expect(stroke.hitTest(const Offset(60, 50), 8), isFalse);
+
+      final restoredStroke = BoardStroke.fromJson(stroke.toJson());
+      expect(restoredStroke, isNotNull);
+      expect(restoredStroke!.points.length, 2);
+      expect(restoredStroke.colorValue, 0xFF2563EB);
+
+      final shape = BoardShape(
+        kind: BoardShapeKind.dashedLine,
+        start: const Offset(0, 0),
+        end: const Offset(100, 100),
+        colorValue: 0xFFDC2626,
+        width: 2.5,
+      );
+      expect(shape.hitTest(const Offset(50, 52), 8), isTrue);
+      expect(shape.hitTest(const Offset(10, 90), 8), isFalse);
+
+      final restoredShape = BoardShape.fromJson(shape.toJson());
+      expect(restoredShape, isNotNull);
+      expect(restoredShape!.kind, BoardShapeKind.dashedLine);
     });
   });
 }

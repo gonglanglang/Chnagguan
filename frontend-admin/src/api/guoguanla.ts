@@ -298,6 +298,29 @@ export interface AppVersionInfo {
   source: string;
 }
 
+export interface AiConfigInfo {
+  enabled: boolean;
+  baseUrl: string;
+  resolvedEndpoint: string;
+  apiKeyMasked: string;
+  hasApiKey: boolean;
+  model: string;
+  visionModel: string;
+  temperature: number;
+  maxTokens: number;
+  timeoutSec: number;
+  systemPrompt: string;
+}
+
+export interface AiTestResult {
+  ok: boolean;
+  latencyMs?: number;
+  endpoint?: string;
+  model?: string;
+  reply?: string;
+  errorMessage?: string;
+}
+
 // 1. 数据概览
 export const getDashboardOverview = () =>
   http.get<ApiResult<DashboardOverview>, any>("/dashboard/overview");
@@ -316,6 +339,29 @@ export const updateConfig = (configKey: string, configValue: string) =>
   http.request<ApiResult<void>>("put", "/configs", {
     data: { configKey, configValue }
   });
+
+export const getAiConfig = () =>
+  http.get<ApiResult<AiConfigInfo>, any>("/ai/config");
+
+export const updateAiConfig = (data: {
+  enabled: boolean;
+  baseUrl: string;
+  apiKey?: string;
+  clearApiKey?: boolean;
+  model: string;
+  visionModel?: string;
+  temperature?: number;
+  maxTokens?: number;
+  timeoutSec?: number;
+  systemPrompt?: string;
+}) => http.request<ApiResult<AiConfigInfo>>("put", "/ai/config", { data });
+
+export const testAiConfig = (data?: {
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+  timeoutSec?: number;
+}) => http.post<ApiResult<AiTestResult>, any>("/ai/test", { data, timeout: 90000 });
 
 export const getAdminAppVersion = (refresh = false) =>
   http.get<ApiResult<AppVersionInfo>, any>("/app/version/latest", {

@@ -32,7 +32,13 @@ public enum ErrorCode {
     // 30001+ 答题与错题
     QUIZ_SESSION_INVALID(30001, "答题会话不存在或无权访问"),
     QUIZ_ALREADY_SUBMITTED(30002, "本次答题已交卷，请勿重复提交"),
-    GUEST_MODE_DISABLED(30003, "游客模式未开启，请先登录");
+    GUEST_MODE_DISABLED(30003, "游客模式未开启，请先登录"),
+
+    // 40001+ AI 智能画板
+    AI_DISABLED(40001, "AI 智能画板功能暂未开启"),
+    AI_NOT_CONFIGURED(40002, "AI 服务尚未配置完成，请管理员在后台配置接口与密钥"),
+    AI_UPSTREAM_ERROR(40003, "AI 模型服务调用失败，请稍后重试"),
+    AI_PARSE_ERROR(40004, "AI 返回结果格式异常，请稍后重试");
 
     private final int code;
     private final String message;

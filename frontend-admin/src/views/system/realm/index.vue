@@ -6,6 +6,9 @@ import {
   updateRealm,
   getConfigs,
   updateConfig,
+  getAiConfig,
+  updateAiConfig,
+  testAiConfig,
   getAdminAppVersion,
   initAppApkUpload,
   publishAppApk,
@@ -13,7 +16,9 @@ import {
   uploadAppApk,
   OssDirectNetworkError,
   type RealmConfig,
-  type AppVersionInfo
+  type AppVersionInfo,
+  type AiConfigInfo,
+  type AiTestResult
 } from "@/api/guoguanla";
 
 defineOptions({
@@ -22,16 +27,33 @@ defineOptions({
 
 const loading = ref(false);
 const savingBasic = ref(false);
+const savingAi = ref(false);
+const testingAi = ref(false);
 const savingVersion = ref(false);
 const syncingGithub = ref(false);
 const uploadingApk = ref(false);
 const apkUploadProgress = ref(0);
 const realms = ref<RealmConfig[]>([]);
 const effectiveVersion = ref<AppVersionInfo | null>(null);
+const aiConfigView = ref<AiConfigInfo | null>(null);
+const aiTestResult = ref<AiTestResult | null>(null);
 
 const basicForm = reactive({
   guestMode: true,
   appNotice: ""
+});
+
+const aiForm = reactive({
+  enabled: true,
+  baseUrl: "https://api.longcat.chat/openai",
+  apiKey: "",
+  clearApiKey: false,
+  model: "LongCat-2.5",
+  visionModel: "",
+  temperature: 0.2,
+  maxTokens: 4096,
+  timeoutSec: 60,
+  systemPrompt: ""
 });
 
 const versionForm = reactive({
@@ -46,10 +68,11 @@ const versionForm = reactive({
 async function fetchAll() {
   loading.value = true;
   try {
-    const [realmRes, cfgRes, verRes] = await Promise.all([
+    const [realmRes, cfgRes, verRes, aiRes] = await Promise.all([
       getRealms(),
       getConfigs(),
-      getAdminAppVersion(false)
+      getAdminAppVersion(false),
+      getAiConfig().catch(() => null)
     ]);
     realms.value = realmRes.data;
     const cfgList = cfgRes.data || [];
@@ -66,8 +89,77 @@ async function fetchAll() {
     versionForm.forceUpdate = map.get("app_force_update") === "true";
     versionForm.updateNotes = map.get("app_update_notes") || "";
     effectiveVersion.value = verRes.data;
+
+    if (aiRes?.data) {
+      applyAiConfigView(aiRes.data);
+    }
   } finally {
     loading.value = false;
+  }
+}
+
+function applyAiConfigView(data: AiConfigInfo) {
+  aiConfigView.value = data;
+  aiForm.enabled = data.enabled;
+  aiForm.baseUrl = data.baseUrl || "https://api.longcat.chat/openai";
+  aiForm.apiKey = "";
+  aiForm.clearApiKey = false;
+  aiForm.model = data.model || "LongCat-2.5";
+  aiForm.visionModel = data.visionModel || "";
+  aiForm.temperature = data.temperature ?? 0.2;
+  aiForm.maxTokens = data.maxTokens ?? 4096;
+  aiForm.timeoutSec = data.timeoutSec ?? 60;
+  aiForm.systemPrompt = data.systemPrompt || "";
+}
+
+async function saveAiSettings() {
+  if (!aiForm.baseUrl.trim()) {
+    ElMessage.warning("请填写 OpenAI 格式接口地址");
+    return;
+  }
+  if (!aiForm.model.trim()) {
+    ElMessage.warning("请填写默认模型名称");
+    return;
+  }
+  savingAi.value = true;
+  try {
+    const res = await updateAiConfig({
+      enabled: aiForm.enabled,
+      baseUrl: aiForm.baseUrl.trim(),
+      apiKey: aiForm.apiKey.trim(),
+      clearApiKey: aiForm.clearApiKey,
+      model: aiForm.model.trim(),
+      visionModel: aiForm.visionModel.trim(),
+      temperature: aiForm.temperature,
+      maxTokens: aiForm.maxTokens,
+      timeoutSec: aiForm.timeoutSec,
+      systemPrompt: aiForm.systemPrompt.trim()
+    });
+    applyAiConfigView(res.data);
+    ElMessage.success("AI 大模型配置已保存并立即生效");
+  } finally {
+    savingAi.value = false;
+  }
+}
+
+async function handleTestAi() {
+  testingAi.value = true;
+  aiTestResult.value = null;
+  try {
+    const res = await testAiConfig({
+      baseUrl: aiForm.baseUrl.trim(),
+      apiKey: aiForm.apiKey.trim() || undefined,
+      model: aiForm.model.trim(),
+      timeoutSec: aiForm.timeoutSec
+    });
+    aiTestResult.value = res.data;
+    if (res.data.ok) {
+      ElMessage.success(`AI 连通成功（${res.data.latencyMs ?? 0}ms）`);
+    } else {
+      ElMessage.error(res.data.errorMessage || "AI 连通性测试失败");
+    }
+  } finally {
+    testingAi.value = false;
   }
 }
 
@@ -314,6 +406,177 @@ onMounted(fetchAll);
           </template>
         </el-table-column>
       </el-table>
+    </el-card>
+
+    <el-card shadow="never">
+      <template #header>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-gray-800">AI 智能画板与大模型配置</span>
+            <el-tag
+              :type="aiConfigView?.hasApiKey && aiForm.enabled ? 'success' : 'warning'"
+              size="small"
+            >
+              {{
+                !aiForm.enabled
+                  ? "已关闭"
+                  : aiConfigView?.hasApiKey
+                    ? `已配置 · ${aiConfigView.model}`
+                    : "待配置 API 密钥"
+              }}
+            </el-tag>
+          </div>
+          <span v-if="aiConfigView?.resolvedEndpoint" class="text-xs text-gray-500">
+            实际请求地址：{{ aiConfigView.resolvedEndpoint }}
+          </span>
+        </div>
+      </template>
+
+      <el-alert
+        type="info"
+        :closable="false"
+        class="mb-4"
+        title="用于驱动学生端首页「AI 智能手写画板」的拍照识题、AI 解题思路绘制、AI 过程分析与手写诊断。所有请求由后端服务端安全转发，API 密钥仅保存在服务器数据库并全程脱敏，绝不暴露至学生端。"
+      />
+
+      <el-form label-width="140px" class="max-w-3xl">
+        <el-form-item label="启用 AI 智能画板">
+          <div class="flex flex-wrap items-center gap-3">
+            <el-switch v-model="aiForm.enabled" class="shrink-0" />
+            <span class="text-xs text-gray-500">
+              关闭后学生端仍可使用纯手写画板，AI 拍照识题与思路/过程分析将提示未开启
+            </span>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="OpenAI 接口地址">
+          <el-input
+            v-model="aiForm.baseUrl"
+            placeholder="例如：https://api.longcat.chat/openai 或 https://api.openai.com/v1"
+          />
+          <div class="mt-1 text-xs text-gray-400">
+            兼容 OpenAI Chat Completions 协议，后端自动补齐 /v1/chat/completions
+          </div>
+        </el-form-item>
+
+        <el-form-item label="API 密钥">
+          <div class="w-full space-y-2">
+            <el-input
+              v-model="aiForm.apiKey"
+              type="password"
+              show-password
+              autocomplete="new-password"
+              :placeholder="
+                aiConfigView?.hasApiKey
+                  ? `当前已保存密钥 (${aiConfigView.apiKeyMasked})，留空则保持不变；输入新密钥将覆盖`
+                  : '请输入 OpenAI 兼容 API Key'
+              "
+            />
+            <div v-if="aiConfigView?.hasApiKey" class="flex items-center justify-between text-xs text-gray-500">
+              <span>已安全保存密钥：{{ aiConfigView.apiKeyMasked }}</span>
+              <el-checkbox v-model="aiForm.clearApiKey" size="small">
+                保存时清空已保存密钥
+              </el-checkbox>
+            </div>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="主模型名称">
+          <div class="flex w-full flex-wrap items-center gap-3">
+            <el-input
+              v-model="aiForm.model"
+              placeholder="如 LongCat-2.5"
+              class="min-w-[200px] flex-1"
+            />
+            <span class="whitespace-nowrap text-xs text-gray-500">视觉识图模型（选填）：</span>
+            <el-input
+              v-model="aiForm.visionModel"
+              placeholder="留空则复用主模型"
+              class="min-w-[180px] flex-1"
+            />
+          </div>
+        </el-form-item>
+
+        <el-form-item label="采样与超时参数">
+          <div class="flex flex-wrap items-center gap-4">
+            <div class="flex items-center gap-1.5">
+              <span class="text-xs text-gray-500">温度</span>
+              <el-input-number
+                v-model="aiForm.temperature"
+                :min="0"
+                :max="1.5"
+                :step="0.1"
+                :precision="1"
+                size="small"
+                style="width: 100px"
+              />
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-xs text-gray-500">最大 Token</span>
+              <el-input-number
+                v-model="aiForm.maxTokens"
+                :min="256"
+                :max="32768"
+                :step="512"
+                size="small"
+                style="width: 120px"
+              />
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-xs text-gray-500">超时(秒)</span>
+              <el-input-number
+                v-model="aiForm.timeoutSec"
+                :min="10"
+                :max="180"
+                :step="10"
+                size="small"
+                style="width: 106px"
+              />
+            </div>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="教研系统提示词">
+          <el-input
+            v-model="aiForm.systemPrompt"
+            type="textarea"
+            :rows="2"
+            placeholder="选填：可补充额外教学风格要求（如侧重初高中人教版规范步骤），留空使用内置数学教研提示词"
+          />
+        </el-form-item>
+
+        <el-form-item v-if="aiTestResult">
+          <el-alert
+            :type="aiTestResult.ok ? 'success' : 'error'"
+            :closable="true"
+            @close="aiTestResult = null"
+            class="w-full"
+          >
+            <template #title>
+              <span v-if="aiTestResult.ok">
+                连通成功 · 模型 {{ aiTestResult.model }} · 耗时 {{ aiTestResult.latencyMs }}ms
+              </span>
+              <span v-else>
+                连通失败 · {{ aiTestResult.errorMessage }}
+              </span>
+            </template>
+            <div v-if="aiTestResult.ok && aiTestResult.reply" class="mt-1 text-xs text-gray-700">
+              模型回复：{{ aiTestResult.reply }}
+            </div>
+          </el-alert>
+        </el-form-item>
+
+        <el-form-item>
+          <div class="flex flex-wrap items-center gap-2">
+            <el-button type="primary" :loading="savingAi" @click="saveAiSettings">
+              保存 AI 配置
+            </el-button>
+            <el-button type="success" plain :loading="testingAi" @click="handleTestAi">
+              测试模型连通性
+            </el-button>
+          </div>
+        </el-form-item>
+      </el-form>
     </el-card>
 
     <el-card shadow="never">

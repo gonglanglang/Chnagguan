@@ -122,9 +122,32 @@ public class AdminSystemService {
     }
 
     public List<SysConfig> listConfigs() {
-        return sysConfigMapper.selectList(
+        List<SysConfig> list = sysConfigMapper.selectList(
                 new LambdaQueryWrapper<SysConfig>().orderByAsc(SysConfig::getId)
         );
+        for (SysConfig item : list) {
+            if (isSensitiveConfigKey(item.getConfigKey())) {
+                item.setConfigValue(maskSecret(item.getConfigValue()));
+            }
+        }
+        return list;
+    }
+
+    private boolean isSensitiveConfigKey(String key) {
+        if (key == null) return false;
+        String lower = key.toLowerCase();
+        return lower.contains("api_key") || lower.contains("secret") || lower.contains("password") || lower.contains("token");
+    }
+
+    private String maskSecret(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "";
+        }
+        String s = raw.trim();
+        if (s.length() <= 8) {
+            return "****";
+        }
+        return s.substring(0, 4) + "****" + s.substring(s.length() - 4);
     }
 
     public void updateConfig(String key, String value) {

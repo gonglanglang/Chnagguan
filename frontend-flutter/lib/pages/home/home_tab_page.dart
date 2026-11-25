@@ -20,6 +20,7 @@ import '../grade_chapters/grade_chapters_page.dart';
 import '../levels/levels_page.dart';
 import '../login/login_page.dart';
 import '../quiz/quiz_page.dart';
+import '../smart_board/smart_board_page.dart';
 
 class HomeTabPage extends StatefulWidget {
   const HomeTabPage({super.key, required this.refreshSignal});
@@ -195,6 +196,14 @@ class _HomeTabPageState extends State<HomeTabPage> {
       ),
     );
     if (mounted) await _refreshPage();
+  }
+
+  Future<void> _openSmartBoard({bool autoCapture = false}) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SmartBoardPage(autoOpenCapture: autoCapture),
+      ),
+    );
   }
 
   Future<void> _openChapterMap(ChapterCard chapter, int seq) async {
@@ -439,6 +448,8 @@ class _HomeTabPageState extends State<HomeTabPage> {
           children: [
             if (showSummarySkeleton) ...[
               const GglCardSkeleton(lines: 2),
+              const SizedBox(height: 12),
+              const GglCardSkeleton(lines: 3),
               const SizedBox(height: 14),
               GridView.builder(
                 shrinkWrap: true,
@@ -554,6 +565,118 @@ class _HomeTabPageState extends State<HomeTabPage> {
                       Icons.chevron_right_rounded,
                       size: 16,
                       color: colors.ink,
+                    ),
+                  ],
+                ),
+              ),
+
+              // AI Smart Handwriting Board Feature Card (v2.0 Major Feature)
+              const SizedBox(height: 12),
+              GglComicPanel(
+                color: Color.alphaBlend(
+                  colors.accent.withValues(alpha: colors.isDark ? 0.22 : 0.16),
+                  colors.paper,
+                ),
+                padding: const EdgeInsets.all(14),
+                onTap: () => _openSmartBoard(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: colors.accent,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: colors.outline,
+                              width: 1.8,
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.draw_rounded,
+                            size: 20,
+                            color: colors.onFill(colors.accent),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    'AI 智能手写画板',
+                                    style: TextStyle(
+                                      color: colors.ink,
+                                      fontSize: 16.5,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  const GglStatusTag(
+                                    label: 'v2.0 新功能',
+                                    variant: WelkBadgeVariant.success,
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '拍照识题入画板 · AI 思路与解题过程直接板书绘制',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: AppTheme.mutedText(context),
+                                  fontSize: 12.2,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: WelkButton(
+                            size: WelkButtonSize.small,
+                            variant: WelkButtonVariant.primary,
+                            onPressed: () =>
+                                _openSmartBoard(autoCapture: true),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.photo_camera_rounded, size: 15),
+                                SizedBox(width: 5),
+                                Text('拍照识题'),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: WelkButton(
+                            size: WelkButtonSize.small,
+                            variant: WelkButtonVariant.secondary,
+                            onPressed: () => _openSmartBoard(),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.edit_rounded, size: 15),
+                                SizedBox(width: 5),
+                                Text('打开画板'),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

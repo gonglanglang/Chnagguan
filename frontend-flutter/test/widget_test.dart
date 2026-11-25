@@ -9,6 +9,7 @@ import 'package:guoguanla_app/pages/grade_chapters/grade_chapters_page.dart';
 import 'package:guoguanla_app/pages/home/home_tab_page.dart';
 import 'package:guoguanla_app/pages/login/login_page.dart';
 import 'package:guoguanla_app/pages/settings/theme_settings_page.dart';
+import 'package:guoguanla_app/pages/smart_board/smart_board_page.dart';
 import 'package:guoguanla_app/providers/theme_provider.dart';
 import 'package:guoguanla_app/providers/update_provider.dart';
 import 'package:guoguanla_app/providers/user_provider.dart';
@@ -222,11 +223,19 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('修炼公告'), findsNothing);
 
-    // Home renders 3-column grade grid and removed old 章节闯关
+    // Home renders AI smart board card, 3-column grade grid and removed old 章节闯关
+    expect(find.text('AI 智能手写画板'), findsOneWidget);
+    expect(find.text('拍照识题'), findsOneWidget);
     expect(find.text('选择年级'), findsOneWidget);
     expect(find.text('章节闯关'), findsNothing);
     expect(find.text('初一'), findsOneWidget);
     expect(find.text('高三'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.text('继续修炼'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('继续修炼'), findsOneWidget);
 
     final grid = tester.widget<GridView>(find.byType(GridView).first);
@@ -274,6 +283,63 @@ void main() {
         grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
     expect(delegate.crossAxisCount, 2);
   });
+
+  testWidgets(
+      'SmartBoardPage renders AI toolbar, draws manual problem and AI ideas/solution onto canvas',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final cache = await GlobalCache.init();
+    final api = _FakeGuoguanlaApi();
+    final welk = AppTheme.buildWelkTheme(
+      isDark: false,
+      accent: AppTheme.presets.first.color,
+    );
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider<GlobalCache>.value(value: cache),
+          Provider<GuoguanlaApi>.value(value: api),
+        ],
+        child: WelkTheme(
+          data: welk,
+          child: MaterialApp(
+            theme: AppTheme.buildMaterialTheme(isDark: false, welk: welk),
+            home: const SmartBoardPage(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('拍照识题'), findsOneWidget);
+    expect(find.text('AI 解题思路'), findsOneWidget);
+    expect(find.text('AI 解题过程'), findsOneWidget);
+    expect(find.text('模型 LongCat-2.5'), findsOneWidget);
+
+    // Manually enter a math problem and paint onto board
+    await tester.tap(find.text('拍照识题'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('手动输入 / 编辑数学题干'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byType(TextField).last,
+      r'解方程 $x^2 - 5x + 6 = 0$',
+    );
+    await tester.tap(find.text('绘制到画板'));
+    await tester.pumpAndSettle();
+
+    // Trigger AI Ideas drawing onto board
+    await tester.tap(find.text('AI 解题思路'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('AI 解题思路已绘制'), findsOneWidget);
+
+    // Trigger AI Solution Analysis drawing onto board
+    await tester.tap(find.text('AI 解题过程'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('AI 解题过程分析已绘制'), findsOneWidget);
+  });
 }
 
 class _FakeGuoguanlaApi extends GuoguanlaApi {
@@ -310,6 +376,90 @@ class _FakeGuoguanlaApi extends GuoguanlaApi {
     List<int>? guestPassedIds,
   }) async {
     return _demoChapters;
+  }
+
+  @override
+  Future<AiBoardStatus> getAiBoardStatus() async {
+    return const AiBoardStatus(
+      enabled: true,
+      configured: true,
+      modelName: 'LongCat-2.5',
+      supportsVision: true,
+      message: 'AI 智能画板已就绪',
+    );
+  }
+
+  @override
+  Future<AiBoardGuidance> generateBoardIdeas({
+    String? problemText,
+    String? boardImageBase64,
+    String? problemImageBase64,
+    String? userNotes,
+    bool hasHandwriting = false,
+  }) async {
+    return const AiBoardGuidance(
+      mode: 'IDEAS',
+      headline: '十字相乘法破题',
+      summary: '寻找两数乘积为 6 且和为 -5。',
+      knowledgePoints: ['因式分解'],
+      steps: [
+        AiBoardStep(
+          stepNo: 1,
+          title: '拆分常数项',
+          content: '将 6 拆分为 (-2) × (-3)',
+          formula: r'$(x-2)(x-3)=0$',
+        ),
+      ],
+      finalAnswer: '分别令两个因式为 0',
+    );
+  }
+
+  @override
+  Future<AiBoardGuidance> analyzeBoardSolution({
+    String? problemText,
+    String? boardImageBase64,
+    String? problemImageBase64,
+    String? userNotes,
+    bool hasHandwriting = false,
+  }) async {
+    return const AiBoardGuidance(
+      mode: 'ANALYZE',
+      headline: '规范分步求解',
+      summary: '因式分解法一步到位。',
+      knowledgePoints: ['一元二次方程'],
+      steps: [
+        AiBoardStep(
+          stepNo: 1,
+          title: '因式分解',
+          content: '左端分解为两个一次因式之积',
+          formula: r'$(x-2)(x-3)=0$',
+        ),
+        AiBoardStep(
+          stepNo: 2,
+          title: '求解两根',
+          content: r'得 $x-2=0$ 或 $x-3=0$',
+          formula: r'$x_1=2,\; x_2=3$',
+        ),
+      ],
+      finalAnswer: r'$x_1=2,\; x_2=3$',
+      diagrams: [
+        BoardDiagramSpec(
+          title: '抛物线零点草图',
+          primitives: [
+            DiagramPrimitive(type: 'arrow', x1: 20, y1: 170, x2: 300, y2: 170),
+            DiagramPrimitive(
+              type: 'polyline',
+              points: [
+                [60, 80],
+                [160, 190],
+                [260, 80],
+              ],
+              color: '#2563EB',
+            ),
+          ],
+        ),
+      ],
+    );
   }
 
   static const List<ChapterCard> _demoChapters = <ChapterCard>[

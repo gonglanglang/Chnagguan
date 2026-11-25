@@ -107,6 +107,7 @@ class ApiClient {
     required String filename,
     String fieldName = 'file',
     Map<String, dynamic>? extraFields,
+    Duration? timeout,
     required T Function(dynamic raw) parser,
   }) async {
     final revision = revisionGetter();
@@ -128,8 +129,8 @@ class ApiClient {
         options: Options(
           headers: headers,
           contentType: 'multipart/form-data',
-          sendTimeout: const Duration(seconds: 35),
-          receiveTimeout: const Duration(seconds: 35),
+          sendTimeout: timeout ?? const Duration(seconds: 35),
+          receiveTimeout: timeout ?? const Duration(seconds: 35),
         ),
       );
       return _unwrap<T>(response, revision: revision, parser: parser);
