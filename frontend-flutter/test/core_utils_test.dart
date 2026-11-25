@@ -31,6 +31,38 @@ void main() {
       expect(plain, contains('∈'));
       expect(plain, contains('∅'));
     });
+
+    test('parses dfrac, tfrac, nested sqrt inside fraction, sets and spacing commands without leaking raw backslashes',
+        () {
+      const sample = '（1）\$\\dfrac{x^2}{2}+y^2=1\$\n'
+          '（2）\$k=\\pm\\dfrac{\\sqrt{10}}{2}\$';
+      final tokens = MathParser.parseTokens(sample);
+      final fracs = tokens.where((t) => t.type == MathTokenType.frac).toList();
+      expect(fracs, hasLength(2));
+      expect(fracs[0].num, 'x²');
+      expect(fracs[0].den, '2');
+      expect(fracs[0].numTokens.any((t) => t.type == MathTokenType.sup), isTrue);
+      expect(fracs[1].den, '2');
+      expect(fracs[1].numTokens.any((t) => t.type == MathTokenType.sqrt), isTrue);
+
+      final plain = MathParser.renderPlainText(sample);
+      expect(plain, isNot(contains(r'\dfrac')));
+      expect(plain, isNot(contains(r'\sqrt')));
+      expect(plain, contains('x²/2'));
+      expect(plain, contains('k=±'));
+
+      final extra = MathParser.renderPlainText(
+        r'$\because \{x \mid x \leqslant \tfrac{1}{2}, \; x \in \mathbb{R}\} \therefore \sin x$',
+      );
+      expect(extra, isNot(contains(r'\')));
+      expect(extra, contains('∵'));
+      expect(extra, contains('{x'));
+      expect(extra, contains('≤'));
+      expect(extra, contains('1/2'));
+      expect(extra, contains('ℝ'));
+      expect(extra, contains('∴'));
+      expect(extra, contains('sin'));
+    });
   });
 
   group('UpdateUtils', () {

@@ -117,6 +117,13 @@ class AiModuleTests {
         assertThat(guidance.getSteps().get(0).getFormula()).contains("\\times");
         assertThat(guidance.getFinalAnswer()).contains("\\frac{5}{2}");
 
+        // 单独校验纯合法 JSON 中单反斜杠 \frac / \times 不会被 Jackson 静默转成控制字符
+        String singleSlashJson = "{\"headline\":\"答案\",\"finalAnswer\":\"（1）$\\frac{x^2}{2}+y^2=1$ （2）$k=\\pm\\dfrac{\\sqrt{10}}{2}$\",\"steps\":[]}";
+        AiBoardVO.GuidanceVO singleParsed = aiBoardService.parseGuidanceResult("SOLVE", singleSlashJson, "LongCat-2.5", 100L);
+        assertThat(singleParsed.getFinalAnswer()).contains("\\frac{x^2}{2}");
+        assertThat(singleParsed.getFinalAnswer()).contains("\\dfrac{\\sqrt{10}}{2}");
+        assertThat(singleParsed.getFinalAnswer()).doesNotContain("\f");
+
         // 思路模式与诊断模式必须屏蔽最终答案
         AiBoardVO.GuidanceVO ideasOnly = aiBoardService.parseGuidanceResult("IDEAS", rawGuidance, "LongCat-2.5", 300L);
         assertThat(ideasOnly.getFinalAnswer()).isEmpty();

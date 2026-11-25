@@ -58,6 +58,39 @@ void main() {
     expect(find.textContaining('求解方程'), findsOneWidget);
   });
 
+  testWidgets('MathText renders dfrac with nested superscript and radical cleanly',
+      (WidgetTester tester) async {
+    final welk = AppTheme.buildWelkTheme(
+      isDark: false,
+      accent: AppTheme.presets.first.color,
+    );
+    const sample = '（1）\$\\dfrac{x^2}{2}+y^2=1\$\n'
+        '（2）\$k=\\pm\\dfrac{\\sqrt{10}}{2}\$';
+
+    await tester.pumpWidget(
+      WelkTheme(
+        data: welk,
+        child: MaterialApp(
+          theme: AppTheme.buildMaterialTheme(isDark: false, welk: welk),
+          home: const Scaffold(
+            body: Padding(
+              padding: EdgeInsets.all(16),
+              child: MathText(sample),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining(r'\dfrac'), findsNothing);
+    expect(find.textContaining(r'\sqrt'), findsNothing);
+    expect(find.textContaining('（1）'), findsOneWidget);
+    expect(find.textContaining('（2）'), findsOneWidget);
+    expect(find.text('10'), findsOneWidget);
+    expect(find.text('2'), findsNWidgets(4));
+  });
+
   testWidgets(
       'ThemeSettingsPage switches UI skin to Skribble immediately, toggles dark mode and preset',
       (WidgetTester tester) async {

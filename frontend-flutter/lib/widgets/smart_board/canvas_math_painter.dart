@@ -183,6 +183,18 @@ class CanvasMathPainter {
             numPainter: numTp,
             denPainter: denTp,
           );
+        case MathTokenType.sqrt:
+          final radicalLabel = tok.rootIndex.isNotEmpty
+              ? '${tok.rootIndex}√(${tok.value})'
+              : '√(${tok.value})';
+          final tp = _makeTextPainter(radicalLabel, effectiveStyle);
+          item = _LaidOutItem(
+            token: tok,
+            width: tp.width,
+            height: tp.height,
+            baselineOffset: 0,
+            mainPainter: tp,
+          );
         case MathTokenType.lineBreak:
           continue;
       }
@@ -314,6 +326,7 @@ class CanvasMathPainter {
           case MathTokenType.text:
           case MathTokenType.sup:
           case MathTokenType.sub:
+          case MathTokenType.sqrt:
             final tp = item.mainPainter!;
             final topY = midY - tp.height / 2 + item.baselineOffset;
             if (localT >= 0.999) {

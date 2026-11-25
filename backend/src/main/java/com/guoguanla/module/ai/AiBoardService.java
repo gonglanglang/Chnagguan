@@ -478,17 +478,18 @@ public class AiBoardService {
         String candidate = extractJsonSubstring(raw);
         if (candidate == null || candidate.isBlank()) return null;
 
+        // 优先修复单反斜杠 LaTeX（如 \frac/\tfrac/\times/\right/\beta），避免 Jackson 将 \f/\t/\r/\b 静默解析为控制字符
+        String repaired = repairLatexBackslashesInJson(candidate);
         try {
-            JsonNode node = objectMapper.readTree(candidate);
+            JsonNode node = objectMapper.readTree(repaired);
             if (node != null && node.isObject()) {
                 return node;
             }
         } catch (Exception ignored) {
         }
 
-        String repaired = repairLatexBackslashesInJson(candidate);
         try {
-            JsonNode node = objectMapper.readTree(repaired);
+            JsonNode node = objectMapper.readTree(candidate);
             if (node != null && node.isObject()) {
                 return node;
             }
