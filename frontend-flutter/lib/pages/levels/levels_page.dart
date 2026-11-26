@@ -41,6 +41,10 @@ class _LevelsPageState extends State<LevelsPage> {
   @override
   Widget build(BuildContext context) {
     final colors = WelkTheme.of(context).resolveColors(context);
+    final ink = AppTheme.inkColor(context);
+    final accent = AppTheme.accentColor(context);
+    final onAccent = AppTheme.onAccentColor(context);
+    final isForui = AppTheme.isForui(context);
     final user = context.watch<UserProvider>();
     final current = user.currentRealm;
     final realms = user.realms;
@@ -48,7 +52,7 @@ class _LevelsPageState extends State<LevelsPage> {
     return Scaffold(
       backgroundColor: AppTheme.pageBackground(context),
       appBar: const GglAppBar(
-        title: '修仙境界体系',
+        title: '学习阶段体系',
         showBack: true,
       ),
       body: RefreshIndicator(
@@ -64,26 +68,23 @@ class _LevelsPageState extends State<LevelsPage> {
                 const SizedBox(height: 12),
               ],
             ] else ...[
-              // Current realm banner
+              // Current stage banner
               GglComicPanel(
-                color: colors.accent,
+                color: accent,
                 child: Row(
                   children: [
                     Container(
                       width: 48,
                       height: 48,
                       alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: colors.paper,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: colors.outline,
-                          width: colors.borderWidth,
-                        ),
+                      decoration: AppTheme.insetBoxDecoration(
+                        context,
+                        color: AppTheme.surfaceColor(context),
+                        radius: 12,
                       ),
                       child: Icon(
-                        Icons.auto_awesome_rounded,
-                        color: colors.ink,
+                        Icons.school_rounded,
+                        color: ink,
                         size: 26,
                       ),
                     ),
@@ -93,20 +94,18 @@ class _LevelsPageState extends State<LevelsPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '当前境界：${current.realmName}',
+                            '当前学习阶段：${current.realmName}',
                             style: TextStyle(
-                              color: colors.onFill(colors.accent),
+                              color: onAccent,
                               fontSize: 17,
                               fontWeight: FontWeight.w800,
                             ),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '全境界自由学习，完成本境要求后可参加进阶考核突破',
+                            '全年级自由练习，完成当前阶段指定关卡后可参加阶段升级测评',
                             style: TextStyle(
-                              color: colors
-                                  .onFill(colors.accent)
-                                  .withValues(alpha: 0.85),
+                              color: onAccent.withValues(alpha: 0.85),
                               fontSize: 12.5,
                             ),
                           ),
@@ -116,7 +115,7 @@ class _LevelsPageState extends State<LevelsPage> {
                   ],
                 ),
               ),
-              const GglSectionLabel(title: '六大修仙境界'),
+              const GglSectionLabel(title: '初一至高三学习阶段'),
               for (final item in realms) ...[
                 GglComicPanel(
                   margin: const EdgeInsets.only(bottom: 12),
@@ -129,28 +128,35 @@ class _LevelsPageState extends State<LevelsPage> {
                             width: 34,
                             height: 34,
                             alignment: Alignment.center,
-                            decoration: BoxDecoration(
+                            decoration: AppTheme.insetBoxDecoration(
+                              context,
                               color: item.isCurrent
-                                  ? colors.accent
+                                  ? accent
                                   : item.isLower
-                                      ? colors.success
-                                      : colors.muted,
-                              borderRadius: BorderRadius.circular(9),
-                              border: Border.all(
-                                color: colors.outline,
-                                width: colors.borderWidth,
-                              ),
+                                      ? (isForui
+                                          ? const Color(0xFF10B981)
+                                          : colors.success)
+                                      : AppTheme.mutedSurfaceColor(context),
+                              borderColor: isForui &&
+                                      (item.isCurrent || item.isLower)
+                                  ? (item.isCurrent
+                                      ? accent
+                                      : const Color(0xFF10B981))
+                                  : null,
+                              radius: 9,
                             ),
                             child: item.isCurrent
                                 ? Icon(
                                     Icons.check_rounded,
                                     size: 18,
-                                    color: colors.onFill(colors.accent),
+                                    color: onAccent,
                                   )
                                 : Text(
                                     '${item.realmOrder}',
                                     style: TextStyle(
-                                      color: colors.ink,
+                                      color: item.isLower && isForui
+                                          ? Colors.white
+                                          : ink,
                                       fontWeight: FontWeight.w800,
                                     ),
                                   ),
@@ -163,7 +169,7 @@ class _LevelsPageState extends State<LevelsPage> {
                                 Text(
                                   item.realmName,
                                   style: TextStyle(
-                                    color: colors.ink,
+                                    color: ink,
                                     fontSize: 16,
                                     fontWeight: FontWeight.w800,
                                   ),
@@ -180,17 +186,17 @@ class _LevelsPageState extends State<LevelsPage> {
                           ),
                           if (item.isCurrent)
                             const GglStatusTag(
-                              label: '当前境界',
+                              label: '当前阶段',
                               variant: WelkBadgeVariant.defaultStyle,
                             )
                           else if (item.isLower)
                             const GglStatusTag(
-                              label: '已突破 · 可压制',
+                              label: '已完成 · 可回刷',
                               variant: WelkBadgeVariant.success,
                             )
                           else
                             const GglStatusTag(
-                              label: '可跨级学习',
+                              label: '自由练习',
                               variant: WelkBadgeVariant.info,
                             ),
                         ],
@@ -214,7 +220,7 @@ class _LevelsPageState extends State<LevelsPage> {
                           runSpacing: 4,
                           children: [
                             Text(
-                              '进阶考核：随机抽取 ${item.examQuestionCount} 题 · ${item.examPassScore} 分及格',
+                              '阶段升级测评：随机抽取 ${item.examQuestionCount} 题 · ${item.examPassScore} 分及格',
                               style: TextStyle(
                                 color: AppTheme.mutedText(context),
                                 fontSize: 12,
@@ -222,10 +228,10 @@ class _LevelsPageState extends State<LevelsPage> {
                             ),
                             Text(
                               item.unlockGates > 0
-                                  ? '过本境 ${item.unlockGates} 关解锁'
-                                  : '本境全通后解锁',
+                                  ? '完成本阶段 ${item.unlockGates} 关解锁'
+                                  : '本阶段全通后解锁',
                               style: TextStyle(
-                                color: colors.ink,
+                                color: ink,
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,
                               ),

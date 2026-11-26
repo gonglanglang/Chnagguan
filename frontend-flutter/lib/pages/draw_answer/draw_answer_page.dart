@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:welkui_flutter/welkui_flutter.dart';
 
+import '../../app/app_theme.dart';
 import '../../core/network/api_client.dart';
 import '../../core/utils/math_parser.dart';
 import '../../models/models.dart';
@@ -591,19 +592,11 @@ class _DrawAnswerPageState extends State<DrawAnswerPage> {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: overlayStyle,
       child: Scaffold(
-        backgroundColor: colors.paper,
+        backgroundColor: AppTheme.surfaceColor(context),
         body: Column(
           children: [
             Container(
-              decoration: BoxDecoration(
-                color: colors.paper,
-                border: Border(
-                  bottom: BorderSide(
-                    color: colors.outline,
-                    width: colors.borderWidth,
-                  ),
-                ),
-              ),
+              decoration: AppTheme.barDecoration(context, bottomBorder: true),
               child: SafeArea(
                 top: true,
                 bottom: false,
@@ -631,13 +624,9 @@ class _DrawAnswerPageState extends State<DrawAnswerPage> {
                                 height: 34,
                                 padding:
                                     const EdgeInsets.symmetric(horizontal: 10),
-                                decoration: BoxDecoration(
-                                  color: colors.muted,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: colors.outline,
-                                    width: 1.5,
-                                  ),
+                                decoration: AppTheme.insetBoxDecoration(
+                                  context,
+                                  radius: 8,
                                 ),
                                 child: Row(
                                   children: [
@@ -652,7 +641,7 @@ class _DrawAnswerPageState extends State<DrawAnswerPage> {
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
-                                          color: colors.ink,
+                                          color: AppTheme.inkColor(context),
                                           fontSize: 12.5,
                                           fontWeight: FontWeight.w600,
                                         ),
@@ -794,7 +783,8 @@ class _DrawAnswerPageState extends State<DrawAnswerPage> {
                                   height: 14,
                                   margin:
                                       const EdgeInsets.symmetric(horizontal: 8),
-                                  color: colors.outline.withValues(alpha: 0.4),
+                                  color: AppTheme.borderColor(context)
+                                      .withValues(alpha: 0.6),
                                 ),
                                 GestureDetector(
                                   onTap: _fitContentOrReset,
@@ -827,15 +817,7 @@ class _DrawAnswerPageState extends State<DrawAnswerPage> {
 
             // Bottom professional brush & geometry dock (full safe-area fill)
             Container(
-              decoration: BoxDecoration(
-                color: colors.paper,
-                border: Border(
-                  top: BorderSide(
-                    color: colors.outline,
-                    width: colors.borderWidth,
-                  ),
-                ),
-              ),
+              decoration: AppTheme.barDecoration(context, topBorder: true),
               child: SafeArea(
                 top: false,
                 bottom: true,
@@ -871,8 +853,8 @@ class _DrawAnswerPageState extends State<DrawAnswerPage> {
                                                     BoardToolMode.highlighter ||
                                                 _isShapeTool) &&
                                             _activeColor == c
-                                        ? colors.accent
-                                        : colors.outline,
+                                        ? AppTheme.accentColor(context)
+                                        : AppTheme.borderColor(context),
                                     width: (_tool == BoardToolMode.pen ||
                                                 _tool ==
                                                     BoardToolMode.highlighter ||
@@ -999,22 +981,26 @@ class _ToolChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = WelkTheme.of(context).resolveColors(context);
     return Opacity(
       opacity: disabled ? 0.45 : 1.0,
       child: GestureDetector(
         onTap: disabled ? null : onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-          decoration: BoxDecoration(
-            color: active ? colors.accent : colors.paper,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: colors.outline, width: 1.5),
+          decoration: AppTheme.selectableTileDecoration(
+            context,
+            selected: active,
+            unselectedFill: AppTheme.surfaceColor(context),
+            radius: 8,
           ),
           child: Text(
             label,
+            maxLines: 1,
+            softWrap: false,
             style: TextStyle(
-              color: active ? colors.onFill(colors.accent) : colors.ink,
+              color: active
+                  ? AppTheme.onAccentColor(context)
+                  : AppTheme.inkColor(context),
               fontSize: 11.8,
               fontWeight: FontWeight.w700,
             ),

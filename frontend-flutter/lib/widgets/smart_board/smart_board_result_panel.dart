@@ -482,13 +482,13 @@ class _SmartBoardResultPanelState extends State<SmartBoardResultPanel> {
                   width: double.infinity,
                   margin: const EdgeInsets.only(bottom: 8),
                   padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
+                  decoration: AppTheme.insetBoxDecoration(
+                    context,
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: colors.outline.withValues(alpha: 0.4),
-                      width: 1.2,
-                    ),
+                    borderColor: AppTheme.borderColor(context)
+                        .withValues(alpha: AppTheme.isForui(context) ? 1 : 0.4),
+                    radius: 8,
+                    width: AppTheme.isForui(context) ? 1 : 1.2,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -745,15 +745,14 @@ class _SmartBoardResultPanelState extends State<SmartBoardResultPanel> {
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
+          decoration: AppTheme.insetBoxDecoration(
+            context,
             color: colors.success.withValues(alpha: colors.isDark ? 0.16 : 0.22),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: colors.outline, width: 1.6),
           ),
           child: MathText(
             pureAnswer,
             style: TextStyle(
-              color: colors.ink,
+              color: AppTheme.inkColor(context),
               fontSize: 16.5,
               fontWeight: FontWeight.w800,
               height: 1.55,
@@ -864,7 +863,8 @@ class _StepCardItem extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
               decoration: BoxDecoration(
-                color: colors.muted.withValues(alpha: 0.72),
+                color: AppTheme.mutedSurfaceColor(context)
+                    .withValues(alpha: AppTheme.isForui(context) ? 0.9 : 0.72),
                 borderRadius: BorderRadius.circular(7),
                 border: Border(
                   left: BorderSide(color: accent, width: 3),
@@ -908,19 +908,18 @@ class _VectorDiagramBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = WelkTheme.of(context).resolveColors(context);
     final aspect = spec.height > 0 ? (spec.width / spec.height).clamp(0.7, 2.2) : 1.45;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
+      decoration: AppTheme.insetBoxDecoration(
+        context,
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: colors.outline.withValues(alpha: 0.35),
-          width: 1.2,
-        ),
+        borderColor: AppTheme.borderColor(context)
+            .withValues(alpha: AppTheme.isForui(context) ? 1 : 0.35),
+        radius: 8,
+        width: AppTheme.isForui(context) ? 1 : 1.2,
       ),
       child: AspectRatio(
         aspectRatio: aspect,

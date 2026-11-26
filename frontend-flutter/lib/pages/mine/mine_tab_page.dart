@@ -155,7 +155,7 @@ class _MineTabPageState extends State<MineTabPage> {
     final realm = context.read<UserProvider>().currentRealm;
     if (!realm.examEligible) {
       final rem = realm.examRemainingGates > 0 ? realm.examRemainingGates : 1;
-      GglFeedback.info(context, '还差 $rem 关解锁${realm.realmName}进阶考');
+      GglFeedback.info(context, '还差 $rem 关解锁${realm.realmName}阶段升级测评');
       return;
     }
     await Navigator.of(context).push(
@@ -319,7 +319,6 @@ class _MineTabPageState extends State<MineTabPage> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = WelkTheme.of(context).resolveColors(context);
     final user = context.watch<UserProvider>();
     final theme = context.watch<ThemeProvider>();
     final update = context.watch<UpdateProvider>();
@@ -373,12 +372,12 @@ class _MineTabPageState extends State<MineTabPage> {
                                       ? ((user.userInfo?.nickname.isNotEmpty ??
                                               false)
                                           ? user.userInfo!.nickname
-                                          : (user.userInfo?.username ?? '已登录道友'))
+                                          : (user.userInfo?.username ?? '已登录同学'))
                                       : '游客试玩',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    color: colors.ink,
+                                    color: AppTheme.inkColor(context),
                                     fontSize: 18,
                                     fontWeight: FontWeight.w800,
                                   ),
@@ -398,10 +397,13 @@ class _MineTabPageState extends State<MineTabPage> {
                                           : '本地体验',
                                       variant: WelkBadgeVariant.info,
                                     ),
-                                    GglStatusTag(
-                                      label: realm.realmName,
-                                      variant: WelkBadgeVariant.defaultStyle,
-                                    ),
+                                    if (!user.isAuthenticated ||
+                                        user.userInfo?.gradeName !=
+                                            realm.realmName)
+                                      GglStatusTag(
+                                        label: '${realm.realmName}阶段',
+                                        variant: WelkBadgeVariant.defaultStyle,
+                                      ),
                                   ],
                                 ),
                               ],
@@ -446,7 +448,7 @@ class _MineTabPageState extends State<MineTabPage> {
                         Expanded(
                           child: _ProfileStat(
                             value: '$realmPct%',
-                            label: '本境进度',
+                            label: '阶段进度',
                           ),
                         ),
                       ],
@@ -467,7 +469,7 @@ class _MineTabPageState extends State<MineTabPage> {
                     Expanded(
                       child: _QuickActionItem(
                         icon: Icons.layers_rounded,
-                        label: '境界体系',
+                        label: '学习阶段',
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute<void>(
                             builder: (_) => const LevelsPage(),
@@ -485,7 +487,7 @@ class _MineTabPageState extends State<MineTabPage> {
                     Expanded(
                       child: _QuickActionItem(
                         icon: Icons.school_rounded,
-                        label: '进阶考',
+                        label: '升级测评',
                         onTap: _handleStartExam,
                       ),
                     ),
@@ -511,7 +513,7 @@ class _MineTabPageState extends State<MineTabPage> {
                       icon: Icons.palette_outlined,
                       title: '主题设置',
                       trailing:
-                          '${theme.isSkribble ? 'Skribble' : 'WelkUI'} · ${theme.accentName}',
+                          '${theme.isForui ? 'Forui' : (theme.isSkribble ? 'Skribble' : 'WelkUI')} · ${theme.accentName}',
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) => const ThemeSettingsPage(),
@@ -602,13 +604,16 @@ class _ProfileStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = WelkTheme.of(context).resolveColors(context);
+    final ink = AppTheme.inkColor(context);
     return Column(
       children: [
         Text(
           value,
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            color: colors.ink,
+            color: ink,
             fontSize: 21,
             fontWeight: FontWeight.w800,
           ),
@@ -616,6 +621,9 @@ class _ProfileStat extends StatelessWidget {
         const SizedBox(height: 2),
         Text(
           label,
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(color: AppTheme.mutedText(context), fontSize: 12),
         ),
       ],
@@ -637,6 +645,8 @@ class _QuickActionItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = WelkTheme.of(context).resolveColors(context);
+    final ink = AppTheme.inkColor(context);
+    final accent = AppTheme.accentColor(context);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -647,18 +657,25 @@ class _QuickActionItem extends StatelessWidget {
             width: 42,
             height: 42,
             alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: colors.accent.withValues(alpha: colors.isDark ? 0.25 : 0.45),
-              borderRadius: BorderRadius.circular(11),
-              border: Border.all(color: colors.outline, width: 1.8),
+            decoration: AppTheme.insetBoxDecoration(
+              context,
+              color: accent.withValues(
+                alpha: AppTheme.isForui(context)
+                    ? (colors.isDark ? 0.22 : 0.14)
+                    : (colors.isDark ? 0.25 : 0.45),
+              ),
+              radius: 11,
             ),
-            child: Icon(icon, size: 21, color: colors.ink),
+            child: Icon(icon, size: 21, color: ink),
           ),
           const SizedBox(height: 6),
           Text(
             label,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: colors.ink,
+              color: ink,
               fontSize: 12.5,
               fontWeight: FontWeight.w700,
             ),
@@ -684,31 +701,41 @@ class _SettingTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = WelkTheme.of(context).resolveColors(context);
+    final ink = AppTheme.inkColor(context);
     return InkWell(
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         child: Row(
           children: [
-            Icon(icon, size: 20, color: colors.ink),
+            Icon(icon, size: 20, color: ink),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: colors.ink,
+                  color: ink,
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
                 ),
               ),
             ),
             if (trailing != null && trailing!.isNotEmpty) ...[
-              Text(
-                trailing!,
-                style: TextStyle(
-                  color: AppTheme.mutedText(context),
-                  fontSize: 13,
+              const SizedBox(width: 8),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 165),
+                child: Text(
+                  trailing!,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    color: AppTheme.mutedText(context),
+                    fontSize: 13,
+                  ),
                 ),
               ),
               const SizedBox(width: 4),

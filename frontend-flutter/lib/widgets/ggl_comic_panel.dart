@@ -334,10 +334,14 @@ class GglPillChip extends StatelessWidget {
               ],
               Text(
                 label,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: fg,
                   fontSize: 13,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  height: 1.25,
                   fontFamilyFallback: AppTheme.cjkFontFallback,
                 ),
               ),
@@ -376,10 +380,14 @@ class GglPillChip extends StatelessWidget {
               ],
               Text(
                 label,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: fg,
                   fontSize: 13.5,
                   fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  height: 1.25,
                   fontFamilyFallback: AppTheme.cjkFontFallback,
                 ),
               ),
@@ -426,10 +434,14 @@ class GglPillChip extends StatelessWidget {
             ],
             Text(
               label,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: fg,
                 fontSize: 13.5,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                height: 1.25,
                 fontFamilyFallback: AppTheme.cjkFontFallback,
               ),
             ),
@@ -528,12 +540,17 @@ class GglStatusTag extends StatelessWidget {
               color: customFg,
               fontSize: 11.5,
               fontWeight: FontWeight.w600,
-              height: 1.2,
+              height: 1.25,
               fontFamilyFallback: AppTheme.cjkFontFallback,
             ),
           ),
         ),
-        child: Text(label),
+        child: Text(
+          label,
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.ellipsis,
+        ),
       );
     }
 
@@ -556,11 +573,14 @@ class GglStatusTag extends StatelessWidget {
         ),
         child: Text(
           label,
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: skFg,
             fontSize: 11.5,
             fontWeight: FontWeight.w700,
-            height: 1.2,
+            height: 1.25,
             fontFamilyFallback: AppTheme.cjkFontFallback,
           ),
         ),
@@ -581,11 +601,14 @@ class GglStatusTag extends StatelessWidget {
       ),
       child: Text(
         label,
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           color: fg,
           fontSize: 11.5,
           fontWeight: FontWeight.w700,
-          height: 1.2,
+          height: 1.25,
           fontFamilyFallback: AppTheme.cjkFontFallback,
         ),
       ),
@@ -694,6 +717,8 @@ class GglBlockButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (AppTheme.isForui(context)) {
+      final fColors = FTheme.of(context).colors;
+      final effectiveTap = loading ? null : onPressed;
       final fVariant = switch (variant) {
         WelkButtonVariant.primary => FButtonVariant.primary,
         WelkButtonVariant.secondary => FButtonVariant.outline,
@@ -708,25 +733,91 @@ class GglBlockButton extends StatelessWidget {
         WelkButtonSize.medium => FButtonSizeVariant.md,
         WelkButtonSize.large => FButtonSizeVariant.lg,
       };
+      final pad = switch (size) {
+        WelkButtonSize.small =>
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        WelkButtonSize.medium =>
+          const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        WelkButtonSize.large =>
+          const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      };
+      final minHeight = switch (size) {
+        WelkButtonSize.small => 36.0,
+        WelkButtonSize.medium => 42.0,
+        WelkButtonSize.large => 46.0,
+      };
+      final Color? customBg = switch (variant) {
+        WelkButtonVariant.success => const Color(0xFF10B981),
+        WelkButtonVariant.warning => const Color(0xFFF59E0B),
+        _ => null,
+      };
+      final Color? customFg = switch (variant) {
+        WelkButtonVariant.success => Colors.white,
+        WelkButtonVariant.warning => const Color(0xFF18181B),
+        _ => null,
+      };
       return FButton(
         variant: fVariant,
         size: fSize,
+        style: FButtonStyleDelta.delta(
+          decoration: customBg != null
+              ? FVariantsDelta.delta([
+                  FVariantOperation.all(
+                    DecorationDelta.value(
+                      BoxDecoration(
+                        color: effectiveTap == null
+                            ? customBg.withValues(alpha: 0.45)
+                            : customBg,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ])
+              : null,
+          contentStyle: FButtonContentStyleDelta.delta(
+            constraints: BoxConstraints(minHeight: minHeight),
+            padding: EdgeInsetsGeometryDelta.value(pad),
+            spacing: 6,
+            textStyle: FVariantsDelta.delta([
+              FVariantOperation.all(
+                customFg != null
+                    ? TextStyleDelta.delta(color: customFg, height: 1.25)
+                    : const TextStyleDelta.delta(height: 1.25),
+              ),
+            ]),
+            iconStyle: customFg != null
+                ? FVariantsDelta.delta([
+                    FVariantOperation.all(
+                      IconThemeDataDelta.delta(color: customFg),
+                    ),
+                  ])
+                : null,
+          ),
+        ),
         mainAxisSize: MainAxisSize.max,
-        onPress: loading ? null : onPressed,
+        onPress: effectiveTap,
         prefix: loading
-            ? const SizedBox(
+            ? SizedBox(
                 width: 15,
                 height: 15,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: customFg ?? fColors.primaryForeground,
+                ),
               )
             : (icon != null ? Icon(icon, size: 17) : null),
-        child: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontFamilyFallback: AppTheme.cjkFontFallback,
+        child: Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              height: 1.25,
+              fontFamilyFallback: AppTheme.cjkFontFallback,
+            ),
           ),
         ),
       );

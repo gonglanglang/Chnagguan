@@ -20,14 +20,25 @@ class AppUpdateOverlay extends StatelessWidget {
     if (!update.visible) return const SizedBox.shrink();
 
     final colors = WelkTheme.of(context).resolveColors(context);
+    final isForui = AppTheme.isForui(context);
+    final ink = AppTheme.inkColor(context);
+    final accent = AppTheme.accentColor(context);
+    final onAccent = AppTheme.onAccentColor(context);
     final isDownloaded =
         !update.downloading && update.downloadedFilePath.isNotEmpty;
 
-    final sizeSummary = update.totalBytes > 0
+    final speedText = update.downloading
+        ? UpdateUtils.formatDownloadSpeed(update.downloadSpeedBytesPerSec)
+        : '';
+    final sizeCore = update.totalBytes > 0
         ? '${UpdateUtils.formatUpdateByteSize(update.downloadedBytes)} / ${UpdateUtils.formatUpdateByteSize(update.totalBytes)}'
         : (update.downloadedBytes > 0
             ? '已下载 ${UpdateUtils.formatUpdateByteSize(update.downloadedBytes)}'
             : '正在连接下载服务...');
+    final sizeSummary = speedText.isNotEmpty ? '$sizeCore · $speedText' : sizeCore;
+    final channelLabel = update.downloadChannel.isNotEmpty
+        ? UpdateUtils.downloadChannelLabel(update.downloadChannel)
+        : '';
 
     return Positioned.fill(
       child: Material(
@@ -40,7 +51,7 @@ class AppUpdateOverlay extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: GglComicPanel(
                   padding: EdgeInsets.zero,
-                  shadowOffset: const Offset(6, 6),
+                  shadowOffset: isForui ? Offset.zero : const Offset(6, 6),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -49,11 +60,11 @@ class AppUpdateOverlay extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.fromLTRB(18, 16, 12, 14),
                         decoration: BoxDecoration(
-                          color: colors.accent,
+                          color: accent,
                           border: Border(
                             bottom: BorderSide(
-                              color: colors.outline,
-                              width: colors.borderWidth,
+                              color: AppTheme.borderColor(context),
+                              width: AppTheme.borderWidth(context),
                             ),
                           ),
                         ),
@@ -66,7 +77,7 @@ class AppUpdateOverlay extends StatelessWidget {
                                   Text(
                                     '发现新版本',
                                     style: TextStyle(
-                                      color: colors.onFill(colors.accent),
+                                      color: onAccent,
                                       fontSize: 18,
                                       fontWeight: FontWeight.w800,
                                       fontFamilyFallback:
@@ -77,9 +88,7 @@ class AppUpdateOverlay extends StatelessWidget {
                                   Text(
                                     'v${update.currentVersion} → v${update.latestVersion}',
                                     style: TextStyle(
-                                      color: colors
-                                          .onFill(colors.accent)
-                                          .withValues(alpha: 0.85),
+                                      color: onAccent.withValues(alpha: 0.88),
                                       fontSize: 13,
                                       fontWeight: FontWeight.w600,
                                     ),
@@ -104,51 +113,72 @@ class AppUpdateOverlay extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              '更新内容',
-                              style: TextStyle(
-                                color: colors.ink,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                              ),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '更新内容',
+                                    style: TextStyle(
+                                      color: ink,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                                if (channelLabel.isNotEmpty)
+                                  GglStatusTag(
+                                    label: channelLabel,
+                                    variant: update.downloadChannel ==
+                                            'OSS_DIRECT'
+                                        ? WelkBadgeVariant.success
+                                        : WelkBadgeVariant.info,
+                                  ),
+                              ],
                             ),
                             const SizedBox(height: 8),
                             ConstrainedBox(
-                              constraints: const BoxConstraints(maxHeight: 160),
-                              child: SingleChildScrollView(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    for (final note in update.noteList)
-                                      Padding(
-                                        padding:
-                                            const EdgeInsets.only(bottom: 6),
-                                        child: Row(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              '• ',
-                                              style: TextStyle(
-                                                color: colors.ink,
-                                                fontWeight: FontWeight.w800,
-                                              ),
-                                            ),
-                                            Expanded(
-                                              child: Text(
-                                                note,
+                              constraints: const BoxConstraints(maxHeight: 240),
+                              child: Scrollbar(
+                                thumbVisibility: update.noteList.length > 5 ||
+                                    update.releaseNotes.length > 160,
+                                child: SingleChildScrollView(
+                                  padding: const EdgeInsets.only(right: 6),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      for (final note in update.noteList)
+                                        Padding(
+                                          padding:
+                                              const EdgeInsets.only(bottom: 6),
+                                          child: Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                '• ',
                                                 style: TextStyle(
-                                                  color: colors.ink
-                                                      .withValues(alpha: 0.86),
-                                                  fontSize: 13.5,
-                                                  height: 1.45,
+                                                  color: ink,
+                                                  fontWeight: FontWeight.w800,
                                                 ),
                                               ),
-                                            ),
-                                          ],
+                                              Expanded(
+                                                child: Text(
+                                                  note,
+                                                  style: TextStyle(
+                                                    color: ink.withValues(
+                                                      alpha: 0.86,
+                                                    ),
+                                                    fontSize: 13.5,
+                                                    height: 1.48,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         ),
-                                      ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
@@ -162,7 +192,7 @@ class AppUpdateOverlay extends StatelessWidget {
                                   Text(
                                     isDownloaded ? '安装包已就绪' : '正在应用内下载...',
                                     style: TextStyle(
-                                      color: colors.ink,
+                                      color: ink,
                                       fontSize: 12.5,
                                       fontWeight: FontWeight.w700,
                                     ),
@@ -170,7 +200,7 @@ class AppUpdateOverlay extends StatelessWidget {
                                   Text(
                                     '${update.progress}%',
                                     style: TextStyle(
-                                      color: colors.ink,
+                                      color: ink,
                                       fontSize: 13,
                                       fontWeight: FontWeight.w800,
                                     ),
@@ -182,7 +212,7 @@ class AppUpdateOverlay extends StatelessWidget {
                                 percent: update.progress / 100,
                                 fillColor: isDownloaded
                                     ? colors.success
-                                    : colors.accent,
+                                    : accent,
                               ),
                               const SizedBox(height: 6),
                               Text(
@@ -199,18 +229,15 @@ class AppUpdateOverlay extends StatelessWidget {
                               Container(
                                 width: double.infinity,
                                 padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: colors.error.withValues(alpha: 0.25),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: colors.outline,
-                                    width: 1.5,
-                                  ),
+                                decoration: AppTheme.insetBoxDecoration(
+                                  context,
+                                  color: colors.error.withValues(alpha: 0.2),
+                                  radius: 8,
                                 ),
                                 child: Text(
                                   update.errorMsg,
                                   style: TextStyle(
-                                    color: colors.ink,
+                                    color: ink,
                                     fontSize: 12.5,
                                     height: 1.4,
                                   ),

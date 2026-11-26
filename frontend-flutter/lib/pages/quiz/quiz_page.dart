@@ -105,7 +105,7 @@ class _QuizPageState extends State<QuizPage> {
   }
 
   String get _navbarTitle {
-    if (widget.mode == QuizMode.advanceExam) return '境界进阶考核';
+    if (widget.mode == QuizMode.advanceExam) return '阶段升级测评';
     if (widget.mode == QuizMode.wrongRedo) return '错题重做';
     final name = (_startData?.gateName.isNotEmpty ?? false)
         ? _startData!.gateName
@@ -327,6 +327,7 @@ class _QuizPageState extends State<QuizPage> {
         res = await api.submitGateQuiz(
           sessionNo: start.sessionNo,
           answers: answers,
+          guestPassedGateIds: user.activeGuestIds,
         );
       }
 
@@ -337,6 +338,12 @@ class _QuizPageState extends State<QuizPage> {
           !user.isAuthenticated &&
           start.gateId != null) {
         await user.recordGuestPassedGate(start.gateId!);
+      }
+      if (widget.mode == QuizMode.gate &&
+          res.passed &&
+          !res.hasNextGate &&
+          start.gateId != null) {
+        res = await _resolveNextGateFallback(res, start, user);
       }
       if (mounted) {
         setState(() => _submitResult = res);
@@ -352,6 +359,141 @@ class _QuizPageState extends State<QuizPage> {
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
+  }
+
+  /// 客户端兜底：当后端未返回下一关（例如旧服务端或边缘场景）时，按
+  /// 「同章下一关 → 同年级下一章 → 下一年级第 1 章第 1 关」顺序自动推算。
+  Future<SubmitResult> _resolveNextGateFallback(
+    SubmitResult res,
+    QuizStartResult start,
+    UserProvider user,
+  ) async {
+    try {
+      final api = context.read<GuoguanlaApi>();
+      final guestIds = user.activeGuestIds;
+
+      // 1. 同章节下一关
+      if (start.chapterId != null) {
+        final gates = await api.getGatesByChapter(
+          start.chapterId!,
+          guestPassedIds: guestIds,
+        );
+        final currentPos = gates.indexWhere((g) => g.id == start.gateId);
+        if (currentPos >= 0) {
+          for (var i = currentPos + 1; i < gates.length; i++) {
+            final candidate = gates[i];
+            if (!candidate.empty) {
+              return res.copyWithNextGate(
+                nextGateId: candidate.id,
+                nextGateIndex: candidate.gateIndex,
+                nextGateName: candidate.gateName,
+                nextChapterId: start.chapterId,
+                nextChapterName: start.chapterName,
+                nextGateCrossChapter: false,
+                nextGateCrossGrade: false,
+              );
+            }
+          }
+        }
+      }
+
+      // 定位当前年级
+      final grades = user.grades.isNotEmpty ? user.grades : GradeItem.fallbacks;
+      String? currentGradeCode;
+      for (final r in user.realms) {
+        if (r.realmCode == start.realmCode) {
+          currentGradeCode = r.gradeCode;
+          break;
+        }
+      }
+      if (currentGradeCode == null && start.chapterId != null) {
+        for (final g in grades) {
+          final chaps = await api.getChaptersByGrade(
+            g.gradeCode,
+            guestPassedIds: guestIds,
+          );
+          if (chaps.any((c) => c.id == start.chapterId)) {
+            currentGradeCode = g.gradeCode;
+            break;
+          }
+        }
+      }
+      if (currentGradeCode == null) return res;
+
+      // 2. 同年级下一章第 1 道有题关卡
+      final currentGradeChaps = await api.getChaptersByGrade(
+        currentGradeCode,
+        guestPassedIds: guestIds,
+      );
+      final currentChapPos =
+          currentGradeChaps.indexWhere((c) => c.id == start.chapterId);
+      if (currentChapPos >= 0) {
+        for (var i = currentChapPos + 1; i < currentGradeChaps.length; i++) {
+          final ch = currentGradeChaps[i];
+          final chGates = await api.getGatesByChapter(
+            ch.id,
+            guestPassedIds: guestIds,
+          );
+          for (final g in chGates) {
+            if (!g.empty) {
+              return res.copyWithNextGate(
+                nextGateId: g.id,
+                nextGateIndex: g.gateIndex,
+                nextGateName: g.gateName,
+                nextChapterId: ch.id,
+                nextChapterName: ch.name,
+                nextGateCrossChapter: true,
+                nextGradeCode: currentGradeCode,
+                nextGradeName: grades
+                    .firstWhere(
+                      (item) => item.gradeCode == currentGradeCode,
+                      orElse: () => grades.first,
+                    )
+                    .gradeName,
+                nextGateCrossGrade: false,
+              );
+            }
+          }
+        }
+      }
+
+      // 3. 下一年级（初一→初二→初三→高一→高二→高三）第 1 章第 1 关
+      final gradePos =
+          grades.indexWhere((g) => g.gradeCode == currentGradeCode);
+      if (gradePos >= 0) {
+        for (var gIdx = gradePos + 1; gIdx < grades.length; gIdx++) {
+          final nextGrade = grades[gIdx];
+          final nextChaps = await api.getChaptersByGrade(
+            nextGrade.gradeCode,
+            guestPassedIds: guestIds,
+          );
+          for (final ch in nextChaps) {
+            final chGates = await api.getGatesByChapter(
+              ch.id,
+              guestPassedIds: guestIds,
+            );
+            for (final g in chGates) {
+              if (!g.empty) {
+                return res.copyWithNextGate(
+                  nextGateId: g.id,
+                  nextGateIndex: g.gateIndex,
+                  nextGateName: g.gateName,
+                  nextChapterId: ch.id,
+                  nextChapterName: ch.name,
+                  nextGateCrossChapter: true,
+                  nextGradeCode: nextGrade.gradeCode,
+                  nextGradeName: nextGrade.gradeName,
+                  nextGateCrossGrade: true,
+                );
+              }
+            }
+          }
+        }
+      }
+    } catch (_) {
+      // 兜底查询失败不影响正常结算展示
+    }
+    return res;
   }
 
   Future<void> _goNextGate(SubmitResult res) async {
@@ -399,7 +541,7 @@ class _QuizPageState extends State<QuizPage> {
 
   String _resultHeadline(SubmitResult res) {
     if (widget.mode == QuizMode.advanceExam) {
-      return res.passed ? '考核通过，成功晋升！' : '暂未达标，再接再厉';
+      return res.passed ? '测评通过，成功晋升！' : '暂未达标，再接再厉';
     }
     if (widget.mode == QuizMode.wrongRedo) {
       final mastered = res.masteredCount > 0 ? res.masteredCount : res.correctCount;
@@ -587,7 +729,7 @@ class _QuizPageState extends State<QuizPage> {
                   ),
                   if (start.suppressedMode)
                     const GglStatusTag(
-                      label: '高境压制',
+                      label: '回刷巩固',
                       variant: WelkBadgeVariant.warning,
                     ),
                 ],
@@ -644,30 +786,46 @@ class _QuizPageState extends State<QuizPage> {
     CheckItemResult? fb,
   ) {
     final isSelected = _currentSelected == idx;
-    Color cardFill = colors.paper;
-    Color letterFill = colors.muted;
+    final ink = AppTheme.inkColor(context);
+    final surface = AppTheme.surfaceColor(context);
+    final accent = AppTheme.accentColor(context);
+    Color cardFill = surface;
+    Color letterFill = AppTheme.mutedSurfaceColor(context);
+    Color letterFg = ink;
     Widget? trailingIcon;
 
     if (fb == null) {
       if (isSelected) {
-        cardFill = colors.accent.withValues(alpha: colors.isDark ? 0.25 : 0.35);
-        letterFill = colors.accent;
+        cardFill = Color.alphaBlend(
+          accent.withValues(alpha: colors.isDark ? 0.22 : 0.16),
+          surface,
+        );
+        letterFill = accent;
+        letterFg = AppTheme.onAccentColor(context);
       }
     } else {
       if (idx == fb.correctIndex) {
-        cardFill = colors.success.withValues(alpha: colors.isDark ? 0.28 : 0.42);
+        cardFill = Color.alphaBlend(
+          colors.success.withValues(alpha: colors.isDark ? 0.24 : 0.28),
+          surface,
+        );
         letterFill = colors.success;
+        letterFg = colors.onFill(colors.success);
         trailingIcon = Icon(
           Icons.check_circle_rounded,
-          color: colors.ink,
+          color: ink,
           size: 22,
         );
       } else if (isSelected && !fb.correct) {
-        cardFill = colors.error.withValues(alpha: colors.isDark ? 0.28 : 0.42);
+        cardFill = Color.alphaBlend(
+          colors.error.withValues(alpha: colors.isDark ? 0.24 : 0.28),
+          surface,
+        );
         letterFill = colors.error;
+        letterFg = colors.onFill(colors.error);
         trailingIcon = Icon(
           Icons.cancel_rounded,
-          color: colors.ink,
+          color: ink,
           size: 22,
         );
       }
@@ -695,15 +853,15 @@ class _QuizPageState extends State<QuizPage> {
             width: 30,
             height: 30,
             alignment: Alignment.center,
-            decoration: BoxDecoration(
+            decoration: AppTheme.badgeCircleDecoration(
+              context,
               color: letterFill,
-              shape: BoxShape.circle,
-              border: Border.all(color: colors.outline, width: 1.8),
+              elevated: false,
             ),
             child: Text(
               letter,
               style: TextStyle(
-                color: colors.onFill(letterFill),
+                color: letterFg,
                 fontSize: 13.5,
                 fontWeight: FontWeight.w800,
               ),
@@ -714,7 +872,7 @@ class _QuizPageState extends State<QuizPage> {
             child: MathText(
               optionText,
               style: TextStyle(
-                color: colors.ink,
+                color: ink,
                 fontSize: 15,
                 fontWeight: FontWeight.w500,
               ),
@@ -735,6 +893,7 @@ class _QuizPageState extends State<QuizPage> {
     ClientQuestionItem item,
     CheckItemResult? fb,
   ) {
+    final ink = AppTheme.inkColor(context);
     final imgUrl = fb?.answerImageUrl;
     return GglComicPanel(
       child: Column(
@@ -742,12 +901,12 @@ class _QuizPageState extends State<QuizPage> {
         children: [
           Row(
             children: [
-              const Icon(Icons.draw_rounded, size: 20),
+              Icon(Icons.draw_rounded, size: 20, color: ink),
               const SizedBox(width: 8),
               Text(
                 '手写画板作答',
                 style: TextStyle(
-                  color: colors.ink,
+                  color: ink,
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
                 ),
@@ -770,10 +929,9 @@ class _QuizPageState extends State<QuizPage> {
               child: Container(
                 width: double.infinity,
                 height: 170,
-                decoration: BoxDecoration(
+                decoration: AppTheme.insetBoxDecoration(
+                  context,
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: colors.outline, width: 1.8),
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: Image.network(imgUrl, fit: BoxFit.contain),
@@ -791,26 +949,12 @@ class _QuizPageState extends State<QuizPage> {
           ),
           if (fb == null) ...[
             const SizedBox(height: 14),
-            TextField(
+            GglTextArea(
               controller: _essayController,
-              maxLines: 4,
-              maxLength: 500,
+              hintText: '也可以在此补充文字解题步骤...',
+              minLines: 4,
+              maxLines: 5,
               onChanged: (v) => _essayTextMap[item.itemIndex] = v,
-              decoration: InputDecoration(
-                hintText: '也可以在此补充文字解题步骤...',
-                filled: true,
-                fillColor: colors.muted,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide:
-                      BorderSide(color: colors.outline, width: colors.borderWidth),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide:
-                      BorderSide(color: colors.outline, width: colors.borderWidth),
-                ),
-              ),
             ),
             const SizedBox(height: 10),
             GglBlockButton(
@@ -893,14 +1037,13 @@ class _QuizPageState extends State<QuizPage> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: colors.paper,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: colors.outline, width: 1.5),
+              decoration: AppTheme.insetBoxDecoration(
+                context,
+                color: AppTheme.surfaceColor(context),
               ),
               child: MathText(
                 fb.analysis,
-                style: TextStyle(color: colors.ink, fontSize: 14),
+                style: TextStyle(color: AppTheme.inkColor(context), fontSize: 14),
               ),
             ),
           ],
@@ -934,16 +1077,9 @@ class _QuizPageState extends State<QuizPage> {
                 width: 68,
                 height: 68,
                 alignment: Alignment.center,
-                decoration: BoxDecoration(
+                decoration: AppTheme.badgeCircleDecoration(
+                  context,
                   color: badgeColor,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: colors.outline,
-                    width: colors.borderWidth,
-                  ),
-                  boxShadow: [
-                    BoxShadow(color: colors.shadow, offset: const Offset(3, 3)),
-                  ],
                 ),
                 child: Icon(
                   res.passed ? Icons.emoji_events_rounded : Icons.bolt_rounded,
@@ -1008,19 +1144,19 @@ class _QuizPageState extends State<QuizPage> {
         if (res.promotedRealm != null) ...[
           const SizedBox(height: 14),
           GglComicPanel(
-            color: colors.accent,
+            color: AppTheme.accentColor(context),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const GglStatusTag(
-                  label: '境界晋升',
+                  label: '阶段晋升',
                   variant: WelkBadgeVariant.success,
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  '恭喜晋升至 ${res.promotedRealm!.realmName}！',
+                  '恭喜晋升至 ${res.promotedRealm!.realmName} 阶段！',
                   style: TextStyle(
-                    color: colors.onFill(colors.accent),
+                    color: AppTheme.onAccentColor(context),
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
                   ),
@@ -1030,7 +1166,7 @@ class _QuizPageState extends State<QuizPage> {
                   Text(
                     res.promotedRealm!.description,
                     style: TextStyle(
-                      color: colors.onFill(colors.accent),
+                      color: AppTheme.onAccentColor(context),
                       fontSize: 13.5,
                     ),
                   ),
@@ -1048,10 +1184,12 @@ class _QuizPageState extends State<QuizPage> {
             child: Row(
               children: [
                 Icon(
-                  res.nextGateCrossChapter
-                      ? Icons.auto_awesome_rounded
-                      : Icons.flag_circle_rounded,
-                  color: colors.ink,
+                  res.nextGateCrossGrade
+                      ? Icons.workspace_premium_rounded
+                      : res.nextGateCrossChapter
+                          ? Icons.auto_awesome_rounded
+                          : Icons.flag_circle_rounded,
+                  color: AppTheme.inkColor(context),
                   size: 24,
                 ),
                 const SizedBox(width: 10),
@@ -1060,20 +1198,24 @@ class _QuizPageState extends State<QuizPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        res.nextGateCrossChapter
-                            ? '本章已通关！即将开启下一章'
-                            : '下一关已解锁，趁热打铁继续闯关',
+                        res.nextGateCrossGrade
+                            ? '本年级已全部通关！即将开启${res.nextGradeName ?? '下一年级'}'
+                            : res.nextGateCrossChapter
+                                ? '本章已通关！即将开启下一章'
+                                : '下一关已解锁，趁热打铁继续闯关',
                         style: TextStyle(
-                          color: colors.ink,
+                          color: AppTheme.inkColor(context),
                           fontSize: 13.5,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        res.nextGateCrossChapter
-                            ? '${res.nextChapterName ?? '下一章节'} · 第 ${(res.nextGateIndex ?? 0) + 1} 关 ${res.nextGateName ?? ''}'
-                            : '第 ${(res.nextGateIndex ?? 0) + 1} 关 · ${res.nextGateName ?? ''}',
+                        res.nextGateCrossGrade
+                            ? '${res.nextGradeName ?? '下一年级'} · ${res.nextChapterName ?? '第 1 章'} · 第 ${(res.nextGateIndex ?? 0) + 1} 关 ${res.nextGateName ?? ''}'
+                            : res.nextGateCrossChapter
+                                ? '${res.nextChapterName ?? '下一章节'} · 第 ${(res.nextGateIndex ?? 0) + 1} 关 ${res.nextGateName ?? ''}'
+                                : '第 ${(res.nextGateIndex ?? 0) + 1} 关 · ${res.nextGateName ?? ''}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -1085,7 +1227,10 @@ class _QuizPageState extends State<QuizPage> {
                   ),
                 ),
                 const SizedBox(width: 6),
-                Icon(Icons.chevron_right_rounded, color: colors.ink),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppTheme.inkColor(context),
+                ),
               ],
             ),
           ),
@@ -1159,9 +1304,11 @@ class _QuizPageState extends State<QuizPage> {
       final res = _submitResult!;
       final canDirectNext = widget.mode == QuizMode.gate && res.hasNextGate;
       final nextSeq = (res.nextGateIndex ?? 0) + 1;
-      final nextLabel = res.nextGateCrossChapter
-          ? '进入下一章 · 第 $nextSeq 关'
-          : '进入下一关 · 第 $nextSeq 关';
+      final nextLabel = res.nextGateCrossGrade
+          ? '进入${res.nextGradeName ?? '下一年级'} · 第 $nextSeq 关'
+          : res.nextGateCrossChapter
+              ? '进入下一章 · 第 $nextSeq 关'
+              : '进入下一关 · 第 $nextSeq 关';
 
       child = Column(
         mainAxisSize: MainAxisSize.min,
@@ -1257,13 +1404,13 @@ class _MetricTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = WelkTheme.of(context).resolveColors(context);
+    final ink = AppTheme.inkColor(context);
     return Column(
       children: [
         Text(
           value,
           style: TextStyle(
-            color: colors.ink,
+            color: ink,
             fontSize: 20,
             fontWeight: FontWeight.w800,
           ),

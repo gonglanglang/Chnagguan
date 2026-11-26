@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-@Tag(name = "学生端-首页、修仙境界与个人中心")
+@Tag(name = "学生端-首页、学习阶段与个人中心")
 @RestController
 @RequestMapping("/api/app")
 @RequiredArgsConstructor
@@ -29,7 +29,7 @@ public class AppHomeController {
     private final AppBankService bankService;
     private final AppQuizService quizService;
 
-    @Operation(summary = "首页概览（修仙境界列表、公告、默认主题与当前学生状态）")
+    @Operation(summary = "首页概览（学习阶段列表、公告、默认主题与当前学生状态）")
     @GetMapping("/home/summary")
     public Result<AppUserProfileVO.HomeSummaryVO> homeSummary(@RequestParam(required = false) String guestPassedIds) {
         return Result.ok(bankService.homeSummary(parseIds(guestPassedIds)));
@@ -41,13 +41,13 @@ public class AppHomeController {
         return Result.ok(bankService.getDefaultTheme());
     }
 
-    @Operation(summary = "获取全部修仙境界与解锁状态")
+    @Operation(summary = "获取全部学习阶段与解锁状态")
     @GetMapping("/realms")
     public Result<List<AppUserProfileVO.RealmItemVO>> realms(@RequestParam(required = false) String guestPassedIds) {
         return Result.ok(bankService.listRealms(parseIds(guestPassedIds)));
     }
 
-    @Operation(summary = "按修仙境界查询章节及通关状态")
+    @Operation(summary = "按学习阶段查询章节及通关状态")
     @GetMapping("/realms/{realmCode}/chapters")
     public Result<List<AppUserProfileVO.ChapterCardVO>> chaptersByRealm(
             @PathVariable String realmCode,

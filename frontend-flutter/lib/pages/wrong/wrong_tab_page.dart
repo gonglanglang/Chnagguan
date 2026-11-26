@@ -253,15 +253,7 @@ class _WrongTabPageState extends State<WrongTabPage> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 10),
-              decoration: BoxDecoration(
-                color: colors.paper,
-                border: Border(
-                  bottom: BorderSide(
-                    color: colors.outline,
-                    width: colors.borderWidth,
-                  ),
-                ),
-              ),
+              decoration: AppTheme.barDecoration(context, bottomBorder: true),
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -316,38 +308,28 @@ class _WrongTabPageState extends State<WrongTabPage> {
                             width: 64,
                             height: 64,
                             alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: colors.accent,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: colors.outline,
-                                width: colors.borderWidth,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: colors.shadow,
-                                  offset: const Offset(3, 3),
-                                ),
-                              ],
+                            decoration: AppTheme.badgeCircleDecoration(
+                              context,
+                              color: AppTheme.accentColor(context),
                             ),
                             child: Icon(
                               Icons.menu_book_rounded,
                               size: 32,
-                              color: colors.onFill(colors.accent),
+                              color: AppTheme.onAccentColor(context),
                             ),
                           ),
                           const SizedBox(height: 16),
                           Text(
                             '登录后解锁专属错题本',
                             style: TextStyle(
-                              color: colors.ink,
+                              color: AppTheme.inkColor(context),
                               fontSize: 18,
                               fontWeight: FontWeight.w800,
                             ),
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            '每次闯关与解答的错题将自动收录，支持分境界筛选、错题重做与掌握消错。',
+                            '每次闯关与解答的错题将自动收录，支持分年级筛选、错题重做与掌握消错。',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: AppTheme.mutedText(context),
@@ -545,7 +527,7 @@ class _WrongCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = WelkTheme.of(context).resolveColors(context);
+    final ink = AppTheme.inkColor(context);
 
     return GglComicPanel(
       margin: const EdgeInsets.only(bottom: 14),
@@ -579,7 +561,7 @@ class _WrongCard extends StatelessWidget {
           MathText(
             item.stem,
             style: TextStyle(
-              color: colors.ink,
+              color: ink,
               fontSize: 15.5,
               fontWeight: FontWeight.w600,
             ),
@@ -597,11 +579,7 @@ class _WrongCard extends StatelessWidget {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: colors.muted,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: colors.outline, width: 1.4),
-            ),
+            decoration: AppTheme.insetBoxDecoration(context),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -613,7 +591,7 @@ class _WrongCard extends StatelessWidget {
                 MathText(
                   item.formattedCorrectAnswer(),
                   style: TextStyle(
-                    color: colors.ink,
+                    color: ink,
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
                   ),
@@ -640,10 +618,10 @@ class _WrongCard extends StatelessWidget {
                     child: Container(
                       width: 110,
                       height: 80,
-                      decoration: BoxDecoration(
+                      decoration: AppTheme.insetBoxDecoration(
+                        context,
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: colors.outline, width: 1.5),
+                        radius: 8,
                       ),
                       clipBehavior: Clip.antiAlias,
                       child: Image.network(

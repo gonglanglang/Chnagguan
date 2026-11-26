@@ -24,10 +24,10 @@ public enum ErrorCode {
     IMPORT_FORMAT_INVALID(20003, "导入数据格式不正确"),
     GATE_LOCKED(20004, "请先通过上一关才能解锁本关"),
     GATE_EMPTY(20005, "当前关卡暂未配置题目"),
-    REALM_LOCKED(20006, "当前境界不足，请先通过进阶考核突破后再挑战"),
-    REALM_EXAM_LOCKED(20007, "尚未达到进阶考核条件，请继续修炼本境界关卡"),
-    REALM_MAX_REACHED(20008, "已达最高境界，无需继续进阶"),
-    REALM_EXAM_EMPTY(20009, "当前境界题库为空，无法生成进阶考题"),
+    REALM_LOCKED(20006, "当前学习阶段不足，请先通过阶段升级测评后再挑战"),
+    REALM_EXAM_LOCKED(20007, "尚未达到阶段升级测评条件，请继续完成本阶段关卡"),
+    REALM_MAX_REACHED(20008, "已达最高学习阶段，无需继续升级"),
+    REALM_EXAM_EMPTY(20009, "当前学习阶段题库为空，无法生成升级测评试卷"),
 
     // 30001+ 答题与错题
     QUIZ_SESSION_INVALID(30001, "答题会话不存在或无权访问"),

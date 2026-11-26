@@ -160,10 +160,10 @@ onMounted(async () => {
   <div class="space-y-4">
     <el-card shadow="never">
       <el-form :inline="true" :model="query" class="flex flex-wrap items-center gap-y-2">
-        <el-form-item label="境界">
+        <el-form-item label="年级">
           <el-select
             v-model="query.realmCode"
-            placeholder="全部境界"
+            placeholder="全部年级"
             clearable
             style="width: 136px"
             @change="onFilterRealmChange"
@@ -179,7 +179,7 @@ onMounted(async () => {
         <el-form-item label="章节">
           <el-select
             v-model="query.chapterId"
-            placeholder="先选境界"
+            placeholder="先选年级"
             clearable
             style="width: 190px"
             @change="onFilterChapterChange"
@@ -244,7 +244,7 @@ onMounted(async () => {
     <el-card shadow="never">
       <el-table v-loading="loading" :data="tableData" border stripe>
         <el-table-column prop="id" label="ID" width="64" align="center" />
-        <el-table-column label="所属境界与章节" width="200">
+        <el-table-column label="所属年级与章节" width="200">
           <template #default="{ row }">
             <div class="truncate text-xs font-bold text-green-700">
               {{ row.realmName || row.gradeName }} · {{ row.gateName }}

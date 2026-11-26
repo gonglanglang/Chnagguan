@@ -803,7 +803,7 @@ onMounted(async () => {
     <section class="shrink-0 border-b border-slate-200 bg-white px-5 py-3 shadow-xs">
       <div class="flex flex-wrap items-center gap-x-5 gap-y-2.5">
         <div class="flex items-center gap-2">
-          <span class="shrink-0 text-xs font-semibold text-slate-600">所属境界</span>
+          <span class="shrink-0 text-xs font-semibold text-slate-600">所属年级</span>
           <el-select v-model="form.gradeCode" style="width: 175px" @change="onGradeChange">
             <el-option
               v-for="r in realms"
@@ -1253,7 +1253,7 @@ onMounted(async () => {
                     第 1 / {{ selectedGate?.questionCount || 3 }} 题
                   </span>
                   <span class="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">
-                    {{ selectedRealm?.realmName || "练气" }}
+                    {{ selectedRealm?.realmName || "初一" }}
                   </span>
                   <span class="truncate">{{ selectedChapter?.name || "章节练习" }}</span>
                 </div>

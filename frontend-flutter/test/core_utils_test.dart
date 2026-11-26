@@ -589,5 +589,66 @@ void main() {
       expect(item.diagram?.primitives[1].sweepAngle, 35);
       expect(item.imageUrl, 'https://example.com/tri.png');
     });
+
+    test('TASK-20261126-002 parses cross-grade nextGate, OSS channel, speed & normal stage defaults',
+        () {
+      final submit = SubmitResult.fromJson({
+        'sessionNo': 'QZ-G7-LAST',
+        'mode': 'GATE',
+        'totalCount': 4,
+        'correctCount': 4,
+        'passCount': 3,
+        'passed': true,
+        'newlyPassed': true,
+        'totalPassedGates': 40,
+        'wrongItems': const [],
+        'masteredCount': 0,
+        'nextGateId': 41,
+        'nextGateIndex': 0,
+        'nextGateName': '基础关',
+        'nextChapterId': 11,
+        'nextChapterName': '第11章 三角形',
+        'nextGateCrossChapter': true,
+        'nextGradeCode': 'g8',
+        'nextGradeName': '初二',
+        'nextGateCrossGrade': true,
+      });
+      expect(submit.hasNextGate, isTrue);
+      expect(submit.nextGateCrossGrade, isTrue);
+      expect(submit.nextGradeCode, 'g8');
+      expect(submit.nextGradeName, '初二');
+
+      final fallback = submit.copyWithNextGate(
+        nextGateId: 99,
+        nextGradeCode: 'g9',
+        nextGradeName: '初三',
+        nextGateCrossGrade: true,
+      );
+      expect(fallback.nextGateId, 99);
+      expect(fallback.nextGradeName, '初三');
+
+      final longNotes = '更新亮点：${'优化题库配图与交互体验。' * 200}';
+      expect(longNotes.length, greaterThan(2000));
+      final ver = AppVersionInfo.fromJson({
+        'version': '2.3.0',
+        'versionCode': 230,
+        'downloadUrl': 'https://cdn.example.com/app/guoguanla-2.3.0.apk',
+        'downloadChannel': 'OSS_DIRECT',
+        'ossCustomDomain': 'https://cdn.example.com',
+        'releaseNotes': longNotes,
+        'forceUpdate': false,
+      });
+      expect(ver.downloadChannel, 'OSS_DIRECT');
+      expect(ver.ossCustomDomain, 'https://cdn.example.com');
+      expect(ver.releaseNotes.length, longNotes.length);
+      expect(UpdateUtils.downloadChannelLabel(ver.downloadChannel), 'OSS 直连高速通道');
+      expect(UpdateUtils.downloadChannelLabel('SERVER_PROXY'), '应用内安全中转通道');
+      expect(UpdateUtils.formatDownloadSpeed(0), '');
+      expect(UpdateUtils.formatDownloadSpeed(512 * 1024), '512 KB/s');
+      expect(UpdateUtils.formatDownloadSpeed(2.5 * 1024 * 1024), '2.5 MB/s');
+
+      final defaultNames = RealmItem.defaults.map((r) => r.realmName).toList();
+      expect(defaultNames, ['初一', '初二', '初三', '高一', '高二', '高三']);
+    });
   });
 }

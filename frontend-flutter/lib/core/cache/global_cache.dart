@@ -147,7 +147,7 @@ enum GlobalCacheKey {
   lastAnnouncementVersion(
     GlobalCacheEntryMeta(
       storageKey: 'ggl_last_announcement_version',
-      description: '已自动弹出过修炼公告的 App 版本标识 (<version>+<versionCode>)',
+      description: '已自动弹出过学习公告的 App 版本标识 (<version>+<versionCode>)',
       category: GlobalCacheCategory.lifecycle,
       preserveOnAppUpdate: true,
       preserveOnCacheClear: true,
@@ -423,7 +423,7 @@ class GlobalCache {
   String get lastAnnouncementVersion =>
       _prefs.getString(GlobalCacheKey.lastAnnouncementVersion.storageKey) ?? '';
 
-  /// 判断当前 App 版本是否需要自动弹出一次修炼公告。
+  /// 判断当前 App 版本是否需要自动弹出一次学习公告。
   /// 当本地无记录，或 App 已升级至新版本（`<version>+<versionCode>` 变化）时返回 true。
   bool shouldAutoShowAnnouncement(String appVersionKey) {
     final normalized = appVersionKey.trim();
@@ -431,7 +431,7 @@ class GlobalCache {
     return lastAnnouncementVersion != normalized;
   }
 
-  /// 标记当前 App 版本的修炼公告已自动弹出过一次
+  /// 标记当前 App 版本的学习公告已自动弹出过一次
   Future<void> markAnnouncementShown(String appVersionKey) async {
     final normalized = appVersionKey.trim();
     if (normalized.isEmpty) return;

@@ -70,7 +70,7 @@ public class RealmHelperService {
         if (ordered.isEmpty()) {
             EduRealm fallback = new EduRealm();
             fallback.setRealmCode("lianqi");
-            fallback.setRealmName("练气");
+            fallback.setRealmName("初一");
             fallback.setRealmOrder(1);
             fallback.setGradeCode("g7");
             fallback.setDifficultyLabel("难度一 · 基础");

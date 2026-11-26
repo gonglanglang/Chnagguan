@@ -313,6 +313,181 @@ class AppTheme {
     return colors.ink.withValues(alpha: colors.isDark ? 0.68 : 0.62);
   }
 
+  static Color inkColor(BuildContext context) {
+    if (isForui(context)) {
+      return FTheme.of(context).colors.foreground;
+    }
+    if (isSkribble(context)) {
+      return WiredTheme.of(context).textColor;
+    }
+    return WelkTheme.of(context).resolveColors(context).ink;
+  }
+
+  static Color surfaceColor(BuildContext context) {
+    if (isForui(context)) {
+      return FTheme.of(context).colors.card;
+    }
+    if (isSkribble(context)) {
+      return WiredTheme.of(context).fillColor;
+    }
+    return WelkTheme.of(context).resolveColors(context).paper;
+  }
+
+  static Color mutedSurfaceColor(BuildContext context) {
+    if (isForui(context)) {
+      return FTheme.of(context).colors.secondary;
+    }
+    return WelkTheme.of(context).resolveColors(context).muted;
+  }
+
+  static Color accentColor(BuildContext context) {
+    if (isForui(context)) {
+      return FTheme.of(context).colors.primary;
+    }
+    if (isSkribble(context)) {
+      return WiredTheme.of(context).markerColor;
+    }
+    return WelkTheme.of(context).resolveColors(context).accent;
+  }
+
+  static Color onAccentColor(BuildContext context) {
+    if (isForui(context)) {
+      return FTheme.of(context).colors.primaryForeground;
+    }
+    final colors = WelkTheme.of(context).resolveColors(context);
+    return colors.onFill(accentColor(context));
+  }
+
+  static Color borderColor(BuildContext context) {
+    if (isForui(context)) {
+      return FTheme.of(context).colors.border;
+    }
+    if (isSkribble(context)) {
+      return WiredTheme.of(context).borderColor;
+    }
+    return WelkTheme.of(context).resolveColors(context).outline;
+  }
+
+  static double borderWidth(BuildContext context) {
+    if (isForui(context)) return 1.0;
+    return WelkTheme.of(context).resolveColors(context).borderWidth;
+  }
+
+  /// 皮肤自适应的内嵌信息块/图标槽装饰：
+  /// Forui 使用 1px 细腻现代边框与中性底色（零硬阴影）；WelkUI/Skribble 保留粗描边质感。
+  static BoxDecoration insetBoxDecoration(
+    BuildContext context, {
+    Color? color,
+    Color? borderColor,
+    double radius = 10,
+    bool shadow = false,
+    double? width,
+  }) {
+    if (isForui(context)) {
+      final fColors = FTheme.of(context).colors;
+      return BoxDecoration(
+        color: color ?? fColors.secondary,
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(
+          color: borderColor ?? fColors.border,
+          width: width ?? 1,
+        ),
+      );
+    }
+    final colors = WelkTheme.of(context).resolveColors(context);
+    return BoxDecoration(
+      color: color ?? colors.muted,
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(
+        color: borderColor ?? colors.outline,
+        width: width ?? 1.5,
+      ),
+      boxShadow: shadow
+          ? [BoxShadow(color: colors.shadow, offset: const Offset(2, 2))]
+          : const [],
+    );
+  }
+
+  /// 皮肤自适应的圆形节点/徽章装饰（如闯关路线节点、结算奖杯徽章）。
+  static BoxDecoration badgeCircleDecoration(
+    BuildContext context, {
+    required Color color,
+    Color? borderColor,
+    bool elevated = true,
+  }) {
+    if (isForui(context)) {
+      final fColors = FTheme.of(context).colors;
+      return BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: borderColor ?? fColors.border,
+          width: 1,
+        ),
+        boxShadow: elevated && fColors.brightness == Brightness.light
+            ? const [
+                BoxShadow(
+                  color: Color(0x14000000),
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
+                ),
+              ]
+            : const [],
+      );
+    }
+    final colors = WelkTheme.of(context).resolveColors(context);
+    return BoxDecoration(
+      color: color,
+      shape: BoxShape.circle,
+      border: Border.all(
+        color: borderColor ?? colors.outline,
+        width: colors.borderWidth,
+      ),
+      boxShadow: elevated
+          ? [BoxShadow(color: colors.shadow, offset: const Offset(2, 2))]
+          : const [],
+    );
+  }
+
+  /// 皮肤自适应的可选中卡片/选项装饰（如登录注册 Tab、年级选择格、答题选项）。
+  static BoxDecoration selectableTileDecoration(
+    BuildContext context, {
+    required bool selected,
+    Color? selectedFill,
+    Color? unselectedFill,
+    Color? selectedBorder,
+    double radius = 10,
+  }) {
+    if (isForui(context)) {
+      final fColors = FTheme.of(context).colors;
+      final fill = selected
+          ? (selectedFill ?? fColors.primary)
+          : (unselectedFill ?? fColors.card);
+      final border = selected
+          ? (selectedBorder ?? fColors.primary)
+          : fColors.border;
+      return BoxDecoration(
+        color: fill,
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: border, width: selected ? 1.5 : 1),
+      );
+    }
+    final colors = WelkTheme.of(context).resolveColors(context);
+    return BoxDecoration(
+      color: selected
+          ? (selectedFill ?? colors.accent)
+          : (unselectedFill ?? colors.paper),
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(
+        color: selected ? (selectedBorder ?? colors.outline) : colors.outline,
+        width: colors.borderWidth,
+      ),
+      boxShadow: selected
+          ? [BoxShadow(color: colors.shadow, offset: const Offset(2, 2))]
+          : const [],
+    );
+  }
+
   /// 供页眉/底栏/信息条等容器使用，在 Forui 下渲染现代 1px 柔和边框，在 WelkUI 下保留漫画粗描边。
   static BoxDecoration barDecoration(
     BuildContext context, {

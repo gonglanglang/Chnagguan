@@ -37,6 +37,9 @@ class ChapterMapPage extends StatefulWidget {
 class _ChapterMapPageState extends State<ChapterMapPage> {
   List<GateCard> _gates = const [];
   bool _loading = true;
+  ChapterCard? _nextChapter;
+  int _nextChapterSeq = 1;
+  String? _nextChapterCrossGradeName;
 
   @override
   void initState() {
@@ -60,6 +63,16 @@ class _ChapterMapPageState extends State<ChapterMapPage> {
       if (mounted) {
         setState(() => _gates = result);
       }
+      final playableTotal = result.where((g) => !g.empty).length;
+      final passedTotal = result.where((g) => g.passed).length;
+      if (playableTotal > 0 && passedTotal >= playableTotal && mounted) {
+        await _resolveNextChapter();
+      } else if (mounted && _nextChapter != null) {
+        setState(() {
+          _nextChapter = null;
+          _nextChapterCrossGradeName = null;
+        });
+      }
     } catch (e) {
       if (mounted) {
         GglFeedback.error(context, friendlyErrorMessage(e, '加载关卡失败'));
@@ -67,6 +80,77 @@ class _ChapterMapPageState extends State<ChapterMapPage> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _resolveNextChapter() async {
+    try {
+      final api = context.read<GuoguanlaApi>();
+      final user = context.read<UserProvider>();
+      final grades = user.grades.isNotEmpty ? user.grades : GradeItem.fallbacks;
+      final guestIds = user.activeGuestIds;
+
+      int currentGradeIdx = -1;
+      List<ChapterCard> currentGradeChaps = const [];
+      for (var i = 0; i < grades.length; i++) {
+        final chaps = await api.getChaptersByGrade(
+          grades[i].gradeCode,
+          guestPassedIds: guestIds,
+        );
+        final pos = chaps.indexWhere((c) => c.id == widget.chapterId);
+        if (pos >= 0) {
+          currentGradeIdx = i;
+          currentGradeChaps = chaps;
+          if (pos + 1 < chaps.length) {
+            if (mounted) {
+              setState(() {
+                _nextChapter = chaps[pos + 1];
+                _nextChapterSeq = pos + 2;
+                _nextChapterCrossGradeName = null;
+              });
+            }
+            return;
+          }
+          break;
+        }
+      }
+
+      if (currentGradeIdx >= 0 && currentGradeChaps.isNotEmpty) {
+        for (var i = currentGradeIdx + 1; i < grades.length; i++) {
+          final nextChaps = await api.getChaptersByGrade(
+            grades[i].gradeCode,
+            guestPassedIds: guestIds,
+          );
+          if (nextChaps.isNotEmpty) {
+            if (mounted) {
+              setState(() {
+                _nextChapter = nextChaps.first;
+                _nextChapterSeq = 1;
+                _nextChapterCrossGradeName = grades[i].gradeName;
+              });
+            }
+            return;
+          }
+        }
+      }
+    } catch (_) {
+      // Ignore next-chapter lookup failure
+    }
+  }
+
+  Future<void> _openNextChapter() async {
+    final next = _nextChapter;
+    if (next == null) return;
+    await Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(
+        builder: (_) => ChapterMapPage(
+          chapterId: next.id,
+          chapterSeq: _nextChapterSeq,
+          chapterName: next.name,
+          chapterDesc: next.description,
+          realmName: next.realmName,
+        ),
+      ),
+    );
   }
 
   int get _passedCount => _gates.where((g) => g.passed).length;
@@ -319,20 +403,42 @@ class _ChapterMapPageState extends State<ChapterMapPage> {
       bottomNavigationBar: SafeArea(
         child: Container(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-          decoration: BoxDecoration(
-            color: colors.paper,
-            border: Border(
-              top: BorderSide(color: colors.outline, width: colors.borderWidth),
-            ),
-          ),
-          child: GglBlockButton(
-            label: _primaryButtonText,
-            size: WelkButtonSize.large,
-            icon: Icons.play_arrow_rounded,
-            onPressed: _primaryActionGate == null
-                ? null
-                : () => _startGate(_primaryActionGate!),
-          ),
+          decoration: AppTheme.barDecoration(context, topBorder: true),
+          child: _nextChapter != null && _nextPlayableGate == null
+              ? Row(
+                  children: [
+                    Expanded(
+                      child: GglBlockButton(
+                        label: _primaryButtonText,
+                        variant: WelkButtonVariant.secondary,
+                        size: WelkButtonSize.medium,
+                        onPressed: _primaryActionGate == null
+                            ? null
+                            : () => _startGate(_primaryActionGate!),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 2,
+                      child: GglBlockButton(
+                        label: _nextChapterCrossGradeName != null
+                            ? '进入$_nextChapterCrossGradeName · 第 1 章'
+                            : '进入下一章',
+                        icon: Icons.arrow_forward_rounded,
+                        size: WelkButtonSize.medium,
+                        onPressed: _openNextChapter,
+                      ),
+                    ),
+                  ],
+                )
+              : GglBlockButton(
+                  label: _primaryButtonText,
+                  size: WelkButtonSize.large,
+                  icon: Icons.play_arrow_rounded,
+                  onPressed: _primaryActionGate == null
+                      ? null
+                      : () => _startGate(_primaryActionGate!),
+                ),
         ),
       ),
     );
@@ -352,7 +458,7 @@ class _OverviewStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = WelkTheme.of(context).resolveColors(context);
+    final ink = AppTheme.inkColor(context);
     return Column(
       children: [
         Row(
@@ -363,7 +469,7 @@ class _OverviewStat extends StatelessWidget {
             Text(
               value,
               style: TextStyle(
-                color: colors.ink,
+                color: ink,
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
               ),
@@ -407,17 +513,20 @@ class _GateTimelineRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = WelkTheme.of(context).resolveColors(context);
+    final ink = AppTheme.inkColor(context);
+    final border = AppTheme.borderColor(context);
+    final isForui = AppTheme.isForui(context);
 
     final Color nodeFill;
     final Color nodeFg;
     if (gate.passed) {
-      nodeFill = colors.success;
-      nodeFg = colors.onFill(colors.success);
+      nodeFill = isForui ? const Color(0xFF10B981) : colors.success;
+      nodeFg = isForui ? Colors.white : colors.onFill(colors.success);
     } else if (!gate.locked && !gate.empty) {
-      nodeFill = colors.accent;
-      nodeFg = colors.onFill(colors.accent);
+      nodeFill = AppTheme.accentColor(context);
+      nodeFg = AppTheme.onAccentColor(context);
     } else {
-      nodeFill = colors.muted;
+      nodeFill = AppTheme.mutedSurfaceColor(context);
       nodeFg = AppTheme.mutedText(context);
     }
 
@@ -444,19 +553,12 @@ class _GateTimelineRow extends StatelessWidget {
                     width: 30,
                     height: 30,
                     alignment: Alignment.center,
-                    decoration: BoxDecoration(
+                    decoration: AppTheme.badgeCircleDecoration(
+                      context,
                       color: nodeFill,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: colors.outline,
-                        width: colors.borderWidth,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: colors.shadow,
-                          offset: const Offset(2, 2),
-                        ),
-                      ],
+                      borderColor: isForui && (gate.passed || !gate.locked)
+                          ? nodeFill
+                          : null,
                     ),
                     child: gate.passed
                         ? Icon(Icons.check_rounded, size: 17, color: nodeFg)
@@ -475,11 +577,11 @@ class _GateTimelineRow extends StatelessWidget {
                   if (!isLast)
                     Expanded(
                       child: Container(
-                        width: 2.5,
+                        width: isForui ? 1.8 : 2.5,
                         margin: const EdgeInsets.symmetric(vertical: 4),
                         color: gate.passed
-                            ? colors.outline
-                            : colors.outline.withValues(alpha: 0.25),
+                            ? (isForui ? const Color(0xFF10B981) : border)
+                            : border.withValues(alpha: isForui ? 0.9 : 0.25),
                       ),
                     ),
                 ],
@@ -501,7 +603,7 @@ class _GateTimelineRow extends StatelessWidget {
                             style: TextStyle(
                               color: gate.locked
                                   ? AppTheme.mutedText(context)
-                                  : colors.ink,
+                                  : ink,
                               fontSize: 15.5,
                               fontWeight: FontWeight.w800,
                             ),

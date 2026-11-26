@@ -49,6 +49,8 @@ public class AppQuizDTO {
         @NotBlank(message = "会话编号不能为空")
         private String sessionNo;
         private List<AnswerSelection> answers;
+        /** 游客模式本地已通关关卡ID列表（用于重刷历史已通关关卡时依然能衔接下一关） */
+        private List<Long> guestPassedGateIds;
     }
 
     @Data

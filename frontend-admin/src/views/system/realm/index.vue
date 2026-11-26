@@ -108,6 +108,7 @@ const versionForm = reactive({
   latestVersion: "1.0.0",
   latestVersionCode: 100,
   downloadUrl: "",
+  ossCustomDomain: "",
   forceUpdate: false,
   updateNotes: ""
 });
@@ -142,6 +143,7 @@ async function fetchAll() {
     versionForm.latestVersion = map.get("app_latest_version") || "1.0.0";
     versionForm.latestVersionCode = Number(map.get("app_latest_version_code") || 100);
     versionForm.downloadUrl = map.get("app_download_url") || "";
+    versionForm.ossCustomDomain = map.get("oss_custom_domain") || verRes.data?.ossCustomDomain || "";
     versionForm.forceUpdate = map.get("app_force_update") === "true";
     versionForm.updateNotes = map.get("app_update_notes") || "";
     effectiveVersion.value = verRes.data;
@@ -221,7 +223,7 @@ async function handleTestAi() {
 
 async function saveRealmRow(row: RealmConfig) {
   if (!row.realmName.trim()) {
-    ElMessage.warning("请填写境界名称");
+    ElMessage.warning("请填写学习阶段名称");
     return;
   }
   await updateRealm(row.id, {
@@ -232,7 +234,7 @@ async function saveRealmRow(row: RealmConfig) {
     examQuestionCount: row.examQuestionCount,
     examPassScore: row.examPassScore
   });
-  ElMessage.success(`已保存「${row.realmName}」境界配置`);
+  ElMessage.success(`已保存「${row.realmName}」阶段配置`);
 }
 
 function selectColorPreset(preset: { hex: string; name: string }) {
@@ -285,6 +287,10 @@ async function saveVersionSettings() {
     ElMessage.warning("请填写最新版本号");
     return;
   }
+  if (versionForm.updateNotes.trim().length > 2500) {
+    ElMessage.warning("更新说明不能超过 2500 字");
+    return;
+  }
   savingVersion.value = true;
   try {
     await Promise.all([
@@ -292,12 +298,14 @@ async function saveVersionSettings() {
       updateConfig("app_latest_version", versionForm.latestVersion.trim()),
       updateConfig("app_latest_version_code", String(versionForm.latestVersionCode || 100)),
       updateConfig("app_download_url", versionForm.downloadUrl.trim()),
+      updateConfig("oss_custom_domain", versionForm.ossCustomDomain.trim()),
       updateConfig("app_force_update", versionForm.forceUpdate ? "true" : "false"),
       updateConfig("app_update_notes", versionForm.updateNotes.trim())
     ]);
     const verRes = await getAdminAppVersion(true);
     effectiveVersion.value = verRes.data;
-    ElMessage.success("App 版本配置已保存");
+    versionForm.ossCustomDomain = verRes.data.ossCustomDomain || versionForm.ossCustomDomain.trim();
+    ElMessage.success("App 版本与下载通道配置已保存");
   } finally {
     savingVersion.value = false;
   }
@@ -393,7 +401,7 @@ onMounted(fetchAll);
     <el-card shadow="never">
       <template #header>
         <div class="flex flex-wrap items-center justify-between gap-2">
-          <span class="font-bold text-gray-800">修仙境界与进阶考核设置</span>
+          <span class="font-bold text-gray-800">年级阶段与升级测评设置</span>
           <span class="text-xs text-gray-500">
             修改完成后点击每行右侧「保存」立即生效
           </span>
@@ -404,17 +412,17 @@ onMounted(fetchAll);
         type="info"
         :closable="false"
         class="mb-4"
-        title="配置说明：学生按「练气 → 筑基 → 结丹 → 假婴 → 元婴 → 化神」逐级修炼。解锁门槛填 0 表示需学完当前境界全部关卡，填正数（如 4）表示通过 4 关即可开启进阶考核；考核按百分制计算分数线。"
+        title="配置说明：学生按「初一 → 初二 → 初三 → 高一 → 高二 → 高三」六个阶段循序学习（全阶段题库自由开放）。解锁门槛填 0 表示需学完当前阶段全部关卡，填正数（如 4）表示通过 4 关即可开启阶段升级测评；测评按百分制计算分数线。"
       />
 
       <el-table :data="realms" border stripe class="w-full">
-        <el-table-column label="顺序" width="84" align="center">
+        <el-table-column label="顺序" width="88" align="center">
           <template #default="{ row }">
-            <span class="whitespace-nowrap">第{{ row.realmOrder }}境</span>
+            <span class="whitespace-nowrap">第{{ row.realmOrder }}阶段</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="境界名称" min-width="115">
+        <el-table-column label="阶段名称" min-width="115">
           <template #default="{ row }">
             <el-input v-model="row.realmName" size="small" />
           </template>
@@ -443,7 +451,7 @@ onMounted(fetchAll);
               size="small"
               style="width: 100px"
             />
-            <span v-else class="whitespace-nowrap text-xs text-gray-400">最高境界</span>
+            <span v-else class="whitespace-nowrap text-xs text-gray-400">最高阶段</span>
           </template>
         </el-table-column>
 
@@ -788,7 +796,7 @@ onMounted(fetchAll);
           <div class="flex flex-wrap items-center gap-3">
             <el-switch v-model="basicForm.guestMode" class="shrink-0" />
             <span class="text-xs text-gray-500">
-              开启后，未登录学生可先游客试玩各境界关卡（进阶考核需登录后参加）
+              开启后，未登录学生可先游客试玩各年级关卡（阶段升级测评需登录后参加）
             </span>
           </div>
         </el-form-item>
@@ -819,6 +827,26 @@ onMounted(fetchAll);
               打开 App 下载官网
             </el-button>
             <template v-if="effectiveVersion">
+              <el-tag
+                :type="
+                  effectiveVersion.downloadChannel === 'OSS_DIRECT'
+                    ? 'success'
+                    : effectiveVersion.downloadChannel === 'SERVER_PROXY'
+                      ? 'warning'
+                      : 'info'
+                "
+                size="small"
+              >
+                {{
+                  effectiveVersion.downloadChannel === "OSS_DIRECT"
+                    ? "OSS 自定义域名直连高速"
+                    : effectiveVersion.downloadChannel === "SERVER_PROXY"
+                      ? "服务器中转（受服务器带宽限制）"
+                      : effectiveVersion.downloadChannel === "EXTERNAL_DIRECT"
+                        ? "外链直连下载"
+                        : "本地目录托管"
+                }}
+              </el-tag>
               <el-tag :type="effectiveVersion.githubReachable ? 'success' : 'info'" size="small">
                 {{ effectiveVersion.githubReachable ? "GitHub Release 已连通" : "当前使用 OSS/系统配置" }}
               </el-tag>
@@ -874,6 +902,19 @@ onMounted(fetchAll);
           </div>
         </el-form-item>
 
+        <el-form-item label="OSS 加速域名">
+          <div class="w-full space-y-1.5">
+            <el-input
+              v-model="versionForm.ossCustomDomain"
+              placeholder="例如：https://dl.yourdomain.com（留空则经服务器内网中转）"
+              clearable
+            />
+            <div class="text-xs leading-relaxed text-gray-500">
+              说明：阿里云 OSS 安全策略禁止默认公网域名（<code>*.aliyuncs.com</code>）下载 <code>.apk</code>，因此未配置自定义域名时须经服务器中转（受服务器出网带宽限制）。在 OSS 控制台为 Bucket 绑定自定义 CNAME/CDN 域名并填写到此处保存后，学生端 App 更新将自动切换为<strong>应用内直连 OSS 满速下载</strong>（无需重启服务，不跳转浏览器）。
+            </div>
+          </div>
+        </el-form-item>
+
         <el-form-item label="强制更新">
           <div class="flex flex-wrap items-center gap-3">
             <el-switch v-model="versionForm.forceUpdate" class="shrink-0" />
@@ -887,8 +928,10 @@ onMounted(fetchAll);
           <el-input
             v-model="versionForm.updateNotes"
             type="textarea"
-            :rows="3"
-            placeholder="展示给学生的版本更新内容"
+            :rows="6"
+            maxlength="2500"
+            show-word-limit
+            placeholder="展示给学生的版本更新内容（最多支持 2500 字）"
           />
         </el-form-item>
 

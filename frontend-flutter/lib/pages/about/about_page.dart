@@ -43,7 +43,7 @@ class _AboutPageState extends State<AboutPage> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = WelkTheme.of(context).resolveColors(context);
+    final ink = AppTheme.inkColor(context);
     final version = context.watch<UpdateProvider>().currentVersion;
 
     return Scaffold(
@@ -79,14 +79,14 @@ class _AboutPageState extends State<AboutPage> {
                           Text(
                             '过关啦',
                             style: TextStyle(
-                              color: colors.ink,
+                              color: ink,
                               fontSize: 20,
                               fontWeight: FontWeight.w800,
                             ),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Flutter + WelkUI 修仙数学闯关 · v$version',
+                            '初中高中同步数学闯关 · v$version',
                             style: TextStyle(
                               color: AppTheme.mutedText(context),
                               fontSize: 12.5,
@@ -99,9 +99,9 @@ class _AboutPageState extends State<AboutPage> {
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  '按「练气 → 筑基 → 结丹 → 假婴 → 元婴 → 化神」六大境界由浅入深划分题目难度。全境界内容均已开放自由学习；完成当前境界学习要求后可参加随机抽题进阶考核，高境界亦可压制境界重温低境界题目。',
+                  '按「初一 → 初二 → 初三 → 高一 → 高二 → 高三」六个年级阶段由浅入深编排人教版数学章节与 204 道闯关任务。全年级题库自由开放练习，完成本阶段指定关卡后可参加阶段升级测评，高年级同学也可随时回刷巩固基础题型。',
                   style: TextStyle(
-                    color: colors.ink.withValues(alpha: 0.84),
+                    color: ink.withValues(alpha: 0.84),
                     fontSize: 13.5,
                     height: 1.65,
                   ),
@@ -110,19 +110,19 @@ class _AboutPageState extends State<AboutPage> {
             ),
           ),
 
-          const GglSectionLabel(title: '修炼规则'),
-          const WelkAccordion(
-            title: Text('境界权限与压制重温'),
+          const GglSectionLabel(title: '学习规则'),
+          const GglAccordion(
+            title: '自由练习与回刷巩固',
             initiallyExpanded: true,
             child: Text(
-              '全境界 51 章 204 关题库自由开放，不限制跨级学习；高境界同学仍可随时压制境界重温低境界基础题型。',
+              '全年级 51 章 204 关题库自由开放，不限制跨年级预习或复习；每章闯关支持连续跳关、跨章及跨年级衔接，随时回刷巩固薄弱知识点。',
             ),
           ),
           const SizedBox(height: 10),
-          const WelkAccordion(
-            title: Text('进阶考核与错题巩固'),
+          const GglAccordion(
+            title: '阶段升级测评与错题本',
             child: Text(
-              '学完本境指定关数即可触发进阶考核，系统从本境题库随机抽题，达标即晋升下一境界；闯关错题自动收入错题本，重做答对即标记掌握并移出。',
+              '完成当前学习阶段指定关数即可参加阶段升级测评，系统从本阶段题库随机抽题，达标即晋升下一阶段；闯关错题自动收入错题本，重做答对即标记掌握并移出。',
             ),
           ),
         ],
@@ -130,12 +130,7 @@ class _AboutPageState extends State<AboutPage> {
       bottomNavigationBar: SafeArea(
         child: Container(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-          decoration: BoxDecoration(
-            color: colors.paper,
-            border: Border(
-              top: BorderSide(color: colors.outline, width: colors.borderWidth),
-            ),
-          ),
+          decoration: AppTheme.barDecoration(context, topBorder: true),
           child: GglBlockButton(
             label: _checking ? '正在检查新版本...' : '检查新版本',
             loading: _checking,

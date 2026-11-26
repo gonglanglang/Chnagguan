@@ -12,7 +12,7 @@ export default {
       name: "StudentUserManage",
       component: () => import("@/views/user/index.vue"),
       meta: {
-        title: "学生列表与境界"
+        title: "学生列表与阶段"
       }
     },
     {

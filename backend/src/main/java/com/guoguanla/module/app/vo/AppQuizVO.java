@@ -82,13 +82,16 @@ public class AppQuizVO {
         private AppUserProfileVO.RealmItemVO promotedRealm;
         private List<WrongReviewItem> wrongItems;
         private int masteredCount;
-        /** 通关后可直接进入的下一关信息（支持同章下一关及本章全通后进入下一章第1关） */
+        /** 通关后可直接进入的下一关信息（支持同章下一关、同年级下一章第1关及跨年级下一年级第1章第1关） */
         private Long nextGateId;
         private Integer nextGateIndex;
         private String nextGateName;
         private Long nextChapterId;
         private String nextChapterName;
         private boolean nextGateCrossChapter;
+        private String nextGradeCode;
+        private String nextGradeName;
+        private boolean nextGateCrossGrade;
     }
 
     @Data

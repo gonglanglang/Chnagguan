@@ -42,8 +42,8 @@ Future<ApkDownloadResult> downloadApk({
 
   final dio = Dio(
     BaseOptions(
-      connectTimeout: const Duration(seconds: 20),
-      receiveTimeout: const Duration(minutes: 5),
+      connectTimeout: const Duration(seconds: 25),
+      receiveTimeout: const Duration(minutes: 15),
       followRedirects: true,
     ),
   );

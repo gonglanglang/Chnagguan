@@ -12,7 +12,7 @@ export default {
       name: "VideoSeriesManage",
       component: () => import("@/views/video/index.vue"),
       meta: {
-        title: "修炼视频系列"
+        title: "教学视频系列"
       }
     },
     {

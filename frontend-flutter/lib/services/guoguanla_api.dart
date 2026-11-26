@@ -280,6 +280,7 @@ class GuoguanlaApi {
   Future<SubmitResult> submitGateQuiz({
     required String sessionNo,
     required List<AnswerSubmitPayload> answers,
+    List<int>? guestPassedGateIds,
   }) {
     return client.request<SubmitResult>(
       path: '/app/quiz/submit',
@@ -287,6 +288,8 @@ class GuoguanlaApi {
       data: {
         'sessionNo': sessionNo,
         'answers': answers.map((e) => e.toJson()).toList(),
+        if (guestPassedGateIds != null && guestPassedGateIds.isNotEmpty)
+          'guestPassedGateIds': guestPassedGateIds,
       },
       parser: (raw) => SubmitResult.fromJson(_asMap(raw)),
     );

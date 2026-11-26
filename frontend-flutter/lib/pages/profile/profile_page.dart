@@ -125,7 +125,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = WelkTheme.of(context).resolveColors(context);
+    final ink = AppTheme.inkColor(context);
     final info = context.watch<UserProvider>().userInfo;
     final avatarUrl = info?.avatarUrl ?? '';
 
@@ -162,7 +162,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         Text(
                           '个人头像',
                           style: TextStyle(
-                            color: colors.ink,
+                            color: ink,
                             fontSize: 16,
                             fontWeight: FontWeight.w800,
                           ),
@@ -187,7 +187,7 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             const SizedBox(height: 14),
 
-            // 基础资料（已移除「当前修仙境界」）
+            // 基础资料
             GglComicPanel(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -219,21 +219,26 @@ class _ProfilePageState extends State<ProfilePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
                         '账号绑定',
                         style: TextStyle(
-                          color: colors.ink,
+                          color: ink,
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
-                      Text(
-                        '填写后点击底部保存即可绑定',
-                        style: TextStyle(
-                          color: AppTheme.mutedText(context),
-                          fontSize: 11.5,
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '填写后点击底部保存即可绑定',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                            color: AppTheme.mutedText(context),
+                            fontSize: 11.5,
+                          ),
                         ),
                       ),
                     ],
@@ -303,17 +308,12 @@ class _ProfilePageState extends State<ProfilePage> {
         ],
       ),
       bottomNavigationBar: Container(
-        color: colors.paper,
+        color: AppTheme.surfaceColor(context),
         child: SafeArea(
           top: false,
           child: Container(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-            decoration: BoxDecoration(
-              color: colors.paper,
-              border: Border(
-                top: BorderSide(color: colors.outline, width: colors.borderWidth),
-              ),
-            ),
+            decoration: AppTheme.barDecoration(context, topBorder: true),
             child: GglBlockButton(
               label: _saving ? '正在保存...' : '保存资料',
               loading: _saving,
@@ -338,24 +338,30 @@ class _ReadonlyInfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = WelkTheme.of(context).resolveColors(context);
+    final ink = AppTheme.inkColor(context);
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
           label,
           style: TextStyle(
-            color: colors.ink,
+            color: ink,
             fontSize: 14.5,
             fontWeight: FontWeight.w700,
           ),
         ),
-        Text(
-          value,
-          style: TextStyle(
-            color: AppTheme.mutedText(context),
-            fontSize: 14.5,
-            fontWeight: FontWeight.w600,
+        const SizedBox(width: 12),
+        Flexible(
+          child: Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              color: AppTheme.mutedText(context),
+              fontSize: 14.5,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ],

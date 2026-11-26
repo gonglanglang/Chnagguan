@@ -76,6 +76,9 @@ public class AliyunOssService {
     @Value("${guoguanla.oss.custom-domain:}")
     private String customDomain;
 
+    /** 运行时从 sys_config.oss_custom_domain 动态同步的 OSS 自定义域名（优先级高于配置文件，支持后台免重启生效） */
+    private volatile String runtimeCustomDomain = "";
+
     @Value("${guoguanla.oss.bucket:chuangguang}")
     private String bucket;
 
@@ -113,8 +116,57 @@ public class AliyunOssService {
             InputStream body
     ) {}
 
+    public String getEffectiveCustomDomain() {
+        String runtime = runtimeCustomDomain == null ? "" : runtimeCustomDomain.trim();
+        if (!runtime.isEmpty()) {
+            return runtime;
+        }
+        return customDomain == null ? "" : customDomain.trim();
+    }
+
+    public void setRuntimeCustomDomain(String rawDomain) {
+        this.runtimeCustomDomain = normalizeAndValidateCustomDomain(rawDomain);
+    }
+
+    public static String normalizeAndValidateCustomDomain(String rawDomain) {
+        if (rawDomain == null || rawDomain.isBlank()) {
+            return "";
+        }
+        String trimmed = rawDomain.trim();
+        String withScheme = (trimmed.startsWith("http://") || trimmed.startsWith("https://"))
+                ? trimmed
+                : ("https://" + trimmed);
+        if (withScheme.endsWith("/")) {
+            withScheme = withScheme.replaceAll("/+$", "");
+        }
+        URI uri;
+        try {
+            uri = URI.create(withScheme);
+        } catch (Exception e) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "OSS 自定义域名格式无效，请填写如 https://cdn.example.com");
+        }
+        String scheme = uri.getScheme();
+        String host = uri.getHost();
+        if (scheme == null || (!scheme.equalsIgnoreCase("https") && !scheme.equalsIgnoreCase("http"))
+                || host == null || host.isBlank() || !host.contains(".")) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "OSS 自定义域名格式无效，请填写完整域名（如 https://cdn.example.com）");
+        }
+        if ((uri.getPath() != null && !uri.getPath().isBlank())
+                || uri.getQuery() != null || uri.getFragment() != null) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "OSS 自定义域名仅需填写协议与域名，不要附加路径或参数");
+        }
+        String lowerHost = host.toLowerCase(Locale.ROOT);
+        if (lowerHost.equals("aliyuncs.com") || lowerHost.endsWith(".aliyuncs.com")) {
+            throw new BizException(
+                    ErrorCode.BAD_REQUEST,
+                    "不能填写阿里云 OSS 默认域名（*.aliyuncs.com），阿里云安全策略禁止通过默认域名下载 .apk 文件；请填写已绑定到该 Bucket 的自定义 CNAME 或 CDN 域名"
+            );
+        }
+        return withScheme;
+    }
+
     public boolean hasCustomDomain() {
-        return customDomain != null && !customDomain.isBlank();
+        return !getEffectiveCustomDomain().isBlank();
     }
 
     private String resolveBackendBaseUrl() {
@@ -125,12 +177,12 @@ public class AliyunOssService {
     }
 
     private String resolvePublicGetBaseUrl() {
-        if (hasCustomDomain()) {
-            String raw = customDomain.trim();
-            if (raw.startsWith("http://") || raw.startsWith("https://")) {
-                return raw.endsWith("/") ? raw.substring(0, raw.length() - 1) : raw;
+        String effective = getEffectiveCustomDomain();
+        if (!effective.isBlank()) {
+            if (effective.startsWith("http://") || effective.startsWith("https://")) {
+                return effective.endsWith("/") ? effective.substring(0, effective.length() - 1) : effective;
             }
-            return "https://" + stripScheme(raw);
+            return "https://" + stripScheme(effective);
         }
         return "https://" + bucket.trim() + "." + stripScheme(endpoint);
     }

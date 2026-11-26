@@ -24,16 +24,21 @@ class UpdateProvider extends ChangeNotifier {
   List<String> noteList = const [];
   String downloadUrl = '';
   String fallbackUrl = '';
+  String downloadChannel = '';
+  String ossCustomDomain = '';
   bool downloading = false;
   int progress = 0;
   int downloadedBytes = 0;
   int totalBytes = 0;
+  double downloadSpeedBytesPerSec = 0;
   String downloadedFilePath = '';
   String errorMsg = '';
 
   bool _checking = false;
   int _sessionId = 0;
   CancelToken? _cancelToken;
+  int _lastSpeedSampleMs = 0;
+  int _lastSpeedSampleBytes = 0;
 
   Future<({String version, int versionCode})> loadLocalVersion() async {
     try {
@@ -111,6 +116,8 @@ class UpdateProvider extends ChangeNotifier {
       noteList = UpdateUtils.parseReleaseNotesList(info.releaseNotes);
       downloadUrl = resolvedUrl;
       fallbackUrl = fallback;
+      downloadChannel = info.downloadChannel;
+      ossCustomDomain = info.ossCustomDomain;
 
       if (versionChanged) {
         downloadedFilePath = '';
@@ -131,6 +138,9 @@ class UpdateProvider extends ChangeNotifier {
     progress = 0;
     downloadedBytes = 0;
     totalBytes = 0;
+    downloadSpeedBytesPerSec = 0;
+    _lastSpeedSampleMs = 0;
+    _lastSpeedSampleBytes = 0;
     errorMsg = '';
   }
 
@@ -194,6 +204,9 @@ class UpdateProvider extends ChangeNotifier {
     progress = 0;
     downloadedBytes = 0;
     totalBytes = 0;
+    downloadSpeedBytesPerSec = 0;
+    _lastSpeedSampleMs = DateTime.now().millisecondsSinceEpoch;
+    _lastSpeedSampleBytes = 0;
     downloadedFilePath = '';
     errorMsg = '';
     notifyListeners();
@@ -208,6 +221,16 @@ class UpdateProvider extends ChangeNotifier {
         if (total > 0) {
           totalBytes = total;
           progress = UpdateUtils.computeDownloadPercent(received, total);
+        }
+        final nowMs = DateTime.now().millisecondsSinceEpoch;
+        final elapsedMs = nowMs - _lastSpeedSampleMs;
+        if (elapsedMs >= 350) {
+          final deltaBytes = received - _lastSpeedSampleBytes;
+          if (deltaBytes >= 0) {
+            downloadSpeedBytesPerSec = deltaBytes * 1000.0 / elapsedMs;
+          }
+          _lastSpeedSampleMs = nowMs;
+          _lastSpeedSampleBytes = received;
         }
         notifyListeners();
       },

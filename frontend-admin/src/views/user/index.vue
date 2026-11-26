@@ -55,7 +55,7 @@ const pwdForm = reactive({
   confirmPassword: ""
 });
 
-// 快捷修改境界弹窗
+// 快捷修改学习阶段弹窗
 const realmDialogVisible = ref(false);
 const realmTargetUser = ref<StudentUser | null>(null);
 const selectedRealmCode = ref("lianqi");
@@ -155,7 +155,7 @@ async function confirmRealmAdjust() {
   savingRealm.value = true;
   try {
     await updateUserRealm(realmTargetUser.value.id, selectedRealmCode.value);
-    ElMessage.success("已调整学生修仙境界");
+    ElMessage.success("已调整学生学习阶段");
     realmDialogVisible.value = false;
     fetchUsers();
   } finally {
@@ -245,8 +245,8 @@ onMounted(() => {
             @keyup.enter="handleSearch"
           />
         </el-form-item>
-        <el-form-item label="当前境界">
-          <el-select v-model="query.realmCode" placeholder="全部境界" clearable style="width: 190px">
+        <el-form-item label="当前阶段">
+          <el-select v-model="query.realmCode" placeholder="全部阶段" clearable style="width: 190px">
             <el-option
               v-for="r in realms"
               :key="r.realmCode"
@@ -297,12 +297,12 @@ onMounted(() => {
             <div class="truncate text-xs text-gray-500">账号：{{ row.username || "-" }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="当前修仙境界" min-width="176">
+        <el-table-column label="当前学习阶段" min-width="176">
           <template #default="{ row }">
             <div class="flex flex-nowrap items-center gap-2 whitespace-nowrap">
-              <el-tag type="success" class="shrink-0">{{ row.realmName || "练气" }}</el-tag>
+              <el-tag type="success" class="shrink-0">{{ row.realmName || "初一" }}</el-tag>
               <el-button link type="primary" size="small" class="shrink-0" @click="openRealmAdjust(row)">
-                修改境界
+                修改阶段
               </el-button>
             </div>
           </template>
@@ -398,12 +398,12 @@ onMounted(() => {
       </template>
     </el-dialog>
 
-    <!-- 快捷调整学生境界弹窗 -->
-    <el-dialog v-model="realmDialogVisible" title="修改学生修仙境界" width="440px">
+    <!-- 快捷调整学生阶段弹窗 -->
+    <el-dialog v-model="realmDialogVisible" title="修改学生学习阶段" width="440px">
       <div v-if="realmTargetUser" class="space-y-4">
         <div class="text-sm text-gray-600">
           正在为学生 <span class="font-bold text-gray-900">{{ realmTargetUser.nickname }}</span>
-          设定境界（修改后立即生效，低境界题目可通过压制境界继续作答）：
+          设定学习阶段（修改后立即生效，各年级题库均可自由刷题巩固）：
         </div>
         <div class="grid grid-cols-2 gap-2.5">
           <div
@@ -450,7 +450,7 @@ onMounted(() => {
         <el-form-item label="学生昵称" required>
           <el-input v-model="form.nickname" placeholder="学生姓名或昵称" />
         </el-form-item>
-        <el-form-item label="当前境界" required>
+        <el-form-item label="当前阶段" required>
           <el-select v-model="form.realmCode" class="w-full">
             <el-option
               v-for="r in realms"

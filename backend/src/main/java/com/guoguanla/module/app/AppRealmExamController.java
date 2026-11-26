@@ -11,7 +11,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name = "学生端-境界进阶考核")
+@Tag(name = "学生端-阶段升级测评")
 @RestController
 @RequestMapping("/api/app/realm/exam")
 @RequiredArgsConstructor
@@ -19,13 +19,13 @@ public class AppRealmExamController {
 
     private final AppQuizService quizService;
 
-    @Operation(summary = "开始当前境界进阶考核（随机抽题，不回传答案）")
+    @Operation(summary = "开始当前学习阶段升级测评（随机抽题，不回传答案）")
     @PostMapping("/start")
     public Result<AppQuizVO.StartVO> startExam(HttpServletRequest request) {
         return Result.ok(quizService.startAdvanceExam(ServletUrlHelper.resolveBaseOrigin(request)));
     }
 
-    @Operation(summary = "提交进阶考核试卷（计算得分并判定是否突破至下一境界）")
+    @Operation(summary = "提交阶段升级测评试卷（计算得分并判定是否晋升至下一阶段）")
     @PostMapping("/submit")
     public Result<AppQuizVO.SubmitResultVO> submitExam(
             @Valid @RequestBody AppQuizDTO.SubmitReq req,

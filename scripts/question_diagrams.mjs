@@ -778,6 +778,1172 @@ const EXACT_DIAGRAMS = {
       P.text(236, 182, 'C', INK),
       P.text(204, 140, 'D', INK),
     ]),
+
+  // ==========================================================================
+  // 1.2 二次全库审计补齐的 65 道场景/几何/图像/统计/导数/概率 1:1 精绘配图 (TASK-20261126-002)
+  // ==========================================================================
+
+  // c2-g3-q3: 火柴棒摆图形规律
+  'c2-g3-q3': () =>
+    spec('火柴棒摆图形规律示意', [
+      // 图1（1个基本单元）
+      P.polygon([[34, 62], [74, 62], [74, 102], [34, 102]], BLUE),
+      P.text(38, 114, '图1 ({{m}}根)', BLUE),
+      // 图2（2个单元）
+      P.polygon([[112, 62], [152, 62], [152, 102], [112, 102]], BLUE),
+      P.line(152, 62, 192, 62, RED),
+      P.line(192, 62, 192, 102, RED),
+      P.line(152, 102, 192, 102, RED),
+      P.text(122, 114, '图2 (+{{k}}根)', RED),
+      // 省略号与第10个
+      P.text(218, 76, '···', MUTED),
+      P.text(248, 74, '第10个', INK),
+      P.text(252, 94, '? 根', RED),
+      P.text(36, 152, '每增加 1 个基本单元，多用 {{k}} 根火柴棒', MUTED),
+    ]),
+
+  // c3-g1-q4: 相向相遇行程图
+  'c3-g1-q4': () =>
+    spec('相向而行相遇行程示意图', [
+      P.line(36, 124, 284, 124, INK),
+      P.line(36, 112, 36, 136, INK),
+      P.line(284, 112, 284, 136, INK),
+      P.arrow(48, 96, 152, 96, BLUE),
+      P.arrow(272, 96, 200, 96, GREEN),
+      P.point(180, 124, '相遇', RED),
+      P.text(26, 142, '甲地', BLUE),
+      P.text(268, 142, '乙地', GREEN),
+      P.text(56, 74, '甲 4 km/h', BLUE),
+      P.text(204, 74, '乙 2 km/h', GREEN),
+      P.text(114, 154, '总距离 = {{6 * t}} 千米', RED),
+    ]),
+
+  // c3-g3-q4: 时针分针旋转速度示意图
+  'c3-g3-q4': () =>
+    spec('钟表时针与分针旋转示意', [
+      P.circle(160, 106, 72, INK, FILL_BLUE),
+      P.line(160, 34, 160, 44, INK),
+      P.line(232, 106, 222, 106, INK),
+      P.line(160, 178, 160, 168, INK),
+      P.line(88, 106, 98, 106, INK),
+      P.arrow(160, 106, 160, 48, RED),
+      P.arrow(160, 106, 204, 106, BLUE),
+      P.arc(160, 106, 44, -90, 62, RED, null, true),
+      P.point(160, 106, '', INK),
+      P.text(152, 18, '12', INK),
+      P.text(238, 100, '3', INK),
+      P.text(156, 184, '6', INK),
+      P.text(72, 100, '9', INK),
+      P.text(16, 26, '分针 6°/分', RED),
+      P.text(16, 46, '时针 0.5°/分', BLUE),
+      P.text(216, 26, 't={{t}}×10分', MUTED),
+    ]),
+
+  // c3-g3-q5: 火车过桥与过电线杆示意图
+  'c3-g3-q5': () =>
+    spec('火车过桥与过电线杆模型', [
+      // 桥梁
+      P.line(24, 114, 296, 114, INK),
+      P.polygon([[94, 114], [244, 114], [244, 126], [94, 126]], BLUE, FILL_BLUE),
+      P.text(136, 134, '桥长 300 m', BLUE),
+      // 火车（入桥前与完全出桥）
+      P.polygon([[34, 92], [94, 92], [94, 112], [34, 112]], RED, FILL_AMBER),
+      P.polygon([[244, 92], [296, 92], [296, 112], [244, 112]], RED, null, true),
+      P.arrow(98, 80, 240, 80, RED),
+      P.text(46, 96, '车长 L', RED),
+      P.text(122, 58, '完全过桥 20s（路程 300+L）', RED),
+      // 电线杆
+      P.line(74, 152, 74, 186, GREEN),
+      P.text(84, 166, '过电线杆 5s（路程 = 车长 L）', GREEN),
+    ]),
+
+  // c4-g2-q2: 直线 l 上四点 A, B, C, D
+  'c4-g2-q2': () =>
+    spec('直线 l 上的四个点 A、B、C、D', [
+      P.line(26, 108, 294, 108, INK),
+      P.point(68, 108, '', BLUE),
+      P.point(130, 108, '', BLUE),
+      P.point(192, 108, '', BLUE),
+      P.point(254, 108, '', BLUE),
+      P.text(63, 122, 'A', INK),
+      P.text(125, 122, 'B', INK),
+      P.text(187, 122, 'C', INK),
+      P.text(249, 122, 'D', INK),
+      P.text(282, 88, 'l', MUTED),
+      P.arc(99, 108, 31, -180, 180, BLUE, null, true),
+      P.arc(161, 108, 31, -180, 180, RED, null, true),
+      P.arc(223, 108, 31, -180, 180, GREEN, null, true),
+    ]),
+
+  // c4-g2-q3: 平角双角平分线（严禁标 90° 泄密！）
+  'c4-g2-q3': () =>
+    spec('平角与双角平分线模型', [
+      P.line(30, 164, 290, 164, INK),
+      P.arrow(160, 164, 114, 42, INK),
+      P.arrow(160, 164, 70, 96, BLUE, true),
+      P.arrow(160, 164, 232, 72, RED, true),
+      P.arc(160, 164, 42, -142, 90, AMBER),
+      P.point(160, 164, '', INK),
+      P.text(24, 170, 'A', INK),
+      P.text(154, 172, 'O', INK),
+      P.text(286, 170, 'B', INK),
+      P.text(104, 24, 'C', INK),
+      P.text(44, 82, 'D(平分∠AOC)', BLUE),
+      P.text(230, 56, 'E(平分∠BOC)', RED),
+      P.text(146, 102, '∠DOE = ?', AMBER),
+      P.text(32, 34, '∠AOC = {{a}}°', MUTED),
+    ]),
+
+  // c4-g3-q1: 从 O 点引出 n 条射线
+  'c4-g3-q1': () =>
+    spec('同端点 O 引出多条射线示意图', [
+      P.arrow(52, 164, 276, 164, INK),
+      P.arrow(52, 164, 266, 120, BLUE),
+      P.arrow(52, 164, 242, 74, GREEN),
+      P.arrow(52, 164, 198, 40, AMBER),
+      P.arrow(52, 164, 134, 26, RED),
+      P.point(52, 164, '', INK),
+      P.text(36, 166, 'O', INK),
+      P.text(204, 180, '共引出 n 条射线', MUTED),
+      P.text(136, 128, '···', MUTED),
+    ]),
+
+  // c4-g3-q2: 钟表 8 点 30 分时针与分针夹角
+  'c4-g3-q2': () => {
+    const cx = 160;
+    const cy = 108;
+    const r = 74;
+    // 8:30: 分针指向 6 (90°), 时针指向 8.5 (165°)
+    const minRad = (90 * Math.PI) / 180;
+    const hrRad = (165 * Math.PI) / 180;
+    return spec('钟表 8:30 时针与分针夹角', [
+      P.circle(cx, cy, r, INK, FILL_BLUE),
+      P.line(cx, cy - r, cx, cy - r + 8, INK),
+      P.line(cx + r, cy, cx + r - 8, cy, INK),
+      P.line(cx, cy + r, cx, cy + r - 8, INK),
+      P.line(cx - r, cy, cx - r + 8, cy, INK),
+      // 8 点刻度 (150°)
+      P.line(cx + (r - 7) * Math.cos((150 * Math.PI) / 180), cy + (r - 7) * Math.sin((150 * Math.PI) / 180), cx + r * Math.cos((150 * Math.PI) / 180), cy + r * Math.sin((150 * Math.PI) / 180), MUTED),
+      P.arc(cx, cy, 34, 90, 75, AMBER, FILL_AMBER),
+      P.arrow(cx, cy, cx + 58 * Math.cos(minRad), cy + 58 * Math.sin(minRad), RED),
+      P.arrow(cx, cy, cx + 42 * Math.cos(hrRad), cy + 42 * Math.sin(hrRad), BLUE),
+      P.point(cx, cy, '', INK),
+      P.text(152, 16, '12', INK),
+      P.text(240, 102, '3', INK),
+      P.text(156, 186, '6', INK),
+      P.text(70, 102, '9', INK),
+      P.text(78, 142, '8', MUTED),
+      P.text(114, 134, '?', RED),
+    ]);
+  },
+
+  // c4-g3-q4: 长方形纸片一角沿折痕向内折叠
+  'c4-g3-q4': () =>
+    spec('长方形纸片折角重叠示意图', [
+      P.polygon([[48, 36], [272, 36], [272, 166], [48, 166]], INK, FILL_BLUE),
+      // 原角虚线
+      P.line(186, 166, 272, 166, MUTED, true),
+      P.line(272, 166, 272, 92, MUTED, true),
+      // 折痕与折叠后三角形
+      P.line(186, 166, 272, 92, RED),
+      P.polygon([[186, 166], [272, 92], [198, 86]], BLUE, FILL_AMBER),
+      P.arc(186, 166, 30, -40, 40, RED),
+      P.arc(186, 166, 36, -80, 40, BLUE),
+      P.text(218, 146, '{{k}}°', RED),
+      P.text(192, 118, '{{k}}°', BLUE),
+      P.text(124, 148, '剩余 = ?', GREEN),
+    ]),
+
+  // c5-g1-q3: △ABC 沿 BC 方向平移得到 △DEF
+  'c5-g1-q3': () =>
+    spec('三角形沿 BC 方向平移示意', [
+      P.polygon([[106, 40], [42, 162], [164, 162]], INK, FILL_BLUE),
+      P.polygon([[198, 40], [134, 162], [256, 162]], BLUE, FILL_GREEN),
+      P.arrow(106, 40, 198, 40, RED, true),
+      P.text(94, 20, 'A({{a}}°)', INK),
+      P.text(22, 168, 'B(55°)', INK),
+      P.text(162, 168, 'C', INK),
+      P.text(196, 20, 'D', BLUE),
+      P.text(124, 168, 'E', BLUE),
+      P.text(254, 168, 'F(?)', RED),
+      P.text(132, 24, '平移 4cm', RED),
+    ]),
+
+  // c5-g3-q4: 长方形草坪与垂直弯曲小路
+  'c5-g3-q4': () =>
+    spec('草坪弯曲小路平移拼接模型', [
+      P.polygon([[48, 42], [272, 42], [272, 164], [48, 164]], GREEN, FILL_GREEN),
+      // 弯曲小路
+      P.polygon(
+        [
+          [144, 42],
+          [166, 42],
+          [184, 84],
+          [156, 126],
+          [176, 164],
+          [154, 164],
+          [134, 126],
+          [162, 84],
+        ],
+        AMBER,
+        FILL_AMBER,
+      ),
+      P.text(136, 22, '长 {{w}} 米', INK),
+      P.text(14, 98, '宽 {{h}} 米', INK),
+      P.text(142, 174, '路宽 {{s}} 米', RED),
+    ]),
+
+  // c8-g3-q4: 400m 环形跑道反向相遇
+  'c8-g3-q4': () =>
+    spec('400 米环形跑道反向相遇', [
+      P.circle(160, 108, 66, INK, FILL_BLUE),
+      P.circle(160, 108, 48, MUTED, null, true),
+      P.point(160, 42, '起点', RED),
+      P.arrow(146, 36, 114, 48, BLUE),
+      P.arrow(174, 36, 206, 48, GREEN),
+      P.text(62, 44, '甲', BLUE),
+      P.text(244, 44, '乙', GREEN),
+      P.text(118, 102, '全长 400 米', INK),
+      P.text(106, 182, '每 {{k}} 分钟相遇一次', RED),
+    ]),
+
+  // c10-g3-q5: 七年级垃圾分类成绩频数直方图
+  'c10-g3-q5': () => {
+    const ox = 46;
+    const oy = 168;
+    const bars = [
+      { label: '60~70', val: 6, h: 32, color: BLUE, fill: FILL_BLUE, text: '6' },
+      { label: '70~80', val: 14, h: 74, color: BLUE, fill: FILL_BLUE, text: '14' },
+      { label: '80~90', val: 18, h: 92, color: RED, fill: FILL_AMBER, text: 'a = ?', dashed: true },
+      { label: '90~100', val: 12, h: 64, color: GREEN, fill: FILL_GREEN, text: '12' },
+    ];
+    const prims = [
+      P.arrow(ox, oy, 294, oy, INK),
+      P.arrow(ox, oy, ox, 22, INK),
+      P.text(22, 20, '人数', MUTED),
+      P.text(268, 174, '分数', MUTED),
+    ];
+    bars.forEach((b, i) => {
+      const x1 = ox + 22 + i * 54;
+      const x2 = x1 + 42;
+      const y1 = oy - b.h;
+      prims.push(P.polygon([[x1, oy], [x1, y1], [x2, y1], [x2, oy]], b.color, b.fill, !!b.dashed));
+      prims.push(P.text(x1 + 8, y1 - 16, b.text, b.color));
+      prims.push(P.text(x1 + 2, oy + 6, b.label, MUTED));
+    });
+    return spec('成绩频数分布直方图（总 50 人）', prims);
+  },
+
+  // c11-g3-q4: 凸 n 边形对角线
+  'c11-g3-q4': () =>
+    spec('凸 {{n}} 边形对角线示意', [
+      P.polygon(
+        [
+          [160, 26],
+          [232, 56],
+          [250, 128],
+          [202, 180],
+          [118, 180],
+          [70, 128],
+          [88, 56],
+        ],
+        INK,
+        FILL_BLUE,
+      ),
+      P.line(160, 26, 250, 128, RED, true),
+      P.line(160, 26, 202, 180, RED, true),
+      P.line(160, 26, 118, 180, RED, true),
+      P.line(160, 26, 70, 128, RED, true),
+      P.point(160, 26, 'A₁', RED),
+      P.text(104, 190, '凸 {{n}} 边形对角线总数 = ?', BLUE),
+    ]),
+
+  // c12-g2-q2: 角尺平分任意角 ∠AOB
+  'c12-g2-q2': () =>
+    spec('工人用角尺平分 ∠AOB', [
+      P.arrow(48, 166, 280, 166, INK),
+      P.arrow(48, 166, 224, 34, INK),
+      P.arrow(48, 166, 264, 96, RED, true),
+      P.line(146, 92, 192, 119, BLUE),
+      P.line(170, 166, 192, 119, BLUE),
+      P.point(48, 166, '', INK),
+      P.point(146, 92, 'M', BLUE),
+      P.point(170, 166, 'N', BLUE),
+      P.point(192, 119, 'C', RED),
+      P.text(32, 168, 'O', INK),
+      P.text(228, 22, 'A', INK),
+      P.text(282, 168, 'B', INK),
+      P.text(20, 24, 'OM = ON, CM = CN', MUTED),
+    ]),
+
+  // c12-g2-q4: A, E, F, C 共线，DE⊥AC，BF⊥AC，BD 交 EF 于 G
+  'c12-g2-q4': () =>
+    spec('共线垂直全等证明图', [
+      P.line(32, 108, 288, 108, INK),
+      P.line(124, 108, 124, 36, BLUE),
+      P.line(196, 108, 196, 180, BLUE),
+      P.line(54, 108, 196, 180, INK),
+      P.line(266, 108, 124, 36, INK),
+      P.line(124, 36, 196, 180, RED),
+      P.rightAngle(124, 108, 124, 36, 288, 108, 9, BLUE),
+      P.rightAngle(196, 108, 196, 180, 32, 108, 9, BLUE),
+      P.point(54, 108, '', INK),
+      P.point(124, 108, '', BLUE),
+      P.point(160, 108, '', RED),
+      P.point(196, 108, '', BLUE),
+      P.point(266, 108, '', INK),
+      P.text(44, 116, 'A', INK),
+      P.text(110, 116, 'E', BLUE),
+      P.text(164, 92, 'G', RED),
+      P.text(200, 92, 'F', BLUE),
+      P.text(264, 116, 'C', INK),
+      P.text(118, 18, 'D', BLUE),
+      P.text(192, 184, 'B', BLUE),
+    ]),
+
+  // c13-g3-q1: 坐标系将军饮马 A(1,2), B(4,3), P 在 x 轴
+  'c13-g3-q1': () => {
+    const ox = 54;
+    const oy = 148;
+    const sx = 46;
+    const sy = 26;
+    const p = (x, y) => [ox + x * sx, oy - y * sy];
+    return spec('坐标系“将军饮马”最短路径', [
+      ...axesPrimitives(ox, oy, 24, 294, 18, 196),
+      P.line(...p(1, 2), ...p(2.2, 0), RED),
+      P.line(...p(2.2, 0), ...p(4, 3), RED),
+      P.line(...p(1, 2), ...p(1, -1.6), MUTED, true),
+      P.point(...p(1, 2), 'A(1,2)', BLUE),
+      P.point(...p(4, 3), 'B(4,3)', BLUE),
+      P.point(...p(2.2, 0), 'P(?,0)', RED),
+    ]);
+  },
+
+  // c14-g3-q2: △ABC 三边 a, b, c（用不等边示意，不泄密等边答案！）
+  'c14-g3-q2': () =>
+    spec('△ABC 三边长 a、b、c 示意', [
+      P.polygon([[128, 34], [54, 168], [262, 168]], INK, FILL_BLUE),
+      P.text(122, 14, 'A', INK),
+      P.text(38, 170, 'B', INK),
+      P.text(266, 170, 'C', INK),
+      P.text(152, 174, 'a', BLUE),
+      P.text(204, 90, 'b', BLUE),
+      P.text(74, 92, 'c', BLUE),
+    ]),
+
+  // c17-g0-q4: 坐标系 A({{a}},0) 与 B(0,{{a}})
+  'c17-g0-q4': () => {
+    const ox = 72;
+    const oy = 166;
+    return spec('坐标轴上两点距离 AB', [
+      ...axesPrimitives(ox, oy, 30, 286, 20, 194),
+      P.polygon([[ox, oy], [202, oy], [ox, 48]], BLUE, FILL_BLUE),
+      P.line(202, oy, ox, 48, RED),
+      P.rightAngle(ox, oy, ox, 48, 202, oy, 10, INK),
+      P.point(202, oy, 'A({{a}},0)', BLUE),
+      P.point(ox, 48, 'B(0,{{a}})', BLUE),
+      P.text(146, 94, 'AB = ?', RED),
+    ]);
+  },
+
+  // c17-g2-q4: 《九章算术》折竹抵地（高10尺，去本3尺）
+  'c17-g2-q4': () =>
+    spec('《九章算术》“折竹抵地”模型', [
+      P.line(48, 172, 276, 172, INK),
+      // 原直立竹子虚线
+      P.line(106, 26, 106, 96, MUTED, true),
+      // 折断后剩余高度与斜下竹梢
+      P.line(106, 96, 106, 172, GREEN),
+      P.line(106, 96, 206, 172, RED),
+      P.rightAngle(106, 172, 106, 96, 206, 172, 10, BLUE),
+      P.point(106, 96, '折点', RED),
+      P.text(68, 128, 'x 尺', GREEN),
+      P.text(162, 114, '(10-x) 尺', RED),
+      P.text(142, 178, '3 尺', BLUE),
+      P.text(114, 44, '原高 10 尺', MUTED),
+    ]),
+
+  // c17-g3-q4: 矩形 8×6 按 {{b}} 倍放大对角线
+  'c17-g3-q4': () =>
+    spec('矩形按 {{b}} 倍缩放对角线示意', [
+      P.polygon([[68, 46], [252, 46], [252, 164], [68, 164]], INK, FILL_BLUE),
+      P.line(68, 164, 252, 46, RED),
+      P.rightAngle(68, 164, 68, 46, 252, 164, 11, BLUE),
+      P.text(136, 172, '长 = 8 × {{b}}', BLUE),
+      P.text(14, 98, '宽 6×{{b}}', BLUE),
+      P.text(146, 86, 'd = ?', RED),
+    ]),
+
+  // c18-g0-q3: △ABC 中位线 DE，BC = {{2 * a}}
+  'c18-g0-q3': () =>
+    spec('△ABC 中位线 DE 示意', [
+      P.polygon([[158, 28], [56, 170], [264, 170]], INK, FILL_BLUE),
+      P.line(107, 99, 211, 99, RED),
+      P.point(107, 99, '', RED),
+      P.point(211, 99, '', RED),
+      P.text(152, 10, 'A', INK),
+      P.text(40, 172, 'B', INK),
+      P.text(268, 172, 'C', INK),
+      P.text(88, 92, 'D', RED),
+      P.text(218, 92, 'E', RED),
+      P.text(132, 178, 'BC = {{2 * a}}', BLUE),
+    ]),
+
+  // c18-g2-q1: 任意四边形中点四边形
+  'c18-g2-q1': () =>
+    spec('任意四边形各边中点连线', [
+      P.polygon([[94, 30], [258, 52], [234, 174], [52, 148]], INK),
+      // 中点: (176,41), (246,113), (143,161), (73,89)
+      P.polygon([[176, 41], [246, 113], [143, 161], [73, 89]], RED, FILL_AMBER),
+      P.line(94, 30, 234, 174, MUTED, true),
+      P.line(258, 52, 52, 148, MUTED, true),
+      P.point(176, 41, 'E', RED),
+      P.point(246, 113, 'F', RED),
+      P.point(143, 161, 'G', RED),
+      P.point(73, 89, 'H', RED),
+    ]),
+
+  // c19-g3-q5: 甲乙两车追及路程-时间函数图
+  'c19-g3-q5': () => {
+    const ox = 52;
+    const oy = 172;
+    const sx = 46; // 1h = 46px (0..5h)
+    const sy = 0.44; // 300km = 132px
+    const p = (t, y) => [ox + t * sx, oy - y * sy];
+    return spec('甲乙两车路程-时间函数示意', [
+      P.arrow(30, oy, 294, oy, INK),
+      P.arrow(ox, 192, ox, 20, INK),
+      P.line(...p(0, 300), ...p(4.8, 300), MUTED, true),
+      P.line(...p(0, 0), ...p(4.6, 276), BLUE),
+      P.line(...p(1, 0), ...p(4.2, 288), RED),
+      P.point(...p(1, 0), '1', RED),
+      P.point(...p(3, 180), '追上?', AMBER),
+      P.text(24, 24, 'y(km)', MUTED),
+      P.text(266, 178, 't(h)', MUTED),
+      P.text(14, 34, '300', MUTED),
+      P.text(224, 72, '甲(60km/h)', BLUE),
+      P.text(176, 44, '乙(90km/h)', RED),
+    ]);
+  },
+
+  // c21-g3-q3: 等腰三角形两边长 {{a}} 与 {{2*a + 1}}
+  'c21-g3-q3': () =>
+    spec('等腰三角形边长分类示意', [
+      P.polygon([[160, 28], [86, 170], [234, 170]], INK, FILL_BLUE),
+      P.text(154, 10, 'A', INK),
+      P.text(70, 172, 'B', INK),
+      P.text(238, 172, 'C', INK),
+      P.text(56, 94, '边长 {{a}} 与 {{2*a + 1}}', BLUE),
+      P.text(112, 180, '注意满足两边之和大于第三边', MUTED),
+    ]),
+
+  // c22-g2-q3: 一面靠墙矩形菜园
+  'c22-g2-q3': () =>
+    spec('一面靠墙的矩形菜园示意图', [
+      // 墙壁
+      P.line(34, 48, 286, 48, INK),
+      P.line(48, 38, 60, 48, MUTED),
+      P.line(88, 38, 100, 48, MUTED),
+      P.line(128, 38, 140, 48, MUTED),
+      P.line(168, 38, 180, 48, MUTED),
+      P.line(208, 38, 220, 48, MUTED),
+      P.line(248, 38, 260, 48, MUTED),
+      P.text(136, 20, '墙（足够长）', MUTED),
+      // 三面篱笆
+      P.polygon([[76, 48], [244, 48], [244, 152], [76, 152]], GREEN, FILL_GREEN),
+      P.line(76, 48, 76, 152, RED),
+      P.line(76, 152, 244, 152, RED),
+      P.line(244, 152, 244, 48, RED),
+      P.text(48, 96, 'x', RED),
+      P.text(252, 96, 'x', RED),
+      P.text(116, 162, '篱笆总长 = {{2*a}} 米', RED),
+    ]),
+
+  // c25-g2-q2: 6等分数字转盘 (1~6)
+  'c25-g2-q2': () => {
+    const cx = 160;
+    const cy = 108;
+    const r = 72;
+    const prims = [P.circle(cx, cy, r, INK, FILL_BLUE)];
+    for (let i = 0; i < 6; i++) {
+      const a = (i * 60 - 90) * (Math.PI / 180);
+      prims.push(P.line(cx, cy, cx + r * Math.cos(a), cy + r * Math.sin(a), INK));
+      const ma = (i * 60 - 60) * (Math.PI / 180);
+      prims.push(P.text(cx + 46 * Math.cos(ma) - 4, cy + 46 * Math.sin(ma) - 7, String(i + 1), i % 2 === 0 ? BLUE : RED));
+    }
+    prims.push(P.arrow(cx, cy, cx + 38, cy - 22, RED));
+    prims.push(P.point(cx, cy, '', INK));
+    return spec('六等分数字转盘（1~6）', prims);
+  },
+
+  // c25-g2-q3: 90° 阴影圆形转盘
+  'c25-g2-q3': () =>
+    spec('圆形转盘（阴影圆心角 90°）', [
+      P.circle(160, 108, 70, INK),
+      P.arc(160, 108, 70, -90, 90, RED, FILL_AMBER),
+      P.line(160, 108, 160, 38, INK),
+      P.line(160, 108, 230, 108, INK),
+      P.rightAngle(160, 108, 160, 38, 230, 108, 11, RED),
+      P.point(160, 108, '', INK),
+      P.text(176, 70, '90°阴影', RED),
+      P.text(98, 132, '白色区域', MUTED),
+    ]),
+
+  // c25-g2-q4: 不放回摸球树状图骨架（不泄密最终概率）
+  'c25-g2-q4': () =>
+    spec('不放回摸球树状图模型（1~4）', [
+      P.point(40, 106, '开始', INK),
+      P.line(40, 106, 126, 42, BLUE),
+      P.line(40, 106, 126, 84, BLUE),
+      P.line(40, 106, 126, 128, BLUE),
+      P.line(40, 106, 126, 170, BLUE),
+      P.point(126, 42, '甲:1', BLUE),
+      P.point(126, 84, '甲:2', BLUE),
+      P.point(126, 128, '甲:3', BLUE),
+      P.point(126, 170, '甲:4', BLUE),
+      // 第一支展开示意
+      P.line(126, 42, 224, 24, GREEN),
+      P.line(126, 42, 224, 42, GREEN),
+      P.line(126, 42, 224, 60, GREEN),
+      P.text(230, 18, '乙:2', GREEN),
+      P.text(230, 36, '乙:3', GREEN),
+      P.text(230, 54, '乙:4', GREEN),
+      P.text(192, 118, '其余分支同理（不放回）', MUTED),
+    ]),
+
+  // c25-g3-q2: 反比例函数 y = 2/x 与格点
+  'c25-g3-q2': () => {
+    const ox = 160;
+    const oy = 108;
+    const s = 34;
+    const p = (x, y) => [ox + x * s, oy - y * s];
+    const b1 = sampleCurve((x) => 2 / x, 0.7, 3.2, 24, p);
+    const b2 = sampleCurve((x) => 2 / x, -3.2, -0.7, 24, p);
+    return spec('反比例函数 y = 2/x 与格点示意', [
+      ...axesPrimitives(ox, oy, 28, 292, 16, 196),
+      P.polyline(b1, BLUE),
+      P.polyline(b2, BLUE),
+      P.point(...p(1, 2), '(1,2)', RED),
+      P.point(...p(2, 1), '(2,1)', RED),
+      P.point(...p(-1, -2), '(-1,-2)', RED),
+      P.point(...p(-2, -1), '(-2,-1)', RED),
+      P.text(226, 36, 'y = 2/x', BLUE),
+    ]);
+  },
+
+  // c27-g1-q3: 竹竿影长与教学楼影长平行投影相似模型
+  'c27-g1-q3': () =>
+    spec('同一时刻竹竿与教学楼影长模型', [
+      P.line(24, 170, 296, 170, INK),
+      // 竹竿
+      P.line(68, 122, 68, 170, GREEN),
+      P.line(68, 122, 102, 170, AMBER, true),
+      P.rightAngle(68, 170, 68, 122, 102, 170, 8, GREEN),
+      P.text(32, 136, '1.5m', GREEN),
+      P.text(74, 176, '1m', GREEN),
+      // 教学楼
+      P.polygon([[166, 46], [190, 46], [190, 170], [166, 170]], BLUE, FILL_BLUE),
+      P.line(190, 46, 276, 170, AMBER, true),
+      P.rightAngle(190, 170, 190, 46, 276, 170, 10, BLUE),
+      P.text(142, 92, 'H=?', RED),
+      P.text(204, 176, '影长 {{2*h}}m', BLUE),
+      P.text(196, 34, '太阳平行光线', AMBER),
+    ]),
+
+  // c27-g2-q2: 线段 AB = 2 黄金分割点 C
+  'c27-g2-q2': () =>
+    spec('线段 AB 黄金分割点示意 (AC > BC)', [
+      P.line(48, 114, 272, 114, INK),
+      P.line(48, 114, 186, 114, BLUE),
+      P.line(186, 114, 272, 114, RED),
+      P.point(48, 114, '', INK),
+      P.point(186, 114, '', RED),
+      P.point(272, 114, '', INK),
+      P.text(42, 126, 'A', INK),
+      P.text(182, 126, 'C', RED),
+      P.text(266, 126, 'B', INK),
+      P.text(102, 90, 'AC = ?', BLUE),
+      P.text(218, 90, 'BC', RED),
+      P.text(124, 152, 'AB = 2，AC/AB = BC/AC', MUTED),
+    ]),
+
+  // c28-g3-q2: 灯塔 P 航海方位角模型（A 北偏东 60°，B 南偏东 30°）
+  'c28-g3-q2': () =>
+    spec('灯塔 P 方位角航海示意图', [
+      // 正北正南方向线
+      P.arrow(78, 178, 78, 24, MUTED, true),
+      P.text(68, 10, '北', MUTED),
+      P.text(68, 184, '南', MUTED),
+      // P(78, 116), A(214, 48), B(214, 176)
+      P.polygon([[78, 116], [214, 48], [214, 176]], BLUE, FILL_BLUE),
+      P.arrow(214, 48, 214, 176, RED),
+      P.point(78, 116, '', INK),
+      P.point(214, 48, '', BLUE),
+      P.point(214, 176, '', RED),
+      P.text(56, 110, 'P', INK),
+      P.text(220, 42, 'A', BLUE),
+      P.text(220, 172, 'B', RED),
+      P.text(88, 66, '60°', BLUE),
+      P.text(88, 146, '30°', RED),
+      P.text(124, 64, '40海里', BLUE),
+      P.text(222, 106, '正南', RED),
+    ]),
+
+  // c29-g1-q1: 路灯下远离路灯的影子变化
+  'c29-g1-q1': () =>
+    spec('路灯下中心投影影长变化', [
+      P.line(26, 174, 294, 174, INK),
+      P.line(62, 34, 62, 174, INK),
+      P.circle(62, 34, 6, AMBER, FILL_AMBER),
+      // 位置1（近）
+      P.line(124, 124, 124, 174, BLUE),
+      P.line(62, 34, 152, 174, AMBER, true),
+      P.line(124, 174, 152, 174, RED),
+      // 位置2（远）
+      P.line(206, 124, 206, 174, GREEN),
+      P.line(62, 34, 274, 174, AMBER, true),
+      P.line(206, 174, 274, 174, RED),
+      P.text(72, 26, '路灯', AMBER),
+      P.text(114, 108, '位置1', BLUE),
+      P.text(196, 108, '位置2', GREEN),
+      P.text(128, 180, '影1', RED),
+      P.text(228, 180, '影2', RED),
+    ]),
+
+  // c29-g2-q4: 路灯测高（人高1.6m，距灯杆4m，影长2m）
+  'c29-g2-q4': () =>
+    spec('路灯中心投影相似模型', [
+      P.line(26, 172, 294, 172, INK),
+      P.line(66, 36, 66, 172, BLUE),
+      P.circle(66, 36, 6, AMBER, FILL_AMBER),
+      P.line(178, 118, 178, 172, GREEN),
+      P.line(66, 36, 250, 172, RED, true),
+      P.rightAngle(66, 172, 66, 36, 250, 172, 9, BLUE),
+      P.rightAngle(178, 172, 178, 118, 250, 172, 8, GREEN),
+      P.text(28, 92, 'H = ?', BLUE),
+      P.text(148, 134, '1.6m', GREEN),
+      P.text(110, 178, '4m', INK),
+      P.text(204, 178, '2m', RED),
+    ]),
+
+  // c30-g3-q2: 数学/物理竞赛双圆韦恩图
+  'c30-g3-q2': () =>
+    spec('容斥原理韦恩图（全班 45 人）', [
+      P.polygon([[28, 24], [292, 24], [292, 184], [28, 184]], INK),
+      P.circle(124, 104, 54, BLUE, FILL_BLUE),
+      P.circle(196, 104, 54, GREEN, FILL_GREEN),
+      P.text(78, 94, '数学', BLUE),
+      P.text(80, 112, '28人', BLUE),
+      P.text(204, 94, '物理', GREEN),
+      P.text(204, 112, '22人', GREEN),
+      P.text(154, 100, '?', RED),
+      P.text(178, 162, '都不参加: 5人', MUTED),
+      P.text(36, 32, '全集 U (45人)', INK),
+    ]),
+
+  // c31-g3-q5: 无盖长方体储水池（容积48m³，深3m）
+  'c31-g3-q5': () =>
+    spec('无盖长方体储水池示意图', [
+      // 前面与侧面
+      P.polygon([[72, 86], [202, 86], [202, 166], [72, 166]], INK, FILL_BLUE),
+      P.line(72, 86, 116, 48, INK),
+      P.line(202, 86, 246, 48, INK),
+      P.line(116, 48, 246, 48, BLUE, true),
+      P.line(246, 48, 246, 128, INK),
+      P.line(202, 166, 246, 128, INK),
+      P.line(116, 48, 116, 128, MUTED, true),
+      P.line(72, 166, 116, 128, MUTED, true),
+      P.line(116, 128, 246, 128, MUTED, true),
+      P.text(124, 174, '底长 x m', RED),
+      P.text(230, 150, '宽 16/x', BLUE),
+      P.text(252, 84, '深 3m', GREEN),
+      P.text(136, 24, '无盖（V = 48 m³）', MUTED),
+    ]),
+
+  // c33-g3-q2: f(x) = |lg x| 翻折图象
+  'c33-g3-q2': () => {
+    const ox = 48;
+    const oy = 166;
+    const sx = 54;
+    const sy = 56;
+    const p = (x, y) => [ox + x * sx, oy - y * sy];
+    const left = sampleCurve((x) => Math.abs(Math.log10(x)), 0.12, 1.0, 26, p);
+    const right = sampleCurve((x) => Math.abs(Math.log10(x)), 1.0, 4.4, 26, p);
+    return spec('函数 f(x) = |lg x| 翻折图象', [
+      ...axesPrimitives(ox, oy, 26, 294, 18, 194),
+      P.polyline(left, BLUE),
+      P.polyline(right, BLUE),
+      P.line(ox, oy - 0.5 * sy, 286, oy - 0.5 * sy, RED, true),
+      P.point(...p(1, 0), '1', INK),
+      P.point(...p(0.32, 0.5), 'a', RED),
+      P.point(...p(3.16, 0.5), 'b', RED),
+      P.text(206, 42, 'y = |lg x|', BLUE),
+    ]);
+  },
+
+  // c34-g0-q3: 弧度制扇形（半径 {{r}}，圆心角 {{theta}} rad）
+  'c34-g0-q3': () =>
+    spec('弧度制扇形示意图', [
+      P.arc(146, 152, 94, -120, 96, BLUE, FILL_AMBER),
+      P.line(146, 152, 146 + 94 * Math.cos((-120 * Math.PI) / 180), 152 + 94 * Math.sin((-120 * Math.PI) / 180), INK),
+      P.line(146, 152, 146 + 94 * Math.cos((-24 * Math.PI) / 180), 152 + 94 * Math.sin((-24 * Math.PI) / 180), INK),
+      P.point(146, 152, 'O', INK),
+      P.text(192, 136, 'r = {{r}}', BLUE),
+      P.text(134, 108, 'α = {{theta}} rad', RED),
+    ]),
+
+  // c35-g1-q1: 向量数量积夹角 |a|=2, |b|=3, 60°
+  'c35-g1-q1': () =>
+    spec('平面向量夹角与数量积示意', [
+      P.arrow(66, 156, 258, 156, BLUE),
+      P.arrow(66, 156, 146, 44, RED),
+      P.arc(66, 156, 36, -54, 54, AMBER),
+      P.point(66, 156, 'O', INK),
+      P.text(152, 164, '|b| = 3', BLUE),
+      P.text(78, 86, '|a| = 2', RED),
+      P.text(108, 132, '60°', AMBER),
+    ]),
+
+  // c35-g2-q4: 向量夹角 π/3 (|a|=1, |b|=2)
+  'c35-g2-q4': () =>
+    spec('平面向量夹角与垂直模型', [
+      P.arrow(66, 158, 246, 158, BLUE),
+      P.arrow(66, 158, 126, 68, RED),
+      P.arc(66, 158, 34, -56, 56, AMBER),
+      P.point(66, 158, 'O', INK),
+      P.text(148, 166, '|b| = 2', BLUE),
+      P.text(68, 98, '|a| = 1', RED),
+      P.text(104, 134, 'π/3', AMBER),
+    ]),
+
+  // c36-g2-q2: 复平面向量 (1,2) 绕原点逆时针旋转 90°
+  'c36-g2-q2': () => {
+    const ox = 160;
+    const oy = 148;
+    const s = 34;
+    const p = (x, y) => [ox + x * s, oy - y * s];
+    return spec('复平面向量逆时针旋转 90°', [
+      ...axesPrimitives(ox, oy, 28, 292, 18, 192),
+      P.arrow(...p(0, 0), ...p(1, 2), BLUE),
+      P.arrow(...p(0, 0), ...p(-2, 1), RED, true),
+      P.arc(ox, oy, 28, -153, 90, AMBER),
+      P.point(...p(1, 2), 'Z₁(1,2)', BLUE),
+      P.point(...p(-2, 1), 'Z₂(?)', RED),
+      P.text(136, 110, '90°', AMBER),
+    ]);
+  },
+
+  // c36-g2-q3: 复平面轨迹圆 |z - 3| = {{m}}
+  'c36-g2-q3': () => {
+    const ox = 88;
+    const oy = 108;
+    return spec('复平面轨迹圆 |z - 3| = {{m}}', [
+      ...axesPrimitives(ox, oy, 26, 294, 18, 194),
+      P.circle(178, oy, 56, BLUE, FILL_BLUE),
+      P.line(178, oy, 224, oy - 32, RED),
+      P.point(178, oy, '(3,0)', INK),
+      P.text(196, oy - 32, 'r={{m}}', RED),
+    ]);
+  },
+
+  // c36-g3-q1: 复平面 |z - 1 - i| = 1 与 |z| 最大值
+  'c36-g3-q1': () => {
+    const ox = 112;
+    const oy = 148;
+    const s = 44;
+    const p = (x, y) => [ox + x * s, oy - y * s];
+    return spec('复平面圆 |z - 1 - i| = 1', [
+      ...axesPrimitives(ox, oy, 26, 294, 18, 194),
+      P.circle(...p(1, 1), s, BLUE, FILL_BLUE),
+      P.line(...p(0, 0), ...p(1.71, 1.71), RED),
+      P.point(...p(1, 1), 'C(1,1)', INK),
+      P.point(...p(1.71, 1.71), 'P(最大)', RED),
+      P.text(168, 76, 'r=1', BLUE),
+    ]);
+  },
+
+  // c37-g1-q4: 斜二测画法正方形直观图
+  'c37-g1-q4': () =>
+    spec('斜二测画法直观图（边长 {{2*s}}）', [
+      // 左：原正方形
+      P.polygon([[30, 62], [116, 62], [116, 148], [30, 148]], INK, FILL_BLUE),
+      P.text(44, 156, '原正方形', MUTED),
+      P.text(62, 134, '{{2*s}}', BLUE),
+      // 箭头
+      P.arrow(128, 106, 158, 106, RED),
+      // 右：直观图平行四边形
+      P.polygon([[172, 148], [258, 148], [288, 118], [202, 118]], BLUE, FILL_AMBER),
+      P.arc(172, 148, 22, -45, 45, RED),
+      P.text(196, 130, '45°', RED),
+      P.text(192, 156, '底不变、斜边减半', MUTED),
+    ]),
+
+  // c38-g2-q4: 五组频率分布直方图
+  'c38-g2-q4': () => {
+    const ox = 40;
+    const oy = 166;
+    const bars = [
+      { l: '50', h: 36, t: '0.01', c: BLUE, f: FILL_BLUE },
+      { l: '60', h: 72, t: '0.02', c: BLUE, f: FILL_BLUE },
+      { l: '70', h: 108, t: 'a=?', c: RED, f: FILL_AMBER, d: true },
+      { l: '80', h: 108, t: '0.03', c: BLUE, f: FILL_BLUE },
+      { l: '90', h: 36, t: '0.01', c: BLUE, f: FILL_BLUE },
+    ];
+    const prims = [
+      P.arrow(ox, oy, 296, oy, INK),
+      P.arrow(ox, oy, ox, 20, INK),
+      P.text(10, 18, '频率/组距', MUTED),
+    ];
+    bars.forEach((b, i) => {
+      const x1 = ox + 16 + i * 44;
+      const x2 = x1 + 44;
+      const y1 = oy - b.h;
+      prims.push(P.polygon([[x1, oy], [x1, y1], [x2, y1], [x2, oy]], b.c, b.f, !!b.d));
+      prims.push(P.text(x1 + 6, y1 - 15, b.t, b.c));
+      prims.push(P.text(x1 - 4, oy + 6, b.l, MUTED));
+    });
+    prims.push(P.text(ox + 16 + 5 * 44 - 8, oy + 6, '100', MUTED));
+    return spec('成绩频率分布直方图（组距 10）', prims);
+  },
+
+  // c38-g3-q5: 居民月用电量 6 组频率分布图
+  'c38-g3-q5': () => {
+    const ox = 36;
+    const oy = 166;
+    const bars = [
+      { l: '50', h: 34, t: '10%' },
+      { l: '100', h: 68, t: '20%' },
+      { l: '150', h: 102, t: '30%' },
+      { l: '200', h: 82, t: '24%' },
+      { l: '250', h: 34, t: '10%' },
+      { l: '300', h: 22, t: '6%' },
+    ];
+    const prims = [
+      P.arrow(ox, oy, 298, oy, INK),
+      P.arrow(ox, oy, ox, 22, INK),
+      P.text(12, 20, '占比', MUTED),
+    ];
+    bars.forEach((b, i) => {
+      const x1 = ox + 12 + i * 40;
+      const x2 = x1 + 38;
+      const y1 = oy - b.h;
+      prims.push(P.polygon([[x1, oy], [x1, y1], [x2, y1], [x2, oy]], BLUE, FILL_BLUE));
+      prims.push(P.text(x1 + 4, y1 - 15, b.t, BLUE));
+      prims.push(P.text(x1 - 4, oy + 6, b.l, MUTED));
+    });
+    prims.push(P.text(ox + 12 + 6 * 40 - 8, oy + 6, '350', MUTED));
+    return spec('居民月用电量 6 组频率分布图', prims);
+  },
+
+  // c39-g3-q1: 两元件并联电路示意图
+  'c39-g3-q1': () =>
+    spec('双元件并联电路示意（各 P = 0.9）', [
+      P.line(36, 108, 92, 108, INK),
+      P.line(228, 108, 284, 108, INK),
+      P.line(92, 62, 92, 154, INK),
+      P.line(228, 62, 228, 154, INK),
+      P.line(92, 62, 126, 62, INK),
+      P.line(194, 62, 228, 62, INK),
+      P.line(92, 154, 126, 154, INK),
+      P.line(194, 154, 228, 154, INK),
+      P.polygon([[126, 46], [194, 46], [194, 78], [126, 78]], BLUE, FILL_BLUE),
+      P.polygon([[126, 138], [194, 138], [194, 170], [126, 170]], GREEN, FILL_GREEN),
+      P.point(36, 108, 'A', INK),
+      P.point(284, 108, 'B', INK),
+      P.text(134, 54, '元件 1', BLUE),
+      P.text(134, 146, '元件 2', GREEN),
+      P.text(136, 98, '并联', RED),
+    ]),
+
+  // c41-g0-q1: 两点 A(1,2) 与 B(3,6) 斜率
+  'c41-g0-q1': () => {
+    const ox = 64;
+    const oy = 172;
+    const sx = 46;
+    const sy = 22;
+    const p = (x, y) => [ox + x * sx, oy - y * sy];
+    return spec('过 A(1,2)、B(3,6) 直线斜率示意', [
+      ...axesPrimitives(ox, oy, 26, 290, 16, 194),
+      P.line(...p(0.2, 0.4), ...p(3.4, 6.8), BLUE),
+      P.line(...p(1, 2), ...p(3, 2), RED, true),
+      P.line(...p(3, 2), ...p(3, 6), RED, true),
+      P.point(...p(1, 2), 'A(1,2)', BLUE),
+      P.point(...p(3, 6), 'B(3,6)', BLUE),
+      P.text(154, 134, 'Δx', RED),
+      P.text(208, 82, 'Δy', RED),
+    ]);
+  },
+
+  // c41-g0-q3: 点 P(0,{{a}}) 到直线 3x+4y-5=0 距离
+  'c41-g0-q3': () =>
+    spec('点 P(0,{{a}}) 到直线距离 d', [
+      ...axesPrimitives(108, 152, 26, 294, 18, 194),
+      P.line(54, 96, 274, 176, BLUE),
+      P.line(108, 48, 132, 124, RED),
+      P.rightAngle(132, 124, 108, 48, 274, 176, 9, RED),
+      P.point(108, 48, 'P(0,{{a}})', RED),
+      P.text(130, 82, 'd', RED),
+      P.text(176, 124, '3x+4y-5=0', BLUE),
+    ]),
+
+  // c41-g1-q2: 两条平行直线距离
+  'c41-g1-q2': () =>
+    spec('两平行直线间距离示意', [
+      P.line(44, 138, 264, 52, BLUE),
+      P.line(66, 182, 286, 96, GREEN),
+      P.line(156, 94, 174, 140, RED),
+      P.rightAngle(174, 140, 156, 94, 286, 96, 9, RED),
+      P.text(58, 82, '3x+4y+8=0', BLUE),
+      P.text(172, 158, '3x+4y-2=0', GREEN),
+      P.text(176, 108, 'd = ?', RED),
+    ]),
+
+  // c41-g1-q3: 倾斜角 135° 过 ({{a}},1) 直线
+  'c41-g1-q3': () =>
+    spec('倾斜角 135° 直线示意图', [
+      ...axesPrimitives(128, 152, 26, 294, 18, 194),
+      P.line(74, 28, 250, 190, BLUE),
+      P.arc(208, 152, 24, -135, 135, RED),
+      P.point(128, 78, '(0,b?)', GREEN),
+      P.point(172, 118, '({{a}},1)', BLUE),
+      P.text(218, 128, '135°', RED),
+    ]),
+
+  // c44-g0-q2: 曲线 y = x² + 1 在 (1,2) 处切线
+  'c44-g0-q2': () => {
+    const ox = 136;
+    const oy = 166;
+    const sx = 42;
+    const sy = 26;
+    const p = (x, y) => [ox + x * sx, oy - y * sy];
+    const pts = sampleCurve((x) => x * x + 1, -2.0, 2.2, 34, p);
+    return spec('曲线 y = x² + 1 在 (1,2) 处切线', [
+      ...axesPrimitives(ox, oy, 26, 294, 18, 194),
+      P.polyline(pts, BLUE),
+      P.line(...p(-0.2, -0.4), ...p(2.2, 4.4), RED),
+      P.point(...p(1, 2), '(1,2)', RED),
+      P.text(216, 48, '切线 k=?', RED),
+    ]);
+  },
+
+  // c44-g3-q1: 过原点作曲线 y = e^x 切线
+  'c44-g3-q1': () => {
+    const ox = 112;
+    const oy = 164;
+    const sx = 48;
+    const sy = 28;
+    const p = (x, y) => [ox + x * sx, oy - y * sy];
+    const pts = sampleCurve((x) => Math.exp(x), -1.6, 1.55, 34, p);
+    return spec('过原点作 y = e^x 的切线', [
+      ...axesPrimitives(ox, oy, 26, 294, 18, 194),
+      P.polyline(pts, BLUE),
+      P.line(...p(-0.2, -0.54), ...p(1.75, 4.76), RED),
+      P.point(...p(1, Math.E), '切点', RED),
+      P.text(204, 38, 'y = e^x', BLUE),
+    ]);
+  },
+
+  // c44-g3-q2: 切线放缩 e^x ≥ x + a
+  'c44-g3-q2': () => {
+    const ox = 128;
+    const oy = 158;
+    const sx = 46;
+    const sy = 28;
+    const p = (x, y) => [ox + x * sx, oy - y * sy];
+    const pts = sampleCurve((x) => Math.exp(x), -1.8, 1.55, 34, p);
+    return spec('切线放缩模型 e^x ≥ x + a', [
+      ...axesPrimitives(ox, oy, 26, 294, 18, 194),
+      P.polyline(pts, BLUE),
+      P.line(...p(-1.6, -0.6), ...p(2.4, 3.4), RED),
+      P.point(...p(0, 1), '(0,1)', RED),
+      P.text(206, 36, 'y = e^x', BLUE),
+      P.text(202, 100, 'y = x + a', RED),
+    ]);
+  },
+
+  // c45-g0-q3: 甲→乙→丙分步路线示意图
+  'c45-g0-q3': () =>
+    spec('分步乘法计数原理路线图', [
+      P.point(48, 108, '甲地', INK),
+      P.point(160, 108, '乙地', BLUE),
+      P.point(272, 108, '丙地', GREEN),
+      P.polyline([[48, 108], [104, 64], [160, 108]], BLUE),
+      P.line(48, 108, 160, 108, BLUE),
+      P.polyline([[48, 108], [104, 152], [160, 108]], BLUE),
+      P.polyline([[160, 108], [216, 70], [272, 108]], RED),
+      P.polyline([[160, 108], [216, 146], [272, 108]], RED),
+      P.text(68, 42, '公路 {{a}} 条', BLUE),
+      P.text(188, 42, '铁路 {{b}} 条', RED),
+    ]),
+
+  // c45-g1-q3: 铁路线 n 个车站往返车票
+  'c45-g1-q3': () =>
+    spec('铁路线 {{n}} 个车站往返车票', [
+      P.line(36, 114, 284, 114, INK),
+      P.point(54, 114, '站1', BLUE),
+      P.point(112, 114, '站2', BLUE),
+      P.point(170, 114, '站3', BLUE),
+      P.point(264, 114, '站{{n}}', RED),
+      P.text(206, 104, '···', MUTED),
+      P.arrow(64, 86, 160, 86, BLUE),
+      P.arrow(160, 142, 64, 142, RED),
+      P.text(92, 66, '去程', BLUE),
+      P.text(92, 150, '返程（票面不同）', RED),
+    ]),
+
+  // c46-g0-q2: 正态分布 N(2, σ²) 对称曲线
+  'c46-g0-q2': () => {
+    const ox = 160;
+    const oy = 164;
+    const p = (z, y) => [ox + z * 42, oy - y * 116];
+    const pts = sampleCurve((z) => Math.exp(-0.5 * z * z), -2.8, 2.8, 44, p);
+    return spec('正态分布 N(2, σ²) 对称性示意', [
+      P.arrow(26, oy, 294, oy, INK),
+      P.polyline(pts, BLUE),
+      P.line(ox, 34, ox, oy, RED, true),
+      P.line(ox - 42, oy - 70, ox - 42, oy, GREEN, true),
+      P.line(ox + 42, oy - 70, ox + 42, oy, GREEN, true),
+      P.text(ox - 10, 18, 'μ=2', RED),
+      P.text(ox - 46, oy + 8, '0', GREEN),
+      P.text(ox - 4, oy + 8, '2', RED),
+      P.text(ox + 38, oy + 8, '4', GREEN),
+    ]);
+  },
+
+  // c46-g3-q1: 正态分布 N(100, 10²) (110, 120] 区间
+  'c46-g3-q1': () => {
+    const ox = 160;
+    const oy = 164;
+    const p = (z, y) => [ox + z * 42, oy - y * 116];
+    const pts = sampleCurve((z) => Math.exp(-0.5 * z * z), -2.8, 2.8, 44, p);
+    const shade = [p(1, 0), ...sampleCurve((z) => Math.exp(-0.5 * z * z), 1, 2, 12, p), p(2, 0)];
+    return spec('正态分布 N(100, 10²) 与区间 (110,120]', [
+      P.arrow(26, oy, 294, oy, INK),
+      P.polygon(shade, AMBER, FILL_AMBER),
+      P.polyline(pts, BLUE),
+      P.line(ox, 34, ox, oy, RED, true),
+      P.text(ox - 16, 18, 'μ=100', RED),
+      P.text(ox - 48, oy + 8, '90', MUTED),
+      P.text(ox - 10, oy + 8, '100', RED),
+      P.text(ox + 34, oy + 8, '110', AMBER),
+      P.text(ox + 76, oy + 8, '120', AMBER),
+    ]);
+  },
+
+  // c47-g2-q4: 5组实测数据散点与回归直线
+  'c47-g2-q4': () => {
+    const ox = 48;
+    const oy = 174;
+    const sx = 32;
+    const sy = 16;
+    const p = (x, y) => [ox + x * sx, oy - y * sy];
+    return spec('促销投入 x 与销量 y 散点回归图', [
+      ...axesPrimitives(ox, oy, 26, 294, 18, 194),
+      P.line(...p(1.4, 1.8), ...p(7.2, 8.9), RED),
+      P.point(...p(2, 2.2), '', BLUE),
+      P.point(...p(3, 3.8), '', BLUE),
+      P.point(...p(4, 5.5), '', BLUE),
+      P.point(...p(5, 6.5), '', BLUE),
+      P.point(...p(6, 7.0), '', BLUE),
+      P.point(...p(4, 5.0), '中心', GREEN),
+      P.text(192, 34, 'ŷ = bx + a', RED),
+    ]);
+  },
+
+  // c48-g2-q1: f(x) = e^x / x 与 y = k 交点
+  'c48-g2-q1': () => {
+    const ox = 128;
+    const oy = 126;
+    const sx = 38;
+    const sy = 18;
+    const p = (x, y) => [ox + x * sx, oy - y * sy];
+    const right = sampleCurve((x) => Math.exp(x) / x, 0.25, 2.5, 34, p);
+    const left = sampleCurve((x) => Math.exp(x) / x, -2.5, -0.22, 30, p);
+    return spec('f(x) = e^x / x 图象与 y = k 交点', [
+      ...axesPrimitives(ox, oy, 26, 294, 18, 194),
+      P.polyline(right, BLUE),
+      P.polyline(left, BLUE),
+      P.line(34, oy - 3.6 * sy, 286, oy - 3.6 * sy, RED, true),
+      P.point(...p(1, Math.E), '(1,e)', GREEN),
+      P.text(224, oy - 3.6 * sy - 16, 'y = k', RED),
+    ]);
+  },
+
+  // c48-g3-q1: e^(x-1) ≥ ax 切线放缩
+  'c48-g3-q1': () => {
+    const ox = 76;
+    const oy = 166;
+    const sx = 54;
+    const sy = 34;
+    const p = (x, y) => [ox + x * sx, oy - y * sy];
+    const curve = sampleCurve((x) => Math.exp(x - 1), -0.3, 2.4, 34, p);
+    return spec('切线放缩模型 e^(x-1) ≥ ax', [
+      ...axesPrimitives(ox, oy, 26, 294, 18, 194),
+      P.polyline(curve, BLUE),
+      P.line(...p(0, 0), ...p(3.2, 3.2), RED),
+      P.point(...p(1, 1), '(1,1)', RED),
+      P.text(182, 34, 'y = e^(x-1)', BLUE),
+      P.text(224, 90, 'y = ax', RED),
+    ]);
+  },
+
+  // c48-g3-q4: y = ln x + {{k}} 与直线 y = x + b 相切
+  'c48-g3-q4': () => {
+    const ox = 72;
+    const oy = 158;
+    const sx = 52;
+    const sy = 32;
+    const p = (x, y) => [ox + x * sx, oy - y * sy];
+    const curve = sampleCurve((x) => Math.log(x) + 1.8, 0.22, 3.8, 34, p);
+    return spec('y = ln x + {{k}} 与 y = x + b 相切', [
+      ...axesPrimitives(ox, oy, 26, 294, 18, 194),
+      P.polyline(curve, BLUE),
+      P.line(...p(0, 0.8), ...p(2.8, 3.6), RED),
+      P.point(...p(1, 1.8), '切点', RED),
+      P.text(204, 108, 'y = ln x + {{k}}', BLUE),
+      P.text(168, 42, 'y = x + b', RED),
+    ]);
+  },
+
+  // c50-g0-q4: 正态分布对称性 P(ξ≤{{a}}) = P(ξ≥{{a+6}})
+  'c50-g0-q4': () => {
+    const ox = 160;
+    const oy = 164;
+    const p = (z, y) => [ox + z * 42, oy - y * 116];
+    const pts = sampleCurve((z) => Math.exp(-0.5 * z * z), -2.8, 2.8, 44, p);
+    const lShade = [p(-2.8, 0), ...sampleCurve((z) => Math.exp(-0.5 * z * z), -2.8, -1.2, 12, p), p(-1.2, 0)];
+    const rShade = [p(1.2, 0), ...sampleCurve((z) => Math.exp(-0.5 * z * z), 1.2, 2.8, 12, p), p(2.8, 0)];
+    return spec('正态分布双尾对称示意图', [
+      P.arrow(26, oy, 294, oy, INK),
+      P.polygon(lShade, BLUE, FILL_BLUE),
+      P.polygon(rShade, BLUE, FILL_BLUE),
+      P.polyline(pts, BLUE),
+      P.line(ox, 34, ox, oy, RED, true),
+      P.text(ox - 12, 18, 'μ = ?', RED),
+      P.text(ox - 66, oy + 8, '{{a}}', BLUE),
+      P.text(ox + 38, oy + 8, '{{a + 6}}', BLUE),
+    ]);
+  },
+
+  // c50-g3-q2: 正态分布 N(174, 4²) 男生身高 (178, 182]
+  'c50-g3-q2': () => {
+    const ox = 160;
+    const oy = 164;
+    const p = (z, y) => [ox + z * 42, oy - y * 116];
+    const pts = sampleCurve((z) => Math.exp(-0.5 * z * z), -2.8, 2.8, 44, p);
+    const shade = [p(1, 0), ...sampleCurve((z) => Math.exp(-0.5 * z * z), 1, 2, 12, p), p(2, 0)];
+    return spec('男生身高 N(174, 4²) 与 (178,182]', [
+      P.arrow(26, oy, 294, oy, INK),
+      P.polygon(shade, GREEN, FILL_GREEN),
+      P.polyline(pts, BLUE),
+      P.line(ox, 34, ox, oy, RED, true),
+      P.text(ox - 18, 18, 'μ=174', RED),
+      P.text(ox - 48, oy + 8, '170', MUTED),
+      P.text(ox - 10, oy + 8, '174', RED),
+      P.text(ox + 34, oy + 8, '178', GREEN),
+      P.text(ox + 76, oy + 8, '182', GREEN),
+    ]);
+  },
 };
 
 // ============================================================================
@@ -1358,12 +2524,268 @@ function buildLineCircleDiagram() {
   ]);
 }
 
+function buildInequalityNumberLineDiagram(isSystem = false) {
+  if (isSystem) {
+    return spec('不等式组数轴公共解集示意', [
+      P.arrow(26, 134, 294, 134, INK),
+      P.polygon([[106, 96], [218, 96], [218, 134], [106, 134]], BLUE, FILL_BLUE),
+      P.polyline([[106, 134], [106, 96], [274, 96]], BLUE),
+      P.polyline([[218, 134], [218, 76], [46, 76]], RED),
+      P.circle(106, 134, 4, BLUE),
+      P.point(218, 134, '', RED),
+      P.text(98, 146, 'a', BLUE),
+      P.text(212, 146, 'b', RED),
+      P.text(134, 108, '公共解集', BLUE),
+    ]);
+  }
+  return spec('一元一次不等式数轴解集示意', [
+    P.arrow(26, 128, 294, 128, INK),
+    P.polyline([[172, 128], [172, 84], [48, 84]], BLUE),
+    P.polygon([[48, 84], [172, 84], [172, 128], [48, 128]], BLUE, FILL_BLUE),
+    P.point(172, 128, '', BLUE),
+    P.text(164, 142, 'x₀', BLUE),
+    P.text(84, 98, '解集区域', BLUE),
+  ]);
+}
+
+function buildHistogramDiagram(title = '频率分布直方图示意') {
+  const ox = 42;
+  const oy = 166;
+  const hs = [34, 72, 108, 66, 30];
+  const prims = [
+    P.arrow(ox, oy, 292, oy, INK),
+    P.arrow(ox, oy, ox, 22, INK),
+    P.text(12, 20, '频率/组距', MUTED),
+    P.text(254, 174, '分组', MUTED),
+  ];
+  hs.forEach((h, i) => {
+    const x1 = ox + 16 + i * 44;
+    const x2 = x1 + 44;
+    const y1 = oy - h;
+    prims.push(P.polygon([[x1, oy], [x1, y1], [x2, y1], [x2, oy]], BLUE, i === 2 ? FILL_AMBER : FILL_BLUE));
+  });
+  return spec(title, prims);
+}
+
+function buildLineChartDiagram() {
+  const ox = 44;
+  const oy = 166;
+  const pts = [
+    [68, 130],
+    [106, 112],
+    [144, 78],
+    [182, 96],
+    [220, 60],
+    [258, 82],
+  ];
+  return spec('折线统计图（变化趋势）示意', [
+    P.arrow(ox, oy, 294, oy, INK),
+    P.arrow(ox, oy, ox, 22, INK),
+    P.polyline(pts, BLUE),
+    ...pts.map((pt) => P.point(pt[0], pt[1], '', RED)),
+    P.text(14, 22, '数值', MUTED),
+    P.text(254, 174, '时间', MUTED),
+  ]);
+}
+
+function buildVennDiagram(kind = 'inter') {
+  if (kind === 'comp') {
+    return spec('全集 U 与补集 ∁_U M 韦恩图', [
+      P.polygon([[32, 28], [288, 28], [288, 180], [32, 180]], INK, FILL_BLUE),
+      P.circle(160, 104, 48, RED, FILL_AMBER),
+      P.text(44, 40, '全集 U', INK),
+      P.text(152, 98, 'M', RED),
+      P.text(218, 148, '∁_U M', BLUE),
+    ]);
+  }
+  if (kind === 'subset') {
+    return spec('集合包含关系 B ⊆ A 韦恩图', [
+      P.circle(160, 106, 68, BLUE, FILL_BLUE),
+      P.circle(168, 112, 36, RED, FILL_AMBER),
+      P.text(112, 62, 'A', BLUE),
+      P.text(162, 104, 'B', RED),
+    ]);
+  }
+  return spec('集合交集与并集韦恩图', [
+    P.circle(126, 106, 58, BLUE, FILL_BLUE),
+    P.circle(194, 106, 58, GREEN, FILL_GREEN),
+    P.text(88, 98, 'A', BLUE),
+    P.text(216, 98, 'B', GREEN),
+    P.text(144, 98, 'A∩B', RED),
+  ]);
+}
+
+function buildIntervalNumberLineDiagram() {
+  return spec('数轴区间运算示意图', [
+    P.arrow(26, 134, 294, 134, INK),
+    P.polyline([[72, 134], [72, 94], [198, 94], [198, 134]], BLUE),
+    P.polyline([[134, 134], [134, 68], [254, 68], [254, 134]], GREEN),
+    P.polygon([[134, 94], [198, 94], [198, 134], [134, 134]], RED, FILL_AMBER),
+    P.text(100, 78, 'A', BLUE),
+    P.text(218, 52, 'B', GREEN),
+    P.text(148, 108, 'A∩B', RED),
+  ]);
+}
+
+function buildQuadraticInequalityDiagram() {
+  const ox = 160;
+  const oy = 136;
+  const p = (x, y) => [ox + x * 34, oy - y * 24];
+  const pts = sampleCurve((x) => 0.75 * (x - 1.2) * (x + 1.2), -2.4, 2.4, 34, p);
+  return spec('二次函数与一元二次不等式解集', [
+    ...axesPrimitives(ox, oy, 26, 294, 18, 194),
+    P.polyline(pts, BLUE),
+    P.line(...p(-1.2, 0), ...p(1.2, 0), RED),
+    P.point(...p(-1.2, 0), 'x₁', RED),
+    P.point(...p(1.2, 0), 'x₂', RED),
+  ]);
+}
+
+function buildFunctionFeatureDiagram(kind = 'odd') {
+  const ox = 160;
+  const oy = 108;
+  const sx = 32;
+  const sy = 26;
+  const p = (x, y) => [ox + x * sx, oy - y * sy];
+  if (kind === 'even') {
+    const pts = sampleCurve((x) => 0.45 * x * x - 1.2, -3.2, 3.2, 36, p);
+    return spec('偶函数图象（关于 y 轴对称）', [
+      ...axesPrimitives(ox, oy, 26, 294, 18, 194),
+      P.polyline(pts, BLUE),
+      P.point(...p(-2, 0.6), '(-x,f(x))', RED),
+      P.point(...p(2, 0.6), '(x,f(x))', RED),
+      P.line(...p(-2, 0.6), ...p(2, 0.6), RED, true),
+    ]);
+  }
+  if (kind === 'hook') {
+    const r = sampleCurve((x) => x + 2.25 / x, 0.42, 3.8, 30, p);
+    return spec('对勾函数 y = x + k/x 图象示意', [
+      ...axesPrimitives(66, 168, 26, 294, 18, 194),
+      P.polyline(
+        sampleCurve((x) => x + 2.25 / x, 0.42, 4.2, 34, (x, y) => [66 + x * 46, 168 - y * 24]),
+        BLUE,
+      ),
+      P.point(66 + 1.5 * 46, 168 - 3.0 * 24, '最低点', RED),
+      P.text(196, 46, 'y = x + k/x', BLUE),
+    ]);
+  }
+  if (kind === 'piecewise') {
+    const l = sampleCurve((x) => 0.45 * x * x + 0.5, -2.6, 0, 20, p);
+    return spec('分段函数图象示意图', [
+      ...axesPrimitives(ox, oy, 26, 294, 18, 194),
+      P.polyline(l, GREEN),
+      P.line(...p(0, 1.0), ...p(2.6, 2.8), BLUE),
+      P.point(...p(0, 1.0), '', BLUE),
+      P.circle(...p(0, 0.5), 4, GREEN),
+      P.text(64, 42, '左段', GREEN),
+      P.text(216, 42, '右段', BLUE),
+    ]);
+  }
+  const pts = sampleCurve((x) => 0.28 * x * x * x, -2.15, 2.15, 36, p);
+  return spec('奇函数图象（关于原点对称）', [
+    ...axesPrimitives(ox, oy, 26, 294, 18, 194),
+    P.polyline(pts, BLUE),
+    P.point(...p(1.6, 1.15), '(x,f(x))', RED),
+    P.point(...p(-1.6, -1.15), '(-x,-f(x))', RED),
+    P.line(...p(-1.6, -1.15), ...p(1.6, 1.15), MUTED, true),
+  ]);
+}
+
+function buildExpLogDiagram(kind = 'exp') {
+  const ox = 118;
+  const oy = 148;
+  const sx = 40;
+  const sy = 28;
+  const p = (x, y) => [ox + x * sx, oy - y * sy];
+  if (kind === 'log') {
+    const pts = sampleCurve((x) => Math.log2(x), 0.16, 4.2, 34, p);
+    return spec('对数函数图象与零点示意', [
+      ...axesPrimitives(ox, oy, 26, 294, 18, 194),
+      P.polyline(pts, BLUE),
+      P.point(...p(1, 0), '(1,0)', RED),
+      P.text(218, 46, 'y = log_a x', BLUE),
+    ]);
+  }
+  const pts = sampleCurve((x) => Math.pow(2, x), -2.0, 2.2, 34, p);
+  return spec('指数函数图象与定点示意', [
+    ...axesPrimitives(ox, oy, 26, 294, 18, 194),
+    P.polyline(pts, BLUE),
+    P.point(...p(0, 1), '(0,1)', RED),
+    P.text(204, 40, 'y = a^x', BLUE),
+  ]);
+}
+
+function buildComplexPlaneDiagram() {
+  const ox = 142;
+  const oy = 112;
+  return spec('复平面点 Z(a, b) 与模长 |z|', [
+    ...axesPrimitives(ox, oy, 26, 294, 18, 194),
+    P.arrow(ox, oy, 224, 56, BLUE),
+    P.line(224, 56, 224, oy, MUTED, true),
+    P.line(224, 56, ox, 56, MUTED, true),
+    P.point(224, 56, 'Z(a,b)', BLUE),
+    P.text(228, 120, 'a', MUTED),
+    P.text(124, 50, 'b', MUTED),
+    P.text(176, 72, '|z|', RED),
+    P.text(254, oy - 18, '实轴', MUTED),
+    P.text(ox + 8, 22, '虚轴', MUTED),
+  ]);
+}
+
+function buildDerivativeDiagram(kind = 'extrema') {
+  const ox = 148;
+  const oy = 114;
+  const sx = 34;
+  const sy = 26;
+  const p = (x, y) => [ox + x * sx, oy - y * sy];
+  if (kind === 'tangent') {
+    const pts = sampleCurve((x) => 0.42 * x * x - 0.6, -2.5, 2.6, 36, p);
+    return spec('导数的几何意义：切线斜率', [
+      ...axesPrimitives(ox, oy, 26, 294, 18, 194),
+      P.polyline(pts, BLUE),
+      P.line(...p(0.2, -1.0), ...p(2.7, 2.15), RED),
+      P.point(...p(1.5, 0.35), 'P(x₀,f(x₀))', RED),
+      P.text(218, 42, "k = f'(x₀)", RED),
+    ]);
+  }
+  const pts = sampleCurve((x) => 0.32 * x * x * x - 1.15 * x, -2.35, 2.35, 42, p);
+  return spec('导数与函数单调性/极值示意', [
+    ...axesPrimitives(ox, oy, 26, 294, 18, 194),
+    P.polyline(pts, BLUE),
+    P.line(ox - 1.1 * sx - 20, oy - 0.84 * sy, ox - 1.1 * sx + 20, oy - 0.84 * sy, RED, true),
+    P.line(ox + 1.1 * sx - 20, oy + 0.84 * sy, ox + 1.1 * sx + 20, oy + 0.84 * sy, GREEN, true),
+    P.point(...p(-1.1, 0.84), '极大值', RED),
+    P.point(...p(1.1, -0.84), '极小值', GREEN),
+  ]);
+}
+
+function buildRegressionScatterDiagram() {
+  const ox = 46;
+  const oy = 172;
+  const pts = [
+    [76, 152],
+    [114, 128],
+    [154, 108],
+    [194, 80],
+    [234, 62],
+    [264, 44],
+  ];
+  return spec('线性回归散点与残差示意图', [
+    ...axesPrimitives(ox, oy, 24, 294, 18, 194),
+    P.line(58, 160, 276, 40, RED),
+    ...pts.map((pt) => P.point(pt[0], pt[1], '', BLUE)),
+    P.line(194, 80, 194, 86, AMBER),
+    P.point(168, 99, '(x̄,ȳ)', GREEN),
+    P.text(204, 34, 'ŷ = bx + a', RED),
+  ]);
+}
+
 /**
  * 根据章节编码、关卡序号、题序与题目内容解析最匹配的矢量配图。
  * 规则：
- * 1. 所有 33 道含“如图”题目强制命中 1:1 精绘配图；
- * 2. 其他几何/函数/坐标系/圆/三角形/四边形/立体几何/圆锥曲线/向量/数轴题目按语义精准配图；
- * 3. 纯代数运算（整式/分式/方程计算/概率枚举等）保持无多余配图，避免喧宾夺主。
+ * 1. 所有 33 道含“如图”题目及二次审计 65 道场景/几何/统计/函数/概率题强制命中 1:1 精绘配图；
+ * 2. 其他几何/函数/坐标系/不等式数轴/集合韦恩图/统计直方图/导数/复平面/回归散点题按语义精准配图；
+ * 3. 纯代数运算（整式/分式/方程化简计算等）保持无多余配图，避免喧宾夺主。
  */
 export function resolveDiagramForQuestion(chapterCode, gateIndex, qIndex, q) {
   const key = `${chapterCode}-g${gateIndex}-q${qIndex + 1}`;
@@ -1412,9 +2834,23 @@ export function resolveDiagramForQuestion(chapterCode, gateIndex, qIndex, q) {
     return null;
   }
 
+  // 4.5) 第9章 不等式与不等式组
+  if (chapterCode === 'c9') {
+    if (/不等式组|\\begin\{cases\}/.test(s) && !/方程组/.test(s)) {
+      return buildInequalityNumberLineDiagram(true);
+    }
+    if (/解集|整数解/.test(s)) {
+      return buildInequalityNumberLineDiagram(false);
+    }
+    return null;
+  }
+
   // 5) 第10章 统计图表
-  if (chapterCode === 'c10' && /扇形/.test(s)) {
-    return buildPieChartDiagram();
+  if (chapterCode === 'c10') {
+    if (/扇形|优秀.*良好/.test(s)) return buildPieChartDiagram();
+    if (/变化趋势|折线/.test(s)) return buildLineChartDiagram();
+    if (/直方图|组距|频数分布/.test(s)) return buildHistogramDiagram('频数分布直方图示意');
+    return null;
   }
 
   // 6) 第11章 三角形
@@ -1558,7 +2994,7 @@ export function resolveDiagramForQuestion(chapterCode, gateIndex, qIndex, q) {
 
   // 17) 第28章 锐角三角函数
   if (chapterCode === 'c28') {
-    if (/Rt\\triangle|\\angle C = 90|直角三角形|坡度|仰角|\\triangle/.test(s)) {
+    if (/Rt\\triangle|\\angle C = 90|直角三角形|坡度|仰角|\\triangle|锐角/.test(s)) {
       return buildRightTriangleDiagram('A', 'B', 'C', [
         P.arc(76, 44, 24, 34, 56, BLUE),
         P.text(90, 74, '∠A', BLUE),
@@ -1572,11 +3008,38 @@ export function resolveDiagramForQuestion(chapterCode, gateIndex, qIndex, q) {
     if (/圆锥/.test(s)) return buildSolidDiagram('cone');
     if (/圆柱/.test(s)) return buildSolidDiagram('cylinder');
     if (/球/.test(s)) return buildSolidDiagram('sphere');
-    if (/正方体|长方体|棱柱|三视图/.test(s)) return buildSolidDiagram('cube');
+    if (/正方体|长方体|棱柱|三视图|视图/.test(s)) return buildSolidDiagram('cube');
     return null;
   }
 
-  // 19) 高中图形章节 (h1/h2/h3)
+  // 19) 高中集合、不等式、函数、复数、统计、解析几何与导数 (h1/h2/h3)
+  if (chapterCode === 'c30') {
+    if (/补集|\\complement/.test(s)) return buildVennDiagram('comp');
+    if (/\\subseteq/.test(s)) return buildVennDiagram('subset');
+    if (/区间|\\le x \\le|-1 < x|x \\le|x \\ge/.test(s)) return buildIntervalNumberLineDiagram();
+    if (/\\cap|\\cup/.test(s)) return buildVennDiagram('inter');
+    return null;
+  }
+  if (chapterCode === 'c31') {
+    if (/x\^2.*(<|>|\\le|\\ge)|二次函数/.test(s)) return buildQuadraticInequalityDiagram();
+    return null;
+  }
+  if (chapterCode === 'c32') {
+    if (/\\begin\{cases\}/.test(s)) return buildFunctionFeatureDiagram('piecewise');
+    if (/x \+ \\frac\{4\}\{x\}/.test(s)) return buildFunctionFeatureDiagram('hook');
+    if (/偶函数/.test(s)) return buildFunctionFeatureDiagram('even');
+    if (/奇函数/.test(s)) return buildFunctionFeatureDiagram('odd');
+    if (/单调|减函数|幂函数|对称轴/.test(s)) return buildParabolaDiagram();
+    return null;
+  }
+  if (chapterCode === 'c33') {
+    if (/\\begin\{cases\}/.test(s)) return buildFunctionFeatureDiagram('piecewise');
+    if (/\\mathrm\{log\}|\\mathrm\{ln\}|\\mathrm\{lg\}/.test(s) && /单调|零点|图象|实数根|不等式/.test(s)) {
+      return buildExpLogDiagram('log');
+    }
+    if (/指数函数|定点|4\^x|a\^\{x/.test(s)) return buildExpLogDiagram('exp');
+    return null;
+  }
   if (chapterCode === 'c34' && /\\mathrm\{sin\}|正弦|图象|周期/.test(s)) {
     return buildSineWaveDiagram();
   }
@@ -1584,6 +3047,9 @@ export function resolveDiagramForQuestion(chapterCode, gateIndex, qIndex, q) {
     if (/\\triangle|三角形|正弦定理|余弦定理/.test(s)) return buildTriangleAnglesDiagram(q);
     if (/向量/.test(s)) return buildVectorDiagram();
     return null;
+  }
+  if (chapterCode === 'c36' && /复平面|模长|\|z\|/.test(s)) {
+    return buildComplexPlaneDiagram();
   }
   if (chapterCode === 'c37' || chapterCode === 'c40') {
     if (/球/.test(s)) return buildSolidDiagram('sphere');
@@ -1593,14 +3059,28 @@ export function resolveDiagramForQuestion(chapterCode, gateIndex, qIndex, q) {
     if (/正方体|长方体|棱柱|空间|二面角|平面/.test(s)) return buildSolidDiagram('cube');
     return null;
   }
-  if (chapterCode === 'c41' && /圆|切线|弦/.test(s)) {
-    return buildLineCircleDiagram();
+  if (chapterCode === 'c38' && /直方图/.test(s)) {
+    return buildHistogramDiagram('频率分布直方图示意');
+  }
+  if (chapterCode === 'c41') {
+    if (/圆|切线|弦/.test(s)) return buildLineCircleDiagram();
+    if (/平行/.test(s)) return buildParallelLinesDiagram('std');
+    return null;
   }
   if (chapterCode === 'c42' || chapterCode === 'c49') {
     if (/椭圆/.test(s)) return buildConicDiagram('ellipse');
     if (/双曲线/.test(s)) return buildConicDiagram('hyperbola');
     if (/抛物线/.test(s)) return buildConicDiagram('parabola');
     if (/圆/.test(s)) return buildLineCircleDiagram();
+    return null;
+  }
+  if (chapterCode === 'c44' || chapterCode === 'c48') {
+    if (/切线|相切/.test(s)) return buildDerivativeDiagram('tangent');
+    if (/极大|极小|极值|单调|最小值|最大值|恒成立/.test(s)) return buildDerivativeDiagram('extrema');
+    return null;
+  }
+  if (chapterCode === 'c47') {
+    if (/回归|相关系数|残差|样本中心|离群点/.test(s)) return buildRegressionScatterDiagram();
     return null;
   }
   if (chapterCode === 'c51' && /\\triangle|三角形/.test(s)) {

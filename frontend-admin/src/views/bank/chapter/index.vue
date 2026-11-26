@@ -138,8 +138,8 @@ onMounted(async () => {
   <div class="space-y-4">
     <el-card shadow="never">
       <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <span class="font-bold text-gray-800">按修仙境界筛选章节</span>
-        <span class="text-xs text-gray-500">每个境界对应一套难度课程体系</span>
+        <span class="font-bold text-gray-800">按年级阶段筛选章节</span>
+        <span class="text-xs text-gray-500">每个学习阶段对应一套年级数学课程体系</span>
       </div>
       <div class="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
         <div
@@ -147,7 +147,7 @@ onMounted(async () => {
           :class="activeRealm === '' ? 'border-green-600 bg-green-50 text-green-800' : 'border-gray-200 hover:border-green-400'"
           @click="activeRealm = ''; fetchChapters()"
         >
-          <div class="whitespace-nowrap text-sm font-bold">全部境界</div>
+          <div class="whitespace-nowrap text-sm font-bold">全部年级</div>
           <div class="mt-1 whitespace-nowrap text-xs text-gray-500">全部难度</div>
         </div>
         <div
@@ -180,7 +180,7 @@ onMounted(async () => {
 
       <el-table v-loading="loading" :data="chapters" border stripe>
         <el-table-column prop="id" label="ID" width="64" align="center" />
-        <el-table-column label="所属境界" width="104" align="center">
+        <el-table-column label="所属年级" width="104" align="center">
           <template #default="{ row }">
             <el-tag type="success" size="small" class="whitespace-nowrap">
               {{ row.realmName || row.gradeName }}
@@ -219,7 +219,7 @@ onMounted(async () => {
 
     <el-dialog v-model="chapDialogVisible" :title="chapEditId ? '编辑章节' : '新增章节'" width="460px">
       <el-form label-width="90px">
-        <el-form-item label="所属境界" required>
+        <el-form-item label="所属年级" required>
           <el-select v-model="chapForm.gradeCode" class="w-full">
             <el-option
               v-for="r in realms"

@@ -131,7 +131,12 @@ class _MainShellPageState extends State<MainShellPage> {
             icon: Icon(
               _currentIndex == 0 ? Icons.flag_rounded : Icons.flag_outlined,
             ),
-            label: const Text('闯关'),
+            label: const Text(
+              '闯关',
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
           FBottomNavigationBarItem(
             icon: Icon(
@@ -139,11 +144,21 @@ class _MainShellPageState extends State<MainShellPage> {
                   ? Icons.play_circle_rounded
                   : Icons.play_circle_outline_rounded,
             ),
-            label: const Text('课堂'),
+            label: const Text(
+              '课堂',
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
           FBottomNavigationBarItem(
             icon: buildForuiWrongIcon(),
-            label: const Text('错题本'),
+            label: const Text(
+              '错题本',
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
           FBottomNavigationBarItem(
             icon: Icon(
@@ -151,7 +166,12 @@ class _MainShellPageState extends State<MainShellPage> {
                   ? Icons.person_rounded
                   : Icons.person_outline_rounded,
             ),
-            label: const Text('我的'),
+            label: const Text(
+              '我的',
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       );

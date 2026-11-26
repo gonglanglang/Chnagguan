@@ -159,7 +159,7 @@ class RealmItem {
   factory RealmItem.fromJson(Map<String, dynamic> json) {
     return RealmItem(
       realmCode: _asString(json['realmCode'], 'lianqi'),
-      realmName: _asString(json['realmName'], '练气'),
+      realmName: _asString(json['realmName'], '初一'),
       realmOrder: _asInt(json['realmOrder'], 1),
       gradeCode: _asString(json['gradeCode'], 'g7'),
       difficultyLabel: _asString(json['difficultyLabel']),
@@ -182,11 +182,11 @@ class RealmItem {
   static const List<RealmItem> defaults = <RealmItem>[
     RealmItem(
       realmCode: 'lianqi',
-      realmName: '练气',
+      realmName: '初一',
       realmOrder: 1,
       gradeCode: 'g7',
       difficultyLabel: '难度一 · 基础',
-      description: '初一数学基础修炼',
+      description: '初一数学基础巩固',
       unlockGates: 0,
       examQuestionCount: 5,
       examPassScore: 60,
@@ -202,7 +202,7 @@ class RealmItem {
     ),
     RealmItem(
       realmCode: 'zhuji',
-      realmName: '筑基',
+      realmName: '初二',
       realmOrder: 2,
       gradeCode: 'g8',
       difficultyLabel: '难度二 · 入门',
@@ -222,7 +222,7 @@ class RealmItem {
     ),
     RealmItem(
       realmCode: 'jiedan',
-      realmName: '结丹',
+      realmName: '初三',
       realmOrder: 3,
       gradeCode: 'g9',
       difficultyLabel: '难度三 · 提升',
@@ -242,7 +242,7 @@ class RealmItem {
     ),
     RealmItem(
       realmCode: 'jiaying',
-      realmName: '假婴',
+      realmName: '高一',
       realmOrder: 4,
       gradeCode: 'h1',
       difficultyLabel: '难度四 · 强化',
@@ -262,7 +262,7 @@ class RealmItem {
     ),
     RealmItem(
       realmCode: 'yuanying',
-      realmName: '元婴',
+      realmName: '高二',
       realmOrder: 5,
       gradeCode: 'h2',
       difficultyLabel: '难度五 · 高阶',
@@ -282,10 +282,10 @@ class RealmItem {
     ),
     RealmItem(
       realmCode: 'huashen',
-      realmName: '化神',
+      realmName: '高三',
       realmOrder: 6,
       gradeCode: 'h3',
-      difficultyLabel: '难度六 · 巅峰',
+      difficultyLabel: '难度六 · 冲刺',
       description: '高三综合专题冲刺',
       unlockGates: 0,
       examQuestionCount: 8,
@@ -365,7 +365,7 @@ class AppUserProfile {
       gradeCode: _asString(json['gradeCode'], 'g7'),
       gradeName: _asString(json['gradeName']),
       realmCode: _asString(json['realmCode'], 'lianqi'),
-      realmName: _asString(json['realmName'], '练气'),
+      realmName: _asString(json['realmName'], '初一'),
       realmOrder: _asInt(json['realmOrder'], 1),
       difficultyLabel: _asString(json['difficultyLabel']),
       nextRealmCode: _asNullableString(json['nextRealmCode']),
@@ -1086,6 +1086,9 @@ class SubmitResult {
     this.nextChapterId,
     this.nextChapterName,
     this.nextGateCrossChapter = false,
+    this.nextGradeCode,
+    this.nextGradeName,
+    this.nextGateCrossGrade = false,
   });
 
   final String sessionNo;
@@ -1109,8 +1112,50 @@ class SubmitResult {
   final int? nextChapterId;
   final String? nextChapterName;
   final bool nextGateCrossChapter;
+  final String? nextGradeCode;
+  final String? nextGradeName;
+  final bool nextGateCrossGrade;
 
   bool get hasNextGate => nextGateId != null && nextGateId! > 0;
+
+  SubmitResult copyWithNextGate({
+    int? nextGateId,
+    int? nextGateIndex,
+    String? nextGateName,
+    int? nextChapterId,
+    String? nextChapterName,
+    bool? nextGateCrossChapter,
+    String? nextGradeCode,
+    String? nextGradeName,
+    bool? nextGateCrossGrade,
+  }) {
+    return SubmitResult(
+      sessionNo: sessionNo,
+      mode: mode,
+      totalCount: totalCount,
+      correctCount: correctCount,
+      pendingReviewCount: pendingReviewCount,
+      score: score,
+      passScore: passScore,
+      passCount: passCount,
+      passed: passed,
+      newlyPassed: newlyPassed,
+      totalPassedGates: totalPassedGates,
+      promotedLevel: promotedLevel,
+      promotedRealm: promotedRealm,
+      wrongItems: wrongItems,
+      masteredCount: masteredCount,
+      nextGateId: nextGateId ?? this.nextGateId,
+      nextGateIndex: nextGateIndex ?? this.nextGateIndex,
+      nextGateName: nextGateName ?? this.nextGateName,
+      nextChapterId: nextChapterId ?? this.nextChapterId,
+      nextChapterName: nextChapterName ?? this.nextChapterName,
+      nextGateCrossChapter: nextGateCrossChapter ?? this.nextGateCrossChapter,
+      nextGradeCode: nextGradeCode ?? this.nextGradeCode,
+      nextGradeName: nextGradeName ?? this.nextGradeName,
+      nextGateCrossGrade: nextGateCrossGrade ?? this.nextGateCrossGrade,
+    );
+  }
 
   factory SubmitResult.fromJson(Map<String, dynamic> json) {
     final wrongsRaw = json['wrongItems'] as List<dynamic>? ?? const [];
@@ -1143,6 +1188,9 @@ class SubmitResult {
       nextChapterId: _asNullableInt(json['nextChapterId']),
       nextChapterName: _asNullableString(json['nextChapterName']),
       nextGateCrossChapter: _asBool(json['nextGateCrossChapter']),
+      nextGradeCode: _asNullableString(json['nextGradeCode']),
+      nextGradeName: _asNullableString(json['nextGradeName']),
+      nextGateCrossGrade: _asBool(json['nextGateCrossGrade']),
     );
   }
 }
@@ -1271,6 +1319,8 @@ class AppVersionInfo {
     required this.githubReachable,
     required this.publishedAt,
     required this.source,
+    this.downloadChannel = '',
+    this.ossCustomDomain = '',
   });
 
   final String currentVersion;
@@ -1285,6 +1335,8 @@ class AppVersionInfo {
   final bool githubReachable;
   final String publishedAt;
   final String source;
+  final String downloadChannel;
+  final String ossCustomDomain;
 
   factory AppVersionInfo.fromJson(Map<String, dynamic> json) {
     return AppVersionInfo(
@@ -1300,6 +1352,8 @@ class AppVersionInfo {
       githubReachable: _asBool(json['githubReachable']),
       publishedAt: _asString(json['publishedAt']),
       source: _asString(json['source']),
+      downloadChannel: _asString(json['downloadChannel']),
+      ossCustomDomain: _asString(json['ossCustomDomain']),
     );
   }
 }

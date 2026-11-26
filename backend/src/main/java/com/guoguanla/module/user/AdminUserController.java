@@ -144,8 +144,8 @@ public class AdminUserController {
         return Result.ok();
     }
 
-    @Operation(summary = "调整学生修仙境界")
-    @OperLog(module = "USER", action = "调整学生修仙境界")
+    @Operation(summary = "调整学生学习阶段")
+    @OperLog(module = "USER", action = "调整学生学习阶段")
     @PutMapping("/{id}/realm")
     public Result<Void> updateRealm(@PathVariable Long id, @RequestBody Map<String, String> body) {
         userService.updateRealm(id, body.get("realmCode"));

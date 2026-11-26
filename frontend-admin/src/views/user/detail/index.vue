@@ -98,7 +98,7 @@ async function confirmRealmAdjust() {
   savingRealm.value = true;
   try {
     await updateUserRealm(detailData.value.profile.id, selectedRealmCode.value);
-    ElMessage.success("已调整学生修仙境界");
+    ElMessage.success("已调整学生学习阶段");
     realmDialogVisible.value = false;
     await loadData();
   } finally {
@@ -154,13 +154,13 @@ onMounted(async () => {
             :src="detailData.profile.avatarUrl || undefined"
             class="shrink-0 bg-green-100 text-lg font-bold text-green-700"
           >
-            {{ (detailData.profile.nickname || "修").slice(0, 1) }}
+            {{ (detailData.profile.nickname || "学").slice(0, 1) }}
           </el-avatar>
 
           <div>
             <div class="flex items-center gap-2">
               <span class="text-lg font-bold text-slate-800">{{ detailData.profile.nickname }}</span>
-              <el-tag type="success" size="small">{{ detailData.profile.realmName || "练气" }}</el-tag>
+              <el-tag type="success" size="small">{{ detailData.profile.realmName || "初一" }}</el-tag>
               <el-tag :type="detailData.profile.status === 1 ? 'success' : 'danger'" size="small">
                 {{ detailData.profile.status === 1 ? "正常" : "禁用" }}
               </el-tag>
@@ -183,7 +183,7 @@ onMounted(async () => {
         </div>
 
         <div class="flex items-center gap-2">
-          <el-button plain type="primary" @click="realmDialogVisible = true">调整境界</el-button>
+          <el-button plain type="primary" @click="realmDialogVisible = true">调整阶段</el-button>
           <el-button plain type="warning" @click="openPasswordDialog">修改密码</el-button>
         </div>
       </div>
@@ -202,7 +202,7 @@ onMounted(async () => {
                 <el-radio-button value="2">待订正</el-radio-button>
               </el-radio-group>
               <span class="text-xs text-slate-400">
-                说明：同境界、同章节、同关卡多次提交解答题时自动覆盖保留最新 1 份作答
+                说明：同年级、同章节、同关卡多次提交解答题时自动覆盖保留最新 1 份作答
               </span>
             </div>
             <el-button size="small" @click="loadEssays">刷新列表</el-button>
@@ -217,7 +217,7 @@ onMounted(async () => {
               >
                 <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2.5">
                   <div class="flex items-center gap-2 text-xs text-slate-600">
-                    <el-tag size="small" type="info">{{ item.realmName || "修仙题库" }}</el-tag>
+                    <el-tag size="small" type="info">{{ item.realmName || "数学题库" }}</el-tag>
                     <span class="font-semibold text-slate-700">{{ item.chapterName || "章节练习" }}</span>
                     <span>·</span>
                     <span>{{ item.gateName || "-" }}</span>
@@ -320,8 +320,8 @@ onMounted(async () => {
       </el-tabs>
     </el-card>
 
-    <!-- 调整境界弹窗 -->
-    <el-dialog v-model="realmDialogVisible" title="修改学生修仙境界" width="440px">
+    <!-- 调整学习阶段弹窗 -->
+    <el-dialog v-model="realmDialogVisible" title="修改学生学习阶段" width="440px">
       <div class="grid grid-cols-2 gap-2.5">
         <div
           v-for="r in realms"

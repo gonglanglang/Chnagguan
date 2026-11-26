@@ -57,7 +57,7 @@ public class AppBankService {
 
     public AppUserProfileVO.HomeSummaryVO homeSummary(Set<Long> guestPassedGateIds) {
         boolean guestEnabled = isGuestModeEnabled();
-        String notice = getConfig("app_notice", "修仙闯关开启：练气至化神六大境界，学成可挑战进阶考核！");
+        String notice = getConfig("app_notice", "初一至高三全章节已开放，支持自由刷题、阶段升级测评与错题巩固！");
 
         Long userId = StpAppUtil.getLoginIdOrNull();
         AppUser currentUser = null;
@@ -160,7 +160,7 @@ public class AppBankService {
     public List<AppUserProfileVO.ChapterCardVO> listChaptersByRealm(String realmCode, Set<Long> guestPassedGateIds) {
         EduRealm targetRealm = realmHelper.findByRealmCode(realmCode);
         if (targetRealm == null) {
-            throw new BizException(ErrorCode.NOT_FOUND, "境界不存在");
+            throw new BizException(ErrorCode.NOT_FOUND, "学习阶段不存在");
         }
         return listChaptersByGrade(targetRealm.getGradeCode(), guestPassedGateIds);
     }
@@ -261,7 +261,9 @@ public class AppBankService {
                     .suppressed(suppressed)
                     .empty(empty)
                     .build());
-            prevPassed = passed;
+            if (!empty) {
+                prevPassed = passed;
+            }
         }
         return result;
     }
@@ -460,7 +462,7 @@ public class AppBankService {
         );
         if (rules.isEmpty()) {
             return AppUserProfileVO.LevelProgress.builder()
-                    .icon("").levelName("练气").quote("").minGates(0).build();
+                    .icon("").levelName("初一").quote("").minGates(0).build();
         }
         EduLevelRule current = rules.get(0);
         EduLevelRule next = null;

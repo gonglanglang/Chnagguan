@@ -90,16 +90,16 @@ onBeforeUnmount(() => {
     <el-card shadow="never">
       <div class="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 class="text-lg font-bold text-gray-800">过关啦 · 修仙闯关管理后台</h2>
+          <h2 class="text-lg font-bold text-gray-800">过关啦 · 数学闯关管理后台</h2>
           <p class="mt-1 text-sm text-gray-500">
-            管理 练气 → 筑基 → 结丹 → 假婴 → 元婴 → 化神 六大境界难度、进阶考规则与学生境界。
+            管理 初一 → 初二 → 初三 → 高一 → 高二 → 高三 六大学习阶段难度、升级测评规则与学生学习阶段。
           </p>
         </div>
         <div class="flex flex-wrap gap-2">
           <el-button type="primary" @click="router.push('/system/realm/index')">
-            境界与进阶设置
+            阶段与系统设置
           </el-button>
-          <el-button @click="router.push('/user/index')">学生列表与改境界</el-button>
+          <el-button @click="router.push('/user/index')">学生列表与阶段</el-button>
           <el-button @click="router.push('/bank/question/index')">管理题库</el-button>
         </div>
       </div>
@@ -128,7 +128,7 @@ onBeforeUnmount(() => {
         <div class="text-sm text-gray-500">题库总题数</div>
         <div class="mt-2 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
           <span class="text-3xl font-bold text-gray-800">{{ overview.questionCount }}</span>
-          <span class="whitespace-nowrap text-xs text-gray-500">供六大境界及进阶抽取</span>
+          <span class="whitespace-nowrap text-xs text-gray-500">供初一至高三各阶段抽取</span>
         </div>
       </el-card>
 
@@ -144,7 +144,7 @@ onBeforeUnmount(() => {
     <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
       <el-card shadow="never" class="lg:col-span-2">
         <template #header>
-          <div class="font-bold text-gray-800">各境界题库与学生分布</div>
+          <div class="font-bold text-gray-800">各年级阶段题库与学生分布</div>
         </template>
         <div ref="chartRef" class="h-80 w-full" />
       </el-card>

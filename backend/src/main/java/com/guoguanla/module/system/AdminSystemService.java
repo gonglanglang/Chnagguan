@@ -11,6 +11,7 @@ import com.guoguanla.module.bank.entity.EduQuestion;
 import com.guoguanla.module.bank.mapper.EduChapterMapper;
 import com.guoguanla.module.bank.mapper.EduGateMapper;
 import com.guoguanla.module.bank.mapper.EduQuestionMapper;
+import com.guoguanla.module.oss.AliyunOssService;
 import com.guoguanla.module.system.dto.AppDefaultThemeReq;
 import com.guoguanla.module.system.dto.RealmConfigReq;
 import com.guoguanla.module.system.entity.EduLevelRule;
@@ -53,6 +54,7 @@ public class AdminSystemService {
     private final EduLevelRuleMapper levelRuleMapper;
     private final SysConfigMapper sysConfigMapper;
     private final SysOperLogMapper operLogMapper;
+    private final AliyunOssService ossService;
 
     public List<RealmConfigVO> listRealms() {
         List<EduRealm> realms = realmMapper.selectList(
@@ -100,7 +102,7 @@ public class AdminSystemService {
     public void updateRealm(Long id, RealmConfigReq req) {
         EduRealm exist = realmMapper.selectById(id);
         if (exist == null) {
-            throw new BizException(ErrorCode.NOT_FOUND, "境界配置不存在");
+            throw new BizException(ErrorCode.NOT_FOUND, "学习阶段配置不存在");
         }
         exist.setRealmName(req.getRealmName().trim());
         exist.setDifficultyLabel(req.getDifficultyLabel().trim());
@@ -166,17 +168,24 @@ public class AdminSystemService {
             throw new BizException(ErrorCode.BAD_REQUEST, "配置项 Key 不能为空");
         }
         String trimmedKey = key.trim();
+        String finalValue = value == null ? "" : value;
+        if ("app_update_notes".equals(trimmedKey)) {
+            finalValue = AppVersionService.validateReleaseNotes(finalValue);
+        } else if ("oss_custom_domain".equals(trimmedKey)) {
+            finalValue = AliyunOssService.normalizeAndValidateCustomDomain(finalValue);
+            ossService.setRuntimeCustomDomain(finalValue);
+        }
         SysConfig cfg = sysConfigMapper.selectOne(
                 new LambdaQueryWrapper<SysConfig>().eq(SysConfig::getConfigKey, trimmedKey)
         );
         if (cfg == null) {
             SysConfig created = new SysConfig();
             created.setConfigKey(trimmedKey);
-            created.setConfigValue(value == null ? "" : value);
+            created.setConfigValue(finalValue);
             created.setDescription("后台配置项");
             sysConfigMapper.insert(created);
         } else {
-            cfg.setConfigValue(value == null ? "" : value);
+            cfg.setConfigValue(finalValue);
             sysConfigMapper.updateById(cfg);
         }
         if (trimmedKey.startsWith("app_default_") && !KEY_DEFAULT_THEME_VERSION.equals(trimmedKey)) {

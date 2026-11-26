@@ -74,7 +74,7 @@ class FeatureRegressionTests {
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "username", "feat_h1_stu",
                                 "password", "oldpass123",
-                                "nickname", "高一修仙",
+                                "nickname", "高一同学",
                                 "gradeCode", "h1"
                         ))))
                 .andExpect(status().isOk())
@@ -87,7 +87,7 @@ class FeatureRegressionTests {
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "username", "feat_stu_01",
                                 "password", "oldpass123",
-                                "nickname", "测试小修仙",
+                                "nickname", "测试同学",
                                 "gradeCode", "g7"
                         ))))
                 .andExpect(status().isOk())
@@ -351,7 +351,7 @@ class FeatureRegressionTests {
         mockMvc.perform(get("/api/admin/users/essay-answers/" + essayId)
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.studentNickname").value("测试小修仙"));
+                .andExpect(jsonPath("$.data.studentNickname").value("测试同学"));
 
         mockMvc.perform(get("/api/admin/users/essay-answers/" + essayId + "/image")
                         .header("Authorization", "Bearer " + adminToken))
@@ -474,7 +474,7 @@ class FeatureRegressionTests {
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "title", "练气期一元一次方程精讲",
+                                "title", "初一一元一次方程精讲",
                                 "coverImageKey", coverKey,
                                 "intro", "从移项变号到分数方程完整通关",
                                 "realmCode", "lianqi",
@@ -642,7 +642,7 @@ class FeatureRegressionTests {
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "username", "token30d_stu",
                                 "password", "pass123456",
-                                "nickname", "三十天道友",
+                                "nickname", "三十天同学",
                                 "gradeCode", "g8"
                         ))))
                 .andExpect(status().isOk())

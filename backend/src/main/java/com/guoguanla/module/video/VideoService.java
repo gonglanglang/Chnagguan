@@ -286,7 +286,7 @@ public class VideoService {
             String baseOrigin
     ) {
         String rc = item.getRealmCode() == null ? "" : item.getRealmCode();
-        String rName = rc.isBlank() ? "全境界通用" : realmNameMap.getOrDefault(rc, rc);
+        String rName = rc.isBlank() ? "全年级通用" : realmNameMap.getOrDefault(rc, rc);
         String effectiveCoverKey = (item.getCoverImageKey() != null && !item.getCoverImageKey().isBlank())
                 ? item.getCoverImageKey()
                 : (fallbackCoverKey == null ? "" : fallbackCoverKey);

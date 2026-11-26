@@ -582,13 +582,13 @@ fs.mkdirSync(BACKEND_DB_RESOURCE_DIR, { recursive: true });
 const backendDiagramsPath = path.join(BACKEND_DB_RESOURCE_DIR, 'question-diagrams.json');
 fs.writeFileSync(
   backendDiagramsPath,
-  JSON.stringify({ version: '20261126-001', count: diagramEntries.length, items: diagramEntries }),
+  JSON.stringify({ version: '20261126-002', count: diagramEntries.length, items: diagramEntries }),
   'utf8',
 );
 
 const diagramSqlLines = [
-  '-- 「过关啦」存量题库几何/函数矢量配图幂等补全脚本 (TASK-20261126-001)',
-  `-- 共覆盖 ${diagramEntries.length} 道几何/图形/函数题（仅在 ext_json 尚未配置 diagram 或 imageUrl 时写入）`,
+  '-- 「过关啦」存量题库几何/函数/统计/物理场景矢量配图幂等补全脚本 (TASK-20261126-002)',
+  `-- 共覆盖 ${diagramEntries.length} 道可视化题目（仅在 ext_json 尚未配置 diagram 或 imageUrl 时写入）`,
   'SET NAMES utf8mb4;',
   'START TRANSACTION;',
   '',

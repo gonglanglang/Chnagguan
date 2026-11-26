@@ -3,6 +3,8 @@ package com.guoguanla.module.system;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.guoguanla.common.exception.BizException;
+import com.guoguanla.common.result.ErrorCode;
 import com.guoguanla.module.oss.AliyunOssService;
 import com.guoguanla.module.system.entity.SysConfig;
 import com.guoguanla.module.system.mapper.SysConfigMapper;
@@ -32,6 +34,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AppVersionService {
 
+    public static final int MAX_UPDATE_NOTES_LENGTH = 2500;
     private static final Pattern REPO_PATTERN = Pattern.compile("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$");
     private static final Pattern CODE_HINT_PATTERN = Pattern.compile("\\[?versionCode\\s*[:=]\\s*(\\d+)]?", Pattern.CASE_INSENSITIVE);
     private static final long CACHE_TTL_MS = 180_000L;
@@ -133,6 +136,31 @@ public class AppVersionService {
         );
     }
 
+    public static String validateReleaseNotes(String releaseNotes) {
+        if (releaseNotes == null) {
+            return "";
+        }
+        String trimmed = releaseNotes.trim();
+        if (trimmed.length() > MAX_UPDATE_NOTES_LENGTH) {
+            throw new BizException(
+                    ErrorCode.BAD_REQUEST,
+                    "App 更新说明不能超过 " + MAX_UPDATE_NOTES_LENGTH + " 字（当前 " + trimmed.length() + " 字）"
+            );
+        }
+        return trimmed;
+    }
+
+    private String resolveDownloadChannel(String rawDownloadUrl) {
+        String raw = rawDownloadUrl == null ? "" : rawDownloadUrl.trim();
+        if (raw.startsWith("app-releases/") && ossService.isOssConfigured()) {
+            return ossService.hasCustomDomain() ? "OSS_DIRECT" : "SERVER_PROXY";
+        }
+        if (raw.startsWith("http://") || raw.startsWith("https://")) {
+            return "EXTERNAL_DIRECT";
+        }
+        return "LOCAL";
+    }
+
     private String resolveClientDownloadUrl(String rawDownloadUrl, String baseOrigin) {
         if (rawDownloadUrl != null
                 && rawDownloadUrl.trim().startsWith("app-releases/")
@@ -167,6 +195,8 @@ public class AppVersionService {
                 .githubReachable(meta.githubReachable())
                 .publishedAt(meta.publishedAt())
                 .source(meta.source())
+                .downloadChannel(resolveDownloadChannel(meta.rawDownloadUrl()))
+                .ossCustomDomain(ossService.getEffectiveCustomDomain())
                 .build();
     }
 
@@ -239,7 +269,7 @@ public class AppVersionService {
         upsertConfig("app_latest_version_code", String.valueOf(finalCode), "App最新版本数字编码(versionCode)");
         upsertConfig("app_download_url", downloadUrlOrKey, "App最新APK OSS对象键或下载地址");
         if (releaseNotes != null) {
-            upsertConfig("app_update_notes", releaseNotes.trim(), "App最新版本更新日志");
+            upsertConfig("app_update_notes", validateReleaseNotes(releaseNotes), "App最新版本更新日志（最多2500字）");
         }
         if (forceUpdate != null) {
             upsertConfig("app_force_update", String.valueOf(forceUpdate), "App是否强制更新");

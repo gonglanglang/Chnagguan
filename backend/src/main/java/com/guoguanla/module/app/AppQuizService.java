@@ -14,9 +14,11 @@ import com.guoguanla.module.app.vo.AppQuizVO;
 import com.guoguanla.module.app.vo.AppUserProfileVO;
 import com.guoguanla.module.bank.entity.EduChapter;
 import com.guoguanla.module.bank.entity.EduGate;
+import com.guoguanla.module.bank.entity.EduGrade;
 import com.guoguanla.module.bank.entity.EduQuestion;
 import com.guoguanla.module.bank.mapper.EduChapterMapper;
 import com.guoguanla.module.bank.mapper.EduGateMapper;
+import com.guoguanla.module.bank.mapper.EduGradeMapper;
 import com.guoguanla.module.bank.mapper.EduQuestionMapper;
 import com.guoguanla.module.engine.GeneratedQuestion;
 import com.guoguanla.module.engine.QuestionEngineService;
@@ -49,6 +51,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AppQuizService {
 
+    private final EduGradeMapper gradeMapper;
     private final EduChapterMapper chapterMapper;
     private final EduGateMapper gateMapper;
     private final EduQuestionMapper questionMapper;
@@ -116,16 +119,22 @@ public class AppQuizService {
                 : new HashSet<>(req.getGuestPassedGateIds());
         Set<Long> passedGateIds = bankService.resolvePassedGateIds(guestPassed);
 
-        // 校验上一关解锁状态
+        // 校验上一关解锁状态（仅校验之前最近一道已启用且有题的关卡，避免空关卡阻塞后续连续闯关）
         if (gate.getGateIndex() > 0) {
-            EduGate prevGate = gateMapper.selectOne(
+            List<EduGate> prevGates = gateMapper.selectList(
                     new LambdaQueryWrapper<EduGate>()
                             .eq(EduGate::getChapterId, gate.getChapterId())
-                            .eq(EduGate::getGateIndex, gate.getGateIndex() - 1)
-                            .last("LIMIT 1")
+                            .eq(EduGate::getEnabled, 1)
+                            .lt(EduGate::getGateIndex, gate.getGateIndex())
+                            .orderByDesc(EduGate::getGateIndex)
             );
-            if (prevGate != null && !passedGateIds.contains(prevGate.getId())) {
-                throw new BizException(ErrorCode.GATE_LOCKED);
+            for (EduGate prevGate : prevGates) {
+                if (hasEnabledQuestions(prevGate.getId())) {
+                    if (!passedGateIds.contains(prevGate.getId())) {
+                        throw new BizException(ErrorCode.GATE_LOCKED);
+                    }
+                    break;
+                }
             }
         }
 
@@ -505,7 +514,10 @@ public class AppQuizService {
             String gateName,
             Long chapterId,
             String chapterName,
-            boolean crossChapter
+            boolean crossChapter,
+            String gradeCode,
+            String gradeName,
+            boolean crossGrade
     ) {}
 
     private record QuestionFigureMeta(
@@ -573,6 +585,8 @@ public class AppQuizService {
             alreadyPassedBefore = prevProg != null && prevProg.getIsPassed() != null && prevProg.getIsPassed() == 1;
             gateOut = applyGatePassOutcome(userId, gate, chapter, eval.correctCount(), passed);
             recordWrongQuestions(userId, chapter, gate.getGateName(), eval.wrongSnaps());
+        } else if (gate != null && req.getGuestPassedGateIds() != null) {
+            alreadyPassedBefore = req.getGuestPassedGateIds().contains(gate.getId());
         }
 
         NextGateTarget nextGate = (gate != null && chapter != null && (passed || alreadyPassedBefore))
@@ -599,10 +613,38 @@ public class AppQuizService {
                 .nextChapterId(nextGate != null ? nextGate.chapterId() : null)
                 .nextChapterName(nextGate != null ? nextGate.chapterName() : null)
                 .nextGateCrossChapter(nextGate != null && nextGate.crossChapter())
+                .nextGradeCode(nextGate != null ? nextGate.gradeCode() : null)
+                .nextGradeName(nextGate != null ? nextGate.gradeName() : null)
+                .nextGateCrossGrade(nextGate != null && nextGate.crossGrade())
                 .build();
     }
 
+    private static final List<String> CANONICAL_GRADE_ORDER = List.of("g7", "g8", "g9", "h1", "h2", "h3");
+    private static final Map<String, String> DEFAULT_GRADE_NAMES = Map.of(
+            "g7", "初一",
+            "g8", "初二",
+            "g9", "初三",
+            "h1", "高一",
+            "h2", "高二",
+            "h3", "高三"
+    );
+
     private NextGateTarget resolveNextPlayableGate(EduChapter currentChapter, EduGate currentGate) {
+        List<EduGrade> orderedGrades = gradeMapper.selectList(
+                new LambdaQueryWrapper<EduGrade>()
+                        .eq(EduGrade::getEnabled, 1)
+                        .orderByAsc(EduGrade::getSortOrder)
+                        .orderByAsc(EduGrade::getId)
+        );
+        Map<String, String> gradeNameMap = new LinkedHashMap<>(DEFAULT_GRADE_NAMES);
+        for (EduGrade g : orderedGrades) {
+            if (g.getGradeCode() != null && g.getGradeName() != null && !g.getGradeName().isBlank()) {
+                gradeNameMap.put(g.getGradeCode(), g.getGradeName());
+            }
+        }
+        String currentGradeCode = currentChapter.getGradeCode();
+        String currentGradeName = gradeNameMap.getOrDefault(currentGradeCode, currentGradeCode);
+
         // 1. 优先查找同章节的下一道已启用且有题关卡
         List<EduGate> sameChapterNext = gateMapper.selectList(
                 new LambdaQueryWrapper<EduGate>()
@@ -619,6 +661,9 @@ public class AppQuizService {
                         candidate.getGateName(),
                         currentChapter.getId(),
                         currentChapter.getName(),
+                        false,
+                        currentGradeCode,
+                        currentGradeName,
                         false
                 );
             }
@@ -627,7 +672,7 @@ public class AppQuizService {
         // 2. 当前章节已到最后一关：顺延至同年级下一章节的第 1 道有题关卡
         List<EduChapter> gradeChapters = chapterMapper.selectList(
                 new LambdaQueryWrapper<EduChapter>()
-                        .eq(EduChapter::getGradeCode, currentChapter.getGradeCode())
+                        .eq(EduChapter::getGradeCode, currentGradeCode)
                         .eq(EduChapter::getEnabled, 1)
                         .orderByAsc(EduChapter::getSortOrder)
                         .orderByAsc(EduChapter::getId)
@@ -640,23 +685,80 @@ public class AppQuizService {
                 }
                 continue;
             }
-            List<EduGate> chGates = gateMapper.selectList(
-                    new LambdaQueryWrapper<EduGate>()
-                            .eq(EduGate::getChapterId, ch.getId())
-                            .eq(EduGate::getEnabled, 1)
-                            .orderByAsc(EduGate::getGateIndex)
+            NextGateTarget firstInChapter = findFirstPlayableGateInChapter(
+                    ch, currentGradeCode, currentGradeName, true, false
             );
-            for (EduGate candidate : chGates) {
-                if (hasEnabledQuestions(candidate.getId())) {
-                    return new NextGateTarget(
-                            candidate.getId(),
-                            candidate.getGateIndex(),
-                            candidate.getGateName(),
-                            ch.getId(),
-                            ch.getName(),
-                            true
-                    );
+            if (firstInChapter != null) {
+                return firstInChapter;
+            }
+        }
+
+        // 3. 当前年级已到最后一章最后一关：顺延至下一年级（初一→初二→初三→高一→高二→高三）第 1 章第 1 关
+        List<String> gradeCodes = new ArrayList<>();
+        for (EduGrade g : orderedGrades) {
+            if (g.getGradeCode() != null && !g.getGradeCode().isBlank() && !gradeCodes.contains(g.getGradeCode())) {
+                gradeCodes.add(g.getGradeCode());
+            }
+        }
+        for (String gc : CANONICAL_GRADE_ORDER) {
+            if (!gradeCodes.contains(gc)) {
+                gradeCodes.add(gc);
+            }
+        }
+        boolean passedGrade = false;
+        for (String nextGc : gradeCodes) {
+            if (!passedGrade) {
+                if (Objects.equals(nextGc, currentGradeCode)) {
+                    passedGrade = true;
                 }
+                continue;
+            }
+            List<EduChapter> nextGradeChapters = chapterMapper.selectList(
+                    new LambdaQueryWrapper<EduChapter>()
+                            .eq(EduChapter::getGradeCode, nextGc)
+                            .eq(EduChapter::getEnabled, 1)
+                            .orderByAsc(EduChapter::getSortOrder)
+                            .orderByAsc(EduChapter::getId)
+            );
+            String nextGradeName = gradeNameMap.getOrDefault(nextGc, nextGc);
+            for (EduChapter ch : nextGradeChapters) {
+                NextGateTarget firstInNextGrade = findFirstPlayableGateInChapter(
+                        ch, nextGc, nextGradeName, true, true
+                );
+                if (firstInNextGrade != null) {
+                    return firstInNextGrade;
+                }
+            }
+        }
+        return null;
+    }
+
+    private NextGateTarget findFirstPlayableGateInChapter(
+            EduChapter ch,
+            String gradeCode,
+            String gradeName,
+            boolean crossChapter,
+            boolean crossGrade
+    ) {
+        List<EduGate> chGates = gateMapper.selectList(
+                new LambdaQueryWrapper<EduGate>()
+                        .eq(EduGate::getChapterId, ch.getId())
+                        .eq(EduGate::getEnabled, 1)
+                        .orderByAsc(EduGate::getGateIndex)
+        );
+        for (EduGate candidate : chGates) {
+            if (hasEnabledQuestions(candidate.getId())) {
+                return new NextGateTarget(
+                        candidate.getId(),
+                        candidate.getGateIndex(),
+                        candidate.getGateName(),
+                        ch.getId(),
+                        ch.getName(),
+                        crossChapter,
+                        gradeCode,
+                        gradeName,
+                        crossGrade
+                );
             }
         }
         return null;
@@ -1010,7 +1112,7 @@ public class AppQuizService {
             gateName = gt != null ? gt.getGateName() : "";
         }
 
-        // 同学生 + 同境界 + 同章节 + 同关卡唯一保留最新 1 条，再次提交直接覆盖并重置为待批改
+        // 同学生 + 同阶段 + 同章节 + 同关卡唯一保留最新 1 条，再次提交直接覆盖并重置为待批改
         UserEssayAnswer exist = null;
         if (userId > 0L && "GATE".equals(record.getMode()) && chapterId != null && gateId != null) {
             final String resolvedRealm = realmCode;

@@ -169,7 +169,11 @@ class GglFeedback {
                         size: FButtonSizeVariant.sm,
                         mainAxisSize: MainAxisSize.min,
                         onPress: () => Navigator.of(ctx).pop(false),
-                        child: Text(noText),
+                        child: Text(
+                          noText,
+                          maxLines: 1,
+                          softWrap: false,
+                        ),
                       ),
                       const SizedBox(width: 10),
                       FButton(
@@ -179,7 +183,11 @@ class GglFeedback {
                         size: FButtonSizeVariant.sm,
                         mainAxisSize: MainAxisSize.min,
                         onPress: () => Navigator.of(ctx).pop(true),
-                        child: Text(yesText),
+                        child: Text(
+                          yesText,
+                          maxLines: 1,
+                          softWrap: false,
+                        ),
                       ),
                     ],
                   ),
@@ -314,7 +322,11 @@ class GglFeedback {
                       size: FButtonSizeVariant.sm,
                       mainAxisSize: MainAxisSize.min,
                       onPress: () => Navigator.of(ctx).pop(),
-                      child: Text(buttonText),
+                      child: Text(
+                        buttonText,
+                        maxLines: 1,
+                        softWrap: false,
+                      ),
                     ),
                   ),
                 ],

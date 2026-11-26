@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS app_user (
   nickname VARCHAR(64) NOT NULL DEFAULT '数学小学徒' COMMENT '学生昵称',
   avatar_url VARCHAR(255) NOT NULL DEFAULT '' COMMENT '头像地址',
   grade_code VARCHAR(16) NOT NULL DEFAULT 'g7' COMMENT '对应年级编码 g7/g8/g9/h1/h2/h3',
-  realm_code VARCHAR(24) NOT NULL DEFAULT 'lianqi' COMMENT '当前修仙境界 lianqi/zhuji/jiedan/jiaying/yuanying/huashen',
+  realm_code VARCHAR(24) NOT NULL DEFAULT 'lianqi' COMMENT '当前学习阶段编码 lianqi(初一)~huashen(高三)',
   passed_gate_count INT NOT NULL DEFAULT 0 COMMENT '累计已过关数',
   current_level_id BIGINT UNSIGNED DEFAULT 1 COMMENT '当前段位ID',
   ext_json JSON DEFAULT NULL COMMENT '扩展属性（如班级/学号/积分/个性标签，便于后期扩展）',
@@ -130,25 +130,25 @@ CREATE TABLE IF NOT EXISTS edu_question (
   KEY idx_q_grade_chap (grade_code, chapter_id, question_mode, question_format)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='弹性题库主表';
 
--- 7. 修仙境界与进阶配置表
+-- 7. 学习阶段与升级测评配置表
 CREATE TABLE IF NOT EXISTS edu_realm (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  realm_code VARCHAR(24) NOT NULL COMMENT '境界编码 lianqi/zhuji/jiedan/jiaying/yuanying/huashen',
-  realm_name VARCHAR(32) NOT NULL COMMENT '境界名称',
-  realm_order INT NOT NULL COMMENT '境界顺序 1~6',
+  realm_code VARCHAR(24) NOT NULL COMMENT '阶段编码 lianqi/zhuji/jiedan/jiaying/yuanying/huashen',
+  realm_name VARCHAR(32) NOT NULL COMMENT '阶段名称（初一~高三）',
+  realm_order INT NOT NULL COMMENT '阶段顺序 1~6',
   grade_code VARCHAR(16) NOT NULL COMMENT '对应题库年级难度 g7/g8/g9/h1/h2/h3',
   difficulty_label VARCHAR(32) NOT NULL COMMENT '通俗难度描述',
-  description VARCHAR(255) NOT NULL DEFAULT '' COMMENT '境界说明',
-  unlock_gates INT NOT NULL DEFAULT 0 COMMENT '解锁进阶考需通关数（0=本境界全部关卡）',
-  exam_question_count INT NOT NULL DEFAULT 5 COMMENT '进阶考随机抽取题数',
-  exam_pass_score INT NOT NULL DEFAULT 60 COMMENT '进阶及格分数线（0~100）',
+  description VARCHAR(255) NOT NULL DEFAULT '' COMMENT '阶段说明',
+  unlock_gates INT NOT NULL DEFAULT 0 COMMENT '解锁升级测评需通关数（0=本阶段全部关卡）',
+  exam_question_count INT NOT NULL DEFAULT 5 COMMENT '升级测评随机抽取题数',
+  exam_pass_score INT NOT NULL DEFAULT 60 COMMENT '升级及格分数线（0~100）',
   enabled TINYINT NOT NULL DEFAULT 1 COMMENT '1启用 0隐藏',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uk_realm_code (realm_code),
   UNIQUE KEY uk_realm_grade (grade_code)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='修仙境界与进阶规则表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='学习阶段与升级测评规则表';
 
 -- 8. 段位规则表（历史兼容保留）
 CREATE TABLE IF NOT EXISTS edu_level_rule (
@@ -186,8 +186,8 @@ CREATE TABLE IF NOT EXISTS user_quiz_record (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   session_no VARCHAR(64) NOT NULL COMMENT '会话流水号',
   user_id BIGINT UNSIGNED NOT NULL,
-  mode VARCHAR(24) NOT NULL DEFAULT 'GATE' COMMENT 'GATE闯关 / REDO_WRONG错题重做 / ADVANCE_EXAM进阶考核',
-  realm_code VARCHAR(24) DEFAULT NULL COMMENT '挑战所属修仙境界',
+  mode VARCHAR(24) NOT NULL DEFAULT 'GATE' COMMENT 'GATE闯关 / REDO_WRONG错题重做 / ADVANCE_EXAM阶段升级测评',
+  realm_code VARCHAR(24) DEFAULT NULL COMMENT '挑战所属学习阶段',
   score INT DEFAULT NULL COMMENT '百分制得分（进阶考核用）',
   chapter_id BIGINT UNSIGNED DEFAULT NULL,
   gate_id BIGINT UNSIGNED DEFAULT NULL,
@@ -238,7 +238,7 @@ CREATE TABLE IF NOT EXISTS user_essay_answer (
   user_id BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '学生ID（0表示游客）',
   question_id BIGINT UNSIGNED DEFAULT NULL,
   grade_code VARCHAR(16) NOT NULL DEFAULT '',
-  realm_code VARCHAR(24) NOT NULL DEFAULT '' COMMENT '所属修仙境界编码',
+  realm_code VARCHAR(24) NOT NULL DEFAULT '' COMMENT '所属学习阶段编码',
   chapter_id BIGINT UNSIGNED DEFAULT NULL,
   chapter_name VARCHAR(100) NOT NULL DEFAULT '',
   gate_id BIGINT UNSIGNED DEFAULT NULL COMMENT '所属关卡ID',
@@ -261,13 +261,13 @@ CREATE TABLE IF NOT EXISTS user_essay_answer (
   KEY idx_essay_gate_unique (user_id, realm_code, chapter_id, gate_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='学生解答题手写作答记录表';
 
--- 10.2 修炼教学视频系列表
+-- 10.2 数学教学视频系列表
 CREATE TABLE IF NOT EXISTS edu_video_series (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   title VARCHAR(128) NOT NULL COMMENT '系列标题',
   cover_image_key VARCHAR(512) NOT NULL DEFAULT '' COMMENT '封面图OSS对象键或相对路径',
   intro TEXT DEFAULT NULL COMMENT '系列介绍',
-  realm_code VARCHAR(24) NOT NULL DEFAULT '' COMMENT '关联修仙境界编码（空为全境界通用）',
+  realm_code VARCHAR(24) NOT NULL DEFAULT '' COMMENT '关联学习阶段编码（空为全阶段通用）',
   sort_order INT NOT NULL DEFAULT 0 COMMENT '排序权重',
   enabled TINYINT NOT NULL DEFAULT 1 COMMENT '1上架 0下架',
   created_by BIGINT UNSIGNED DEFAULT NULL,
@@ -276,9 +276,9 @@ CREATE TABLE IF NOT EXISTS edu_video_series (
   deleted TINYINT NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
   KEY idx_video_series_realm (realm_code, enabled, sort_order)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='修炼教学视频系列表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='数学教学视频系列表';
 
--- 10.3 修炼教学视频课时表
+-- 10.3 数学教学视频课时表
 CREATE TABLE IF NOT EXISTS edu_video_lesson (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   series_id BIGINT UNSIGNED NOT NULL COMMENT '所属系列ID',
@@ -295,13 +295,13 @@ CREATE TABLE IF NOT EXISTS edu_video_lesson (
   deleted TINYINT NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
   KEY idx_video_lesson_series (series_id, enabled, sort_order)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='修炼教学视频课时表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='数学教学视频课时表';
 
 -- 11. 系统全局配置表
 CREATE TABLE IF NOT EXISTS sys_config (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   config_key VARCHAR(64) NOT NULL,
-  config_value VARCHAR(512) NOT NULL DEFAULT '',
+  config_value TEXT DEFAULT NULL,
   description VARCHAR(255) NOT NULL DEFAULT '',
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),

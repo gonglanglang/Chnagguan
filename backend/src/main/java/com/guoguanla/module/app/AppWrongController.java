@@ -20,7 +20,7 @@ public class AppWrongController {
 
     private final AppWrongService wrongService;
 
-    @Operation(summary = "分页获取待攻克错题（支持按境界/年级筛选）")
+    @Operation(summary = "分页获取待攻克错题（支持按学习阶段/年级筛选）")
     @GetMapping
     public Result<PageResult<AppQuizVO.WrongQuestionVO>> page(
             @RequestParam(required = false) String gradeCode,

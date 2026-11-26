@@ -277,14 +277,13 @@ class _EssayRecordsPageState extends State<EssayRecordsPage> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: colors.muted,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: colors.outline, width: 1.4),
-              ),
+              decoration: AppTheme.insetBoxDecoration(context, radius: 8),
               child: Text(
                 '文字补充：${item.answerText}',
-                style: TextStyle(color: colors.ink, fontSize: 13),
+                style: TextStyle(
+                  color: AppTheme.inkColor(context),
+                  fontSize: 13,
+                ),
               ),
             ),
           ],
@@ -324,10 +323,12 @@ class _EssayRecordsPageState extends State<EssayRecordsPage> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: colors.success.withValues(alpha: colors.isDark ? 0.16 : 0.28),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: colors.outline, width: 1.4),
+              decoration: AppTheme.insetBoxDecoration(
+                context,
+                color: colors.success.withValues(
+                  alpha: colors.isDark ? 0.16 : 0.22,
+                ),
+                radius: 8,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -335,7 +336,7 @@ class _EssayRecordsPageState extends State<EssayRecordsPage> {
                   Text(
                     '参考答案',
                     style: TextStyle(
-                      color: colors.ink,
+                      color: AppTheme.inkColor(context),
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
                     ),
@@ -343,7 +344,10 @@ class _EssayRecordsPageState extends State<EssayRecordsPage> {
                   const SizedBox(height: 4),
                   MathText(
                     item.referenceAnswer,
-                    style: TextStyle(color: colors.ink, fontSize: 13.5),
+                    style: TextStyle(
+                      color: AppTheme.inkColor(context),
+                      fontSize: 13.5,
+                    ),
                   ),
                 ],
               ),
@@ -382,17 +386,15 @@ class _PreviewThumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = WelkTheme.of(context).resolveColors(context);
     return GestureDetector(
       onTap: () =>
           ImagePreviewPage.open(context, imageUrl: imageUrl, title: title),
       child: Container(
         width: double.infinity,
         height: 170,
-        decoration: BoxDecoration(
+        decoration: AppTheme.insetBoxDecoration(
+          context,
           color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: colors.outline, width: 1.6),
         ),
         clipBehavior: Clip.antiAlias,
         child: Image.network(

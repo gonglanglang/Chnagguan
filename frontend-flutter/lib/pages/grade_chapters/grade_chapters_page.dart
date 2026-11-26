@@ -96,7 +96,7 @@ class _GradeChaptersPageState extends State<GradeChaptersPage> {
   Future<void> _startAdvanceExam() async {
     final user = context.read<UserProvider>();
     if (!user.isAuthenticated) {
-      GglFeedback.warning(context, '请先登录后参加境界进阶考核');
+      GglFeedback.warning(context, '请先登录后参加阶段升级测评');
       final ok = await Navigator.of(context).push<bool>(
         MaterialPageRoute<bool>(builder: (_) => const LoginPage()),
       );
@@ -168,7 +168,11 @@ class _GradeChaptersPageState extends State<GradeChaptersPage> {
                                 ),
                                 if (matchedRealm != null)
                                   GglStatusTag(
-                                    label: '${matchedRealm.realmName}境',
+                                    label: matchedRealm.isCurrent
+                                        ? '当前阶段'
+                                        : isSuppressed
+                                            ? '回刷巩固'
+                                            : '自由刷题',
                                     variant: matchedRealm.isCurrent
                                         ? WelkBadgeVariant.defaultStyle
                                         : WelkBadgeVariant.info,
@@ -232,10 +236,10 @@ class _GradeChaptersPageState extends State<GradeChaptersPage> {
                     Expanded(
                       child: Text(
                         isSuppressed
-                            ? '高境压制 · 正在重温${widget.grade.gradeName}（${matchedRealm.realmName}）内容，全章节自由开放'
-                            : '${currentRealm.realmName}已达晋升条件，可参加境界进阶考核',
+                            ? '回刷巩固 · 正在重温${widget.grade.gradeName}内容，全章节自由开放练习'
+                            : '${currentRealm.realmName}阶段已达晋升条件，可参加阶段升级测评',
                         style: TextStyle(
-                          color: colors.ink,
+                          color: AppTheme.inkColor(context),
                           fontSize: 12.5,
                           fontWeight: FontWeight.w700,
                         ),
@@ -244,7 +248,7 @@ class _GradeChaptersPageState extends State<GradeChaptersPage> {
                     if (canExamHere) ...[
                       const SizedBox(width: 8),
                       GglButton(
-                        label: '去考核',
+                        label: '去测评',
                         variant: WelkButtonVariant.success,
                         onPressed: _startAdvanceExam,
                       ),
@@ -296,7 +300,7 @@ class _GradeChaptersPageState extends State<GradeChaptersPage> {
                   crossAxisCount: 2,
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 12,
-                  mainAxisExtent: 164,
+                  mainAxisExtent: 174,
                 ),
                 itemCount: _chapters.length,
                 itemBuilder: (context, idx) {
@@ -329,6 +333,8 @@ class _ChapterGridCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = WelkTheme.of(context).resolveColors(context);
+    final ink = AppTheme.inkColor(context);
+    final isForui = AppTheme.isForui(context);
     final isDone =
         chapter.totalGates > 0 && chapter.passedCount >= chapter.totalGates;
     final isInProgress = !isDone && chapter.passedCount > 0;
@@ -337,10 +343,15 @@ class _ChapterGridCard extends StatelessWidget {
         : 0.0;
 
     final badgeFill = isDone
-        ? colors.success
+        ? (isForui ? const Color(0xFF10B981) : colors.success)
         : isInProgress
-            ? colors.accent
-            : colors.muted;
+            ? AppTheme.accentColor(context)
+            : AppTheme.mutedSurfaceColor(context);
+    final badgeFg = isDone
+        ? (isForui ? Colors.white : colors.onFill(colors.success))
+        : isInProgress
+            ? AppTheme.onAccentColor(context)
+            : AppTheme.mutedText(context);
     final statusLabel = isDone
         ? '已通关'
         : isInProgress
@@ -365,18 +376,18 @@ class _ChapterGridCard extends StatelessWidget {
                 width: 30,
                 height: 30,
                 alignment: Alignment.center,
-                decoration: BoxDecoration(
+                decoration: AppTheme.insetBoxDecoration(
+                  context,
                   color: badgeFill,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: colors.outline,
-                    width: 1.6,
-                  ),
+                  borderColor:
+                      isForui && (isDone || isInProgress) ? badgeFill : null,
+                  radius: 8,
+                  width: isForui ? 1 : 1.6,
                 ),
                 child: Text(
                   FormatUtils.padTwo(seq),
                   style: TextStyle(
-                    color: colors.onFill(badgeFill),
+                    color: badgeFg,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w800,
                   ),
@@ -396,7 +407,7 @@ class _ChapterGridCard extends StatelessWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: colors.ink,
+              color: ink,
               fontSize: 14.5,
               fontWeight: FontWeight.w800,
               height: 1.25,
@@ -431,7 +442,7 @@ class _ChapterGridCard extends StatelessWidget {
               Icon(
                 Icons.arrow_forward_rounded,
                 size: 14,
-                color: colors.ink,
+                color: ink,
               ),
             ],
           ),

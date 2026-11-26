@@ -3,7 +3,7 @@ export default {
   redirect: "/system/realm/index",
   meta: {
     icon: "ep/setting",
-    title: "境界与进阶设置",
+    title: "阶段与系统设置",
     rank: 4
   },
   children: [
@@ -12,7 +12,7 @@ export default {
       name: "RealmConfigManage",
       component: () => import("@/views/system/realm/index.vue"),
       meta: {
-        title: "境界与系统设置"
+        title: "阶段与系统设置"
       }
     }
   ]

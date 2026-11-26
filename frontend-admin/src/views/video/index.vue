@@ -187,8 +187,8 @@ onMounted(async () => {
   <div class="space-y-4">
     <el-card shadow="never">
       <el-form :inline="true" :model="query" class="flex flex-wrap items-center gap-y-2">
-        <el-form-item label="适用境界">
-          <el-select v-model="query.realmCode" placeholder="全部境界" clearable style="width: 160px">
+        <el-form-item label="适用年级">
+          <el-select v-model="query.realmCode" placeholder="全部年级" clearable style="width: 160px">
             <el-option
               v-for="r in realms"
               :key="r.realmCode"
@@ -246,7 +246,7 @@ onMounted(async () => {
 
             <div class="pointer-events-none absolute left-2 top-2">
               <el-tag size="small" :type="row.realmCode ? 'success' : 'info'" effect="dark">
-                {{ row.realmName || "全境界通用" }}
+                {{ row.realmName || "全年级通用" }}
               </el-tag>
             </div>
             <div class="pointer-events-none absolute right-2 top-2">
@@ -311,9 +311,9 @@ onMounted(async () => {
         <el-form-item label="系列标题" required>
           <el-input v-model="form.title" placeholder="例如：七年级有理数高频易错突破课" maxlength="100" />
         </el-form-item>
-        <el-form-item label="适用境界">
-          <el-select v-model="form.realmCode" clearable placeholder="全境界通用（可选）" class="w-full">
-            <el-option label="全境界通用" value="" />
+        <el-form-item label="适用年级">
+          <el-select v-model="form.realmCode" clearable placeholder="全年级通用（可选）" class="w-full">
+            <el-option label="全年级通用" value="" />
             <el-option
               v-for="r in realms"
               :key="r.realmCode"

@@ -306,6 +306,8 @@ export interface AppVersionInfo {
   githubReachable: boolean;
   publishedAt: string;
   source: string;
+  downloadChannel?: "OSS_DIRECT" | "SERVER_PROXY" | "EXTERNAL_DIRECT" | "LOCAL" | string;
+  ossCustomDomain?: string;
 }
 
 export interface AiConfigInfo {
@@ -335,7 +337,7 @@ export interface AiTestResult {
 export const getDashboardOverview = () =>
   http.get<ApiResult<DashboardOverview>, any>("/dashboard/overview");
 
-// 2. 修仙境界与基础配置
+// 2. 学习阶段与基础配置
 export const getRealms = () =>
   http.get<ApiResult<RealmConfig[]>, any>("/realms");
 

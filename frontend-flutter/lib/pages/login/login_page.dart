@@ -151,6 +151,8 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     final colors = WelkTheme.of(context).resolveColors(context);
+    final ink = AppTheme.inkColor(context);
+    final isForui = AppTheme.isForui(context);
     final grades = context.watch<UserProvider>().grades;
     final canPop = Navigator.of(context).canPop();
 
@@ -184,7 +186,7 @@ class _LoginPageState extends State<LoginPage> {
                         Column(
                           children: [
                             Transform.rotate(
-                              angle: -0.04,
+                              angle: isForui ? 0 : -0.04,
                               child: GglComicPanel(
                                 padding: EdgeInsets.zero,
                                 shadowOffset: const Offset(4, 4),
@@ -200,7 +202,7 @@ class _LoginPageState extends State<LoginPage> {
                             Text(
                               '欢迎来到过关啦',
                               style: TextStyle(
-                                color: colors.ink,
+                                color: ink,
                                 fontSize: 23,
                                 fontWeight: FontWeight.w800,
                                 fontFamilyFallback: AppTheme.cjkFontFallback,
@@ -220,7 +222,7 @@ class _LoginPageState extends State<LoginPage> {
 
                         // Mode switcher (Login / Register)
                         GglComicPanel(
-                          color: colors.muted,
+                          color: AppTheme.mutedSurfaceColor(context),
                           padding: const EdgeInsets.all(6),
                           shadowOffset: const Offset(2, 2),
                           child: Row(
@@ -276,22 +278,20 @@ class _LoginPageState extends State<LoginPage> {
                                   mainAxisAlignment:
                                       MainAxisAlignment.spaceBetween,
                                   children: [
-                                    GglCheckbox(
-                                      value: _rememberAccount,
-                                      label: '记住用户名',
-                                      onChanged: (v) =>
-                                          setState(() => _rememberAccount = v),
-                                    ),
-                                    TextButton(
-                                      onPressed: _handleForgotPassword,
-                                      child: Text(
-                                        '忘记密码？',
-                                        style: TextStyle(
-                                          color: colors.ink,
-                                          fontWeight: FontWeight.w700,
-                                          decoration: TextDecoration.underline,
+                                    Flexible(
+                                      child: GglCheckbox(
+                                        value: _rememberAccount,
+                                        label: '记住用户名',
+                                        onChanged: (v) => setState(
+                                          () => _rememberAccount = v,
                                         ),
                                       ),
+                                    ),
+                                    GglButton(
+                                      label: '忘记密码？',
+                                      variant: WelkButtonVariant.ghost,
+                                      compact: true,
+                                      onPressed: _handleForgotPassword,
                                     ),
                                   ],
                                 ),
@@ -352,7 +352,7 @@ class _LoginPageState extends State<LoginPage> {
                                     Text(
                                       '所在年级',
                                       style: TextStyle(
-                                        color: colors.ink,
+                                        color: ink,
                                         fontSize: 15,
                                         fontWeight: FontWeight.w700,
                                       ),
@@ -367,11 +367,15 @@ class _LoginPageState extends State<LoginPage> {
                                       ),
                                     ),
                                     const Spacer(),
-                                    Text(
-                                      '自动匹配初始修仙境界',
-                                      style: TextStyle(
-                                        color: AppTheme.mutedText(context),
-                                        fontSize: 12,
+                                    Flexible(
+                                      child: Text(
+                                        '自动匹配对应学习阶段',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: AppTheme.mutedText(context),
+                                          fontSize: 12,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -400,31 +404,26 @@ class _LoginPageState extends State<LoginPage> {
                                         duration:
                                             const Duration(milliseconds: 130),
                                         alignment: Alignment.center,
-                                        decoration: BoxDecoration(
-                                          color: selected
-                                              ? colors.accent
-                                              : colors.muted,
-                                          borderRadius:
-                                              BorderRadius.circular(10),
-                                          border: Border.all(
-                                            color: colors.outline,
-                                            width: colors.borderWidth,
+                                        decoration:
+                                            AppTheme.selectableTileDecoration(
+                                          context,
+                                          selected: selected,
+                                          unselectedFill:
+                                              AppTheme.mutedSurfaceColor(
+                                            context,
                                           ),
-                                          boxShadow: selected
-                                              ? [
-                                                  BoxShadow(
-                                                    color: colors.shadow,
-                                                    offset: const Offset(2, 2),
-                                                  ),
-                                                ]
-                                              : const [],
                                         ),
                                         child: Text(
                                           item.gradeName,
+                                          maxLines: 1,
+                                          softWrap: false,
+                                          overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
                                             color: selected
-                                                ? colors.onFill(colors.accent)
-                                                : colors.ink,
+                                                ? AppTheme.onAccentColor(
+                                                    context,
+                                                  )
+                                                : ink,
                                             fontSize: 14,
                                             fontWeight: selected
                                                 ? FontWeight.w800
@@ -440,7 +439,7 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                           const SizedBox(height: 20),
                           GglBlockButton(
-                            label: _submitting ? '正在注册...' : '注册并开启修炼',
+                            label: _submitting ? '正在注册...' : '注册并开始学习',
                             loading: _submitting,
                             size: WelkButtonSize.large,
                             onPressed: _handleRegister,
@@ -451,21 +450,15 @@ class _LoginPageState extends State<LoginPage> {
                         Center(
                           child: Column(
                             children: [
-                              TextButton(
+                              GglButton(
+                                label: '先逛逛，游客试玩',
+                                variant: WelkButtonVariant.ghost,
+                                compact: true,
                                 onPressed: () {
                                   if (canPop) {
                                     Navigator.of(context).pop(false);
                                   }
                                 },
-                                child: Text(
-                                  '先逛逛，游客试玩',
-                                  style: TextStyle(
-                                    color: colors.ink,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                    decoration: TextDecoration.underline,
-                                  ),
-                                ),
                               ),
                               const SizedBox(height: 4),
                               Text(
@@ -501,7 +494,7 @@ class _ModeTabButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = WelkTheme.of(context).resolveColors(context);
+    final isForui = AppTheme.isForui(context);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -509,21 +502,26 @@ class _ModeTabButton extends StatelessWidget {
         duration: const Duration(milliseconds: 140),
         height: 42,
         alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: active ? colors.accent : Colors.transparent,
-          borderRadius: BorderRadius.circular(9),
-          border: active
-              ? Border.all(color: colors.outline, width: colors.borderWidth)
-              : null,
-          boxShadow: active
-              ? [BoxShadow(color: colors.shadow, offset: const Offset(2, 2))]
-              : const [],
-        ),
+        decoration: active
+            ? AppTheme.selectableTileDecoration(
+                context,
+                selected: true,
+                selectedFill:
+                    isForui ? AppTheme.surfaceColor(context) : null,
+                selectedBorder:
+                    isForui ? AppTheme.borderColor(context) : null,
+                radius: 9,
+              )
+            : const BoxDecoration(),
         child: Text(
           label,
+          maxLines: 1,
+          softWrap: false,
           style: TextStyle(
             color: active
-                ? colors.onFill(colors.accent)
+                ? (isForui
+                    ? AppTheme.inkColor(context)
+                    : AppTheme.onAccentColor(context))
                 : AppTheme.mutedText(context),
             fontSize: 15,
             fontWeight: active ? FontWeight.w800 : FontWeight.w600,

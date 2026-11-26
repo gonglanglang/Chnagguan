@@ -62,12 +62,36 @@ class _HomeTabPageState extends State<HomeTabPage> {
     try {
       final api = context.read<GuoguanlaApi>();
       final user = context.read<UserProvider>();
-      final res = await api.getChaptersByRealm(
+      final orderedRealms =
+          user.realms.isNotEmpty ? user.realms : RealmItem.defaults;
+      final startIdx =
+          orderedRealms.indexWhere((r) => r.realmCode == realmCode);
+      final candidateCodes = <String>[
         realmCode,
-        guestPassedIds: user.activeGuestIds,
-      );
+        if (startIdx >= 0)
+          for (var i = startIdx + 1; i < orderedRealms.length; i++)
+            orderedRealms[i].realmCode,
+      ];
+
+      List<ChapterCard> chosen = const [];
+      for (final code in candidateCodes) {
+        final res = await api.getChaptersByRealm(
+          code,
+          guestPassedIds: user.activeGuestIds,
+        );
+        if (chosen.isEmpty && res.isNotEmpty) {
+          chosen = res;
+        }
+        final hasUnfinished = res.any(
+          (c) => c.totalGates > 0 && c.passedCount < c.totalGates,
+        );
+        if (hasUnfinished) {
+          chosen = res;
+          break;
+        }
+      }
       if (!mounted) return;
-      setState(() => _heroChapters = res);
+      setState(() => _heroChapters = chosen);
     } catch (_) {
       // Keep previous hero chapters if transient error
     } finally {
@@ -131,7 +155,7 @@ class _HomeTabPageState extends State<HomeTabPage> {
 
     await GglFeedback.alert(
       context,
-      title: '修炼公告',
+      title: '学习公告',
       content: noticeText,
       buttonText: '我知道了',
     );
@@ -143,9 +167,9 @@ class _HomeTabPageState extends State<HomeTabPage> {
       return user.appNotice.trim();
     }
     if (currentRealm.examEligible) {
-      return '恭喜！你在${currentRealm.realmName}已达晋升条件，点击立即参加进阶考核';
+      return '恭喜！你在${currentRealm.realmName}阶段已达晋升条件，点击立即参加阶段升级测评';
     }
-    return '全境界 51 章题库开放自由练习，完成本境指定关卡可参加进阶考核';
+    return '全年级 51 章题库开放自由练习，完成当前阶段指定关卡可参加阶段升级测评';
   }
 
   ChapterCard? get _heroChapter {
@@ -284,7 +308,7 @@ class _HomeTabPageState extends State<HomeTabPage> {
   Future<void> _startAdvanceExam() async {
     final user = context.read<UserProvider>();
     if (!user.isAuthenticated) {
-      GglFeedback.warning(context, '请先登录后参加境界进阶考核');
+      GglFeedback.warning(context, '请先登录后参加阶段升级测评');
       final ok = await Navigator.of(context).push<bool>(
         MaterialPageRoute<bool>(builder: (_) => const LoginPage()),
       );
@@ -304,14 +328,14 @@ class _HomeTabPageState extends State<HomeTabPage> {
 
     await showGglBottomSheet<void>(
       context: context,
-      title: '学习体系 · 六大修仙境界',
+      title: '学习体系 · 初一至高三',
       closeLabel: '关闭',
       builder: (drawerCtx) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
             Text(
-              '共 ${user.realms.length} 大境界，全阶段课程与章节题库自由开放学习；完成本境指定关卡后可发起进阶考核晋升。',
+              '共 ${user.realms.length} 个学习阶段，初一至高三同步章节题库自由开放练习；完成当前阶段指定关卡后可参加阶段升级测评。',
               style: TextStyle(
                 color: AppTheme.mutedText(drawerCtx),
                 fontSize: 13,
@@ -339,11 +363,11 @@ class _HomeTabPageState extends State<HomeTabPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '${realm.realmName} · ${FormatUtils.shortDifficultyLabel(realm.difficultyLabel)}',
+                              realm.difficultyLabel.isNotEmpty
+                                  ? '${realm.realmName} · ${FormatUtils.shortDifficultyLabel(realm.difficultyLabel)}'
+                                  : realm.realmName,
                               style: TextStyle(
-                                color: WelkTheme.of(drawerCtx)
-                                    .resolveColors(drawerCtx)
-                                    .ink,
+                                color: AppTheme.inkColor(drawerCtx),
                                 fontSize: 15,
                                 fontWeight: FontWeight.w800,
                               ),
@@ -364,7 +388,7 @@ class _HomeTabPageState extends State<HomeTabPage> {
                       const SizedBox(width: 8),
                       GglStatusTag(
                         label: realm.isCurrent
-                            ? '修炼中'
+                            ? '学习中'
                             : realm.isLower
                                 ? '已通过'
                                 : '自由开放',
@@ -381,7 +405,7 @@ class _HomeTabPageState extends State<HomeTabPage> {
             const SizedBox(height: 8),
             if (currentRealm.examEligible)
               GglBlockButton(
-                label: '参加${currentRealm.realmName}进阶考核',
+                label: '参加${currentRealm.realmName}阶段升级测评',
                 onPressed: () {
                   Navigator.of(drawerCtx).pop();
                   unawaited(_startAdvanceExam());
@@ -389,7 +413,7 @@ class _HomeTabPageState extends State<HomeTabPage> {
               )
             else
               GglBlockButton(
-                label: '查看境界详情与进阶规则',
+                label: '查看学习阶段与测评规则',
                 variant: WelkButtonVariant.secondary,
                 onPressed: () {
                   Navigator.of(drawerCtx).pop();
@@ -424,9 +448,12 @@ class _HomeTabPageState extends State<HomeTabPage> {
 
     final displayName = (user.userInfo?.nickname.isNotEmpty ?? false)
         ? user.userInfo!.nickname
-        : (user.isAuthenticated ? '道友' : '同学');
+        : '同学';
     final greeting = '${FormatUtils.greetingPrefix(DateTime.now())}，$displayName';
     final noticeText = _resolveNoticeText(user);
+    final ink = AppTheme.inkColor(context);
+    final surface = AppTheme.surfaceColor(context);
+    final accent = AppTheme.accentColor(context);
 
     final hero = _heroChapter;
     final heroPct = (hero != null && hero.totalGates > 0)
@@ -481,8 +508,10 @@ class _HomeTabPageState extends State<HomeTabPage> {
                       children: [
                         Text(
                           greeting,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: colors.ink,
+                            color: ink,
                             fontSize: 21,
                             fontWeight: FontWeight.w800,
                           ),
@@ -490,10 +519,11 @@ class _HomeTabPageState extends State<HomeTabPage> {
                         const SizedBox(height: 4),
                         Wrap(
                           spacing: 6,
+                          runSpacing: 4,
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
                             Text(
-                              '当前境界',
+                              '当前阶段',
                               style: TextStyle(
                                 color: AppTheme.mutedText(context),
                                 fontSize: 13,
@@ -528,7 +558,7 @@ class _HomeTabPageState extends State<HomeTabPage> {
               // Notice strip
               GglComicPanel(
                 color: colors.warning
-                    .withValues(alpha: colors.isDark ? 0.2 : 0.35),
+                    .withValues(alpha: colors.isDark ? 0.2 : 0.28),
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 shadowOffset: const Offset(2, 2),
@@ -538,7 +568,7 @@ class _HomeTabPageState extends State<HomeTabPage> {
                   } else {
                     GglFeedback.alert(
                       context,
-                      title: '修炼公告',
+                      title: '学习公告',
                       content: noticeText,
                       buttonText: '我知道了',
                     );
@@ -549,7 +579,7 @@ class _HomeTabPageState extends State<HomeTabPage> {
                     Icon(
                       Icons.campaign_rounded,
                       size: 18,
-                      color: colors.ink,
+                      color: ink,
                     ),
                     const SizedBox(width: 8),
                     Expanded(
@@ -558,7 +588,7 @@ class _HomeTabPageState extends State<HomeTabPage> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: colors.ink,
+                          color: ink,
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
                         ),
@@ -568,7 +598,7 @@ class _HomeTabPageState extends State<HomeTabPage> {
                     Icon(
                       Icons.chevron_right_rounded,
                       size: 16,
-                      color: colors.ink,
+                      color: ink,
                     ),
                   ],
                 ),
@@ -578,8 +608,12 @@ class _HomeTabPageState extends State<HomeTabPage> {
               const SizedBox(height: 12),
               GglComicPanel(
                 color: Color.alphaBlend(
-                  colors.accent.withValues(alpha: colors.isDark ? 0.22 : 0.16),
-                  colors.paper,
+                  accent.withValues(
+                    alpha: AppTheme.isForui(context)
+                        ? (colors.isDark ? 0.14 : 0.08)
+                        : (colors.isDark ? 0.22 : 0.16),
+                  ),
+                  surface,
                 ),
                 padding: const EdgeInsets.all(14),
                 onTap: () => _openSmartBoard(),
@@ -591,18 +625,17 @@ class _HomeTabPageState extends State<HomeTabPage> {
                         Container(
                           width: 38,
                           height: 38,
-                          decoration: BoxDecoration(
-                            color: colors.accent,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: colors.outline,
-                              width: 1.8,
-                            ),
+                          decoration: AppTheme.insetBoxDecoration(
+                            context,
+                            color: accent,
+                            borderColor: AppTheme.isForui(context)
+                                ? accent
+                                : null,
                           ),
                           child: Icon(
                             Icons.draw_rounded,
                             size: 20,
-                            color: colors.onFill(colors.accent),
+                            color: AppTheme.onAccentColor(context),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -612,12 +645,16 @@ class _HomeTabPageState extends State<HomeTabPage> {
                             children: [
                               Row(
                                 children: [
-                                  Text(
-                                    'AI 智能手写画板',
-                                    style: TextStyle(
-                                      color: colors.ink,
-                                      fontSize: 16.5,
-                                      fontWeight: FontWeight.w900,
+                                  Flexible(
+                                    child: Text(
+                                      'AI 智能手写画板',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: ink,
+                                        fontSize: 16.5,
+                                        fontWeight: FontWeight.w900,
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(width: 6),
@@ -687,7 +724,7 @@ class _HomeTabPageState extends State<HomeTabPage> {
                   crossAxisCount: 3,
                   crossAxisSpacing: 10,
                   mainAxisSpacing: 10,
-                  mainAxisExtent: 98,
+                  mainAxisExtent: 108,
                 ),
                 itemCount: grades.length,
                 itemBuilder: (context, idx) {
@@ -695,10 +732,21 @@ class _HomeTabPageState extends State<HomeTabPage> {
                   final realm = _findRealmForGrade(user, grade.gradeCode);
                   final isCurrent = realm?.isCurrent ??
                       (grade.gradeCode == currentRealm.gradeCode);
+                  final allPassed = realm != null &&
+                      realm.gateCount > 0 &&
+                      realm.passedGateCount >= realm.gateCount;
+                  final statusText = isCurrent
+                      ? '当前阶段'
+                      : allPassed
+                          ? '已通关'
+                          : (realm != null && realm.passedGateCount > 0)
+                              ? '已过 ${realm.passedGateCount} 关'
+                              : '自由刷题';
                   return _GradeGridTile(
                     grade: grade,
-                    realmName: realm?.realmName ?? '',
+                    statusLabel: statusText,
                     isCurrent: isCurrent,
+                    isPassed: allPassed,
                     onTap: () => _openGradeChapters(grade),
                   );
                 },
@@ -717,15 +765,15 @@ class _HomeTabPageState extends State<HomeTabPage> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            '继续修炼',
+                            '继续学习',
                             style: TextStyle(
-                              color: colors.ink,
+                              color: ink,
                               fontSize: 14.5,
                               fontWeight: FontWeight.w800,
                             ),
                           ),
                           GglStatusTag(
-                            label: '第 $_heroChapterSeq 章',
+                            label: '${hero.realmName} · 第 $_heroChapterSeq 章',
                             variant: WelkBadgeVariant.defaultStyle,
                           ),
                         ],
@@ -734,7 +782,7 @@ class _HomeTabPageState extends State<HomeTabPage> {
                       Text(
                         hero.name,
                         style: TextStyle(
-                          color: colors.ink,
+                          color: ink,
                           fontSize: 19,
                           fontWeight: FontWeight.w800,
                         ),
@@ -757,7 +805,7 @@ class _HomeTabPageState extends State<HomeTabPage> {
                           Text(
                             '$heroPct%',
                             style: TextStyle(
-                              color: colors.ink,
+                              color: ink,
                               fontSize: 13,
                               fontWeight: FontWeight.w800,
                             ),
@@ -802,9 +850,9 @@ class _HomeTabPageState extends State<HomeTabPage> {
                     children: [
                       Expanded(
                         child: Text(
-                          '${currentRealm.realmName}已达标，可参加境界进阶考核',
+                          '${currentRealm.realmName}阶段已达标，可参加阶段升级测评',
                           style: TextStyle(
-                            color: colors.ink,
+                            color: ink,
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
                           ),
@@ -812,7 +860,7 @@ class _HomeTabPageState extends State<HomeTabPage> {
                       ),
                       const SizedBox(width: 8),
                       GglButton(
-                        label: '去考核',
+                        label: '去测评',
                         variant: WelkButtonVariant.success,
                         onPressed: _startAdvanceExam,
                       ),
@@ -829,8 +877,8 @@ class _HomeTabPageState extends State<HomeTabPage> {
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Text(
                     currentRealm.examEligible
-                        ? '${currentRealm.realmName}已满足进阶条件，点击查看学习体系并考核晋升'
-                        : '全年级题库已自由开放 · 本境再过 ${currentRealm.examRemainingGates > 0 ? currentRealm.examRemainingGates : 0} 关可解锁进阶考核',
+                        ? '${currentRealm.realmName}阶段已满足升级条件，点击查看学习体系并测评晋升'
+                        : '全年级题库已自由开放 · 当前阶段再过 ${currentRealm.examRemainingGates > 0 ? currentRealm.examRemainingGates : 0} 关可解锁阶段升级测评',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: AppTheme.mutedText(context),
@@ -850,25 +898,46 @@ class _HomeTabPageState extends State<HomeTabPage> {
 class _GradeGridTile extends StatelessWidget {
   const _GradeGridTile({
     required this.grade,
-    required this.realmName,
+    required this.statusLabel,
     required this.isCurrent,
+    required this.isPassed,
     required this.onTap,
   });
 
   final GradeItem grade;
-  final String realmName;
+  final String statusLabel;
   final bool isCurrent;
+  final bool isPassed;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = WelkTheme.of(context).resolveColors(context);
+    final surface = AppTheme.surfaceColor(context);
+    final accent = AppTheme.accentColor(context);
+    final ink = AppTheme.inkColor(context);
+    final isForui = AppTheme.isForui(context);
     final tileColor = isCurrent
         ? Color.alphaBlend(
-            colors.accent.withValues(alpha: colors.isDark ? 0.20 : 0.18),
-            colors.paper,
+            accent.withValues(
+              alpha: isForui
+                  ? (colors.isDark ? 0.16 : 0.10)
+                  : (colors.isDark ? 0.20 : 0.18),
+            ),
+            surface,
           )
-        : colors.paper;
+        : surface;
+
+    final pillBg = isCurrent
+        ? accent
+        : isPassed
+            ? colors.success
+            : AppTheme.mutedSurfaceColor(context);
+    final pillFg = isCurrent
+        ? AppTheme.onAccentColor(context)
+        : isPassed
+            ? colors.onFill(colors.success)
+            : AppTheme.mutedText(context);
 
     return GglComicPanel(
       color: tileColor,
@@ -878,34 +947,37 @@ class _GradeGridTile extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          if (realmName.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-              decoration: BoxDecoration(
-                color: isCurrent ? colors.accent : colors.muted,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: colors.outline, width: 1.2),
-              ),
-              child: Text(
-                isCurrent ? '$realmName · 本境' : realmName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: isCurrent
-                      ? colors.onFill(colors.accent)
-                      : AppTheme.mutedText(context),
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: AppTheme.insetBoxDecoration(
+              context,
+              color: pillBg,
+              borderColor: isForui && (isCurrent || isPassed)
+                  ? pillBg
+                  : null,
+              radius: 6,
+              width: isForui ? 1 : 1.2,
+            ),
+            child: Text(
+              statusLabel,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: pillFg,
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
               ),
             ),
+          ),
           const SizedBox(height: 6),
           Text(
             grade.gradeName,
             maxLines: 1,
+            softWrap: false,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: colors.ink,
+              color: ink,
               fontSize: 17,
               fontWeight: FontWeight.w800,
             ),
@@ -913,6 +985,8 @@ class _GradeGridTile extends StatelessWidget {
           const SizedBox(height: 3),
           Text(
             '${grade.chapterCount} 章',
+            maxLines: 1,
+            softWrap: false,
             style: TextStyle(
               color: AppTheme.mutedText(context),
               fontSize: 11.5,

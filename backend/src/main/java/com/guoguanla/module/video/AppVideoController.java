@@ -10,7 +10,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name = "学生端-修炼教学视频")
+@Tag(name = "学生端-数学教学视频")
 @RestController
 @RequestMapping("/api/app/videos")
 @RequiredArgsConstructor

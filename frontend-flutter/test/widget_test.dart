@@ -8,10 +8,12 @@ import 'package:guoguanla_app/app/app_theme.dart';
 import 'package:guoguanla_app/core/cache/global_cache.dart';
 import 'package:guoguanla_app/core/network/api_client.dart';
 import 'package:guoguanla_app/models/models.dart';
+import 'package:guoguanla_app/pages/about/about_page.dart';
 import 'package:guoguanla_app/pages/draw_answer/draw_answer_page.dart';
 import 'package:guoguanla_app/pages/grade_chapters/grade_chapters_page.dart';
 import 'package:guoguanla_app/pages/home/home_tab_page.dart';
 import 'package:guoguanla_app/pages/login/login_page.dart';
+import 'package:guoguanla_app/pages/mine/mine_tab_page.dart';
 import 'package:guoguanla_app/pages/profile/profile_page.dart';
 import 'package:guoguanla_app/pages/quiz/quiz_page.dart';
 import 'package:guoguanla_app/pages/settings/theme_settings_page.dart';
@@ -460,7 +462,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Auto-announcement popped once for v1.0.14+114 (notice strip + dialog)
-    expect(find.text('修炼公告'), findsOneWidget);
+    expect(find.text('学习公告'), findsOneWidget);
     expect(find.text('测试公告内容 v1.0.14'), findsNWidgets(2));
     expect(cache.lastAnnouncementVersion, '1.0.14+114');
 
@@ -468,27 +470,27 @@ void main() {
     await tester.pumpAndSettle();
 
     // Dialog dismissed (only notice strip remains) and should not pop again on refresh within same version
-    expect(find.text('修炼公告'), findsNothing);
+    expect(find.text('学习公告'), findsNothing);
     expect(find.text('测试公告内容 v1.0.14'), findsOneWidget);
     refreshSignal.value++;
     await tester.pump();
     await tester.pumpAndSettle();
-    expect(find.text('修炼公告'), findsNothing);
+    expect(find.text('学习公告'), findsNothing);
 
     // Home renders AI smart board card, 3-column grade grid and removed old 章节闯关
     expect(find.text('AI 智能手写画板'), findsOneWidget);
     expect(find.text('拍照识题'), findsOneWidget);
     expect(find.text('选择年级'), findsOneWidget);
     expect(find.text('章节闯关'), findsNothing);
-    expect(find.text('初一'), findsOneWidget);
+    expect(find.text('初一'), findsWidgets);
     expect(find.text('高三'), findsOneWidget);
 
     await tester.scrollUntilVisible(
-      find.text('继续修炼'),
+      find.text('继续学习'),
       200,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('继续修炼'), findsOneWidget);
+    expect(find.text('继续学习'), findsOneWidget);
 
     final grid = tester.widget<GridView>(find.byType(GridView).first);
     final delegate =
@@ -871,6 +873,85 @@ void main() {
     expect(find.byType(WelkInput), findsNothing);
     expect(find.byType(WelkCheckBox), findsNothing);
   });
+
+  testWidgets(
+      'Forui skin replaces WelkAccordion on AboutPage, shows Forui on MineTabPage, and supports cross-grade CTA on QuizPage',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'ggl_ui_skin': 'forui',
+    });
+    PackageInfo.setMockInitialValues(
+      appName: '过关啦',
+      packageName: 'com.guoguanla.app',
+      version: '2.3.0',
+      buildNumber: '230',
+      buildSignature: '',
+    );
+    final cache = await GlobalCache.init();
+    final api = _FakeGuoguanlaApi();
+    final userProvider = UserProvider(storage: cache, api: api);
+    final themeProvider = ThemeProvider(cache);
+    final updateProvider = UpdateProvider(api);
+    final refreshSignal = ValueNotifier<int>(0);
+    addTearDown(refreshSignal.dispose);
+    expect(themeProvider.isForui, isTrue);
+
+    Widget wrapForui(Widget home) => MultiProvider(
+          providers: [
+            Provider<GlobalCache>.value(value: cache),
+            Provider<GuoguanlaApi>.value(value: api),
+            ChangeNotifierProvider<UserProvider>.value(value: userProvider),
+            ChangeNotifierProvider<ThemeProvider>.value(value: themeProvider),
+            ChangeNotifierProvider<UpdateProvider>.value(value: updateProvider),
+          ],
+          child: Consumer<ThemeProvider>(
+            builder: (context, theme, _) => WelkTheme(
+              data: theme.welkTheme,
+              child: WiredThemeScope(
+                data: theme.skribbleTheme,
+                child: FTheme(
+                  data: theme.foruiTheme,
+                  child: MaterialApp(
+                    theme: theme.materialTheme,
+                    home: home,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+    // 1. AboutPage renders FAccordion (no WelkAccordion, no cultivation copy)
+    await tester.pumpWidget(wrapForui(const AboutPage()));
+    await tester.pumpAndSettle();
+    expect(find.byType(FAccordion), findsNWidgets(2));
+    expect(find.byType(WelkAccordion), findsNothing);
+    expect(find.text('学习规则'), findsOneWidget);
+    expect(find.textContaining('修仙'), findsNothing);
+
+    // 2. MineTabPage shows "Forui · ..." instead of mislabeling WelkUI
+    await tester.pumpWidget(wrapForui(MineTabPage(refreshSignal: refreshSignal)));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Forui · '), findsOneWidget);
+    expect(find.text('学习阶段'), findsOneWidget);
+    expect(find.text('境界体系'), findsNothing);
+
+    // 3. QuizPage shows cross-grade CTA when finishing final gate of 初一
+    await tester.pumpWidget(
+      wrapForui(
+        const QuizPage(mode: QuizMode.gate, gateId: 901, gateSeq: 4),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('5'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('提交答案'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('完成交卷'));
+    await tester.pumpAndSettle();
+    expect(find.text('进入初二 · 第 1 关'), findsOneWidget);
+    expect(find.textContaining('即将开启初二'), findsOneWidget);
+  });
 }
 
 class _FakeGuoguanlaApi extends GuoguanlaApi {
@@ -966,6 +1047,31 @@ class _FakeGuoguanlaApi extends GuoguanlaApi {
     List<int>? guestPassedGateIds,
   }) async {
     startedGateIds.add(gateId);
+    if (gateId == 901) {
+      return const QuizStartResult(
+        sessionNo: 'QZ-GATE-G7-LAST',
+        mode: 'GATE',
+        realmCode: 'lianqi',
+        realmName: '初一',
+        suppressedMode: false,
+        chapterId: 10,
+        chapterName: '第10章 数据的收集、整理与描述',
+        gateId: 901,
+        gateName: '综合压轴',
+        star: 4,
+        passCount: 1,
+        totalCount: 1,
+        guestMode: true,
+        items: [
+          ClientQuestionItem(
+            itemIndex: 0,
+            questionFormat: 'SINGLE_CHOICE',
+            stem: '初一最后一关测试题：3 + 2 = ?',
+            options: ['5', '6', '7', '8'],
+          ),
+        ],
+      );
+    }
     if (gateId == 102) {
       return const QuizStartResult(
         sessionNo: 'QZ-GATE-102',
@@ -1070,7 +1176,31 @@ class _FakeGuoguanlaApi extends GuoguanlaApi {
   Future<SubmitResult> submitGateQuiz({
     required String sessionNo,
     required List<AnswerSubmitPayload> answers,
+    List<int>? guestPassedGateIds,
   }) async {
+    if (sessionNo == 'QZ-GATE-G7-LAST') {
+      return const SubmitResult(
+        sessionNo: 'QZ-GATE-G7-LAST',
+        mode: 'GATE',
+        totalCount: 1,
+        correctCount: 1,
+        passCount: 1,
+        passed: true,
+        newlyPassed: true,
+        totalPassedGates: 40,
+        wrongItems: [],
+        masteredCount: 0,
+        nextGateId: 102,
+        nextGateIndex: 0,
+        nextGateName: '基础关',
+        nextChapterId: 11,
+        nextChapterName: '第11章 三角形',
+        nextGateCrossChapter: true,
+        nextGradeCode: 'g8',
+        nextGradeName: '初二',
+        nextGateCrossGrade: true,
+      );
+    }
     return SubmitResult(
       sessionNo: sessionNo,
       mode: 'GATE',

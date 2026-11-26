@@ -1,6 +1,7 @@
 package com.guoguanla.module.system;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.guoguanla.module.oss.AliyunOssService;
 import com.guoguanla.module.system.entity.EduRealm;
 import com.guoguanla.module.system.entity.SysConfig;
 import com.guoguanla.module.system.mapper.EduRealmMapper;
@@ -21,9 +22,10 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
- * 幂等结构升级与修仙境界初始化（兼容已存量 MySQL 与测试 H2）。
+ * 幂等结构升级与学习阶段初始化（兼容已存量 MySQL 与测试 H2）。
  */
 @Slf4j
 @Order(1)
@@ -40,11 +42,16 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
             "h3", "huashen"
     );
 
+    private static final Set<String> LEGACY_CULTIVATION_REALM_NAMES = Set.of(
+            "练气", "筑基", "结丹", "假婴", "元婴", "化神"
+    );
+
     private final DataSource dataSource;
     private final JdbcTemplate jdbcTemplate;
     private final EduRealmMapper realmMapper;
     private final AppUserMapper userMapper;
     private final SysConfigMapper sysConfigMapper;
+    private final AliyunOssService ossService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -52,6 +59,7 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
         ensureEduRealmTable();
         ensureUserEssayAnswerTable();
         ensureVideoTables();
+        upgradeSysConfigValueColumn();
         boolean addedUserRealm = ensureColumn("app_user", "realm_code", "VARCHAR(24) NOT NULL DEFAULT 'lianqi'");
         ensureColumn("app_user", "email", "VARCHAR(128) DEFAULT NULL");
         ensureColumn("user_quiz_record", "realm_code", "VARCHAR(24) DEFAULT NULL");
@@ -66,12 +74,14 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
 
         seedDefaultRealms();
         repairMojibakeRealms();
+        migrateCultivationTermsToNormal();
         backfillUserRealms(addedUserRealm);
         backfillEssayGateKeys();
         upgradeNoticeCopy();
         ensureAppVersionConfigs();
         ensureAiConfigs();
         ensureDefaultThemeConfigs();
+        syncOssCustomDomain();
     }
 
     private void ensureEduRealmTable() {
@@ -223,20 +233,52 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
         return false;
     }
 
+    private void upgradeSysConfigValueColumn() {
+        try (Connection conn = dataSource.getConnection()) {
+            String product = conn.getMetaData().getDatabaseProductName();
+            int colSize = -1;
+            String typeName = "";
+            try (ResultSet rs = conn.getMetaData().getColumns(conn.getCatalog(), null, null, null)) {
+                while (rs.next()) {
+                    String t = rs.getString("TABLE_NAME");
+                    String c = rs.getString("COLUMN_NAME");
+                    if ("sys_config".equalsIgnoreCase(t) && "config_value".equalsIgnoreCase(c)) {
+                        colSize = rs.getInt("COLUMN_SIZE");
+                        typeName = rs.getString("TYPE_NAME") == null ? "" : rs.getString("TYPE_NAME").toUpperCase();
+                        break;
+                    }
+                }
+            }
+            if (colSize > 0 && colSize < 4000 && !typeName.contains("TEXT") && !typeName.contains("CLOB")) {
+                if (product != null && product.toLowerCase().contains("mysql")) {
+                    jdbcTemplate.execute("ALTER TABLE sys_config MODIFY COLUMN config_value TEXT DEFAULT NULL");
+                } else {
+                    jdbcTemplate.execute("ALTER TABLE sys_config ALTER COLUMN config_value TEXT");
+                }
+                log.info("Upgraded sys_config.config_value from {}({}) to TEXT", typeName, colSize);
+            }
+        } catch (Exception e) {
+            log.warn("Skipped upgrading sys_config.config_value to TEXT: {}", e.getMessage());
+        }
+    }
+
+    private List<EduRealm> buildDefaultRealms() {
+        return List.of(
+                buildRealm("lianqi", "初一", 1, "g7", "难度一 · 基础", "初一数学核心基础：有理数、整式、一元一次方程与几何初步", 0, 5, 60),
+                buildRealm("zhuji", "初二", 2, "g8", "难度二 · 入门", "初二数学能力进阶：三角形全等、轴对称、勾股定理与一次函数", 0, 5, 60),
+                buildRealm("jiedan", "初三", 3, "g9", "难度三 · 提升", "初三中考冲刺阶段：一元二次方程、二次函数、圆与相似综合", 0, 6, 70),
+                buildRealm("jiaying", "高一", 4, "h1", "难度四 · 强化", "高一高中衔接强化：集合逻辑、函数性质、指数对数与三角函数", 0, 6, 70),
+                buildRealm("yuanying", "高二", 5, "h2", "难度五 · 高阶", "高二数学深化突破：空间向量、解析几何、数列与一元函数导数", 0, 8, 75),
+                buildRealm("huashen", "高三", 6, "h3", "难度六 · 冲刺", "高三综合压轴冲刺：函数导数、圆锥曲线、概率统计与高考专题", 0, 8, 80)
+        );
+    }
+
     private void seedDefaultRealms() {
         if (realmMapper.selectCount(null) > 0) {
             return;
         }
-        List<EduRealm> defaults = List.of(
-                buildRealm("lianqi", "练气", 1, "g7", "难度一 · 基础", "引气入体，夯实有理数与基础代数根基", 0, 5, 60),
-                buildRealm("zhuji", "筑基", 2, "g8", "难度二 · 入门", "道基初成，攻克几何证明与一次函数", 0, 5, 60),
-                buildRealm("jiedan", "结丹", 3, "g9", "难度三 · 提升", "凝丹聚元，突破二次函数与圆的综合", 0, 6, 70),
-                buildRealm("jiaying", "假婴", 4, "h1", "难度四 · 强化", "化凡入圣，修习集合函数与三角恒等", 0, 6, 70),
-                buildRealm("yuanying", "元婴", 5, "h2", "难度五 · 高阶", "元婴初醒，参悟数列圆锥曲线与导数", 0, 8, 75),
-                buildRealm("huashen", "化神", 6, "h3", "难度六 · 巅峰", "大道至简，贯通综合压轴与巅峰冲刺", 0, 8, 80)
-        );
-        defaults.forEach(realmMapper::insert);
-        log.info("Seeded 6 default cultivation realms (练气 -> 化神)");
+        buildDefaultRealms().forEach(realmMapper::insert);
+        log.info("Seeded 6 default study stages (初一 -> 高三)");
     }
 
     private EduRealm buildRealm(String code, String name, int order, String gradeCode,
@@ -256,15 +298,7 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
     }
 
     private void repairMojibakeRealms() {
-        List<EduRealm> defaults = List.of(
-                buildRealm("lianqi", "练气", 1, "g7", "难度一 · 基础", "引气入体，夯实有理数与基础代数根基", 0, 5, 60),
-                buildRealm("zhuji", "筑基", 2, "g8", "难度二 · 入门", "道基初成，攻克几何证明与一次函数", 0, 5, 60),
-                buildRealm("jiedan", "结丹", 3, "g9", "难度三 · 提升", "凝丹聚元，突破二次函数与圆的综合", 0, 6, 70),
-                buildRealm("jiaying", "假婴", 4, "h1", "难度四 · 强化", "化凡入圣，修习集合函数与三角恒等", 0, 6, 70),
-                buildRealm("yuanying", "元婴", 5, "h2", "难度五 · 高阶", "元婴初醒，参悟数列圆锥曲线与导数", 0, 8, 75),
-                buildRealm("huashen", "化神", 6, "h3", "难度六 · 巅峰", "大道至简，贯通综合压轴与巅峰冲刺", 0, 8, 80)
-        );
-        Map<String, EduRealm> defMap = defaults.stream()
+        Map<String, EduRealm> defMap = buildDefaultRealms().stream()
                 .collect(java.util.stream.Collectors.toMap(EduRealm::getRealmCode, d -> d));
         for (EduRealm existing : realmMapper.selectList(null)) {
             EduRealm d = defMap.get(existing.getRealmCode());
@@ -276,9 +310,47 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
                 existing.setDifficultyLabel(d.getDifficultyLabel());
                 existing.setDescription(d.getDescription());
                 realmMapper.updateById(existing);
-                log.info("Repaired mojibake text for realm {}", existing.getRealmCode());
+                log.info("Repaired mojibake text for stage {}", existing.getRealmCode());
             }
         }
+    }
+
+    private void migrateCultivationTermsToNormal() {
+        Map<String, EduRealm> defMap = buildDefaultRealms().stream()
+                .collect(java.util.stream.Collectors.toMap(EduRealm::getRealmCode, d -> d));
+        for (EduRealm existing : realmMapper.selectList(null)) {
+            EduRealm d = defMap.get(existing.getRealmCode());
+            if (d == null) continue;
+            boolean changed = false;
+            String curName = existing.getRealmName() == null ? "" : existing.getRealmName().trim();
+            if (LEGACY_CULTIVATION_REALM_NAMES.contains(curName)) {
+                existing.setRealmName(d.getRealmName());
+                changed = true;
+            }
+            String curDesc = existing.getDescription() == null ? "" : existing.getDescription();
+            if (containsCultivationKeyword(curDesc)) {
+                existing.setDescription(d.getDescription());
+                changed = true;
+            }
+            String curDiff = existing.getDifficultyLabel() == null ? "" : existing.getDifficultyLabel();
+            if (curDiff.contains("巅峰") && "huashen".equals(existing.getRealmCode())) {
+                existing.setDifficultyLabel(d.getDifficultyLabel());
+                changed = true;
+            }
+            if (changed) {
+                realmMapper.updateById(existing);
+                log.info("Migrated legacy stage terminology for {} -> {}", existing.getRealmCode(), existing.getRealmName());
+            }
+        }
+    }
+
+    private boolean containsCultivationKeyword(String s) {
+        if (s == null || s.isBlank()) return false;
+        return s.contains("修仙") || s.contains("境界") || s.contains("修炼")
+                || s.contains("引气") || s.contains("道基") || s.contains("凝丹")
+                || s.contains("化凡") || s.contains("元婴") || s.contains("大道至简")
+                || s.contains("练气") || s.contains("筑基") || s.contains("结丹")
+                || s.contains("假婴") || s.contains("化神");
     }
 
     private boolean looksLikeMojibake(String s) {
@@ -306,9 +378,17 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
         SysConfig cfg = sysConfigMapper.selectOne(
                 new LambdaQueryWrapper<SysConfig>().eq(SysConfig::getConfigKey, "app_notice").last("LIMIT 1")
         );
-        if (cfg != null && cfg.getConfigValue() != null && cfg.getConfigValue().startsWith("初一到高三全章节已就绪")) {
-            cfg.setConfigValue("修仙闯关开启：练气至化神六大境界，学成可挑战进阶考核！");
+        if (cfg != null && cfg.getConfigValue() != null && containsCultivationKeyword(cfg.getConfigValue())) {
+            cfg.setConfigValue("初一至高三全章节已开放，支持自由刷题、阶段升级测评与错题巩固！");
             sysConfigMapper.updateById(cfg);
+        }
+        SysConfig notesCfg = sysConfigMapper.selectOne(
+                new LambdaQueryWrapper<SysConfig>().eq(SysConfig::getConfigKey, "app_update_notes").last("LIMIT 1")
+        );
+        if (notesCfg != null && notesCfg.getConfigValue() != null
+                && notesCfg.getConfigValue().startsWith("1. 初始正式版发布，支持六大修仙境界闯关")) {
+            notesCfg.setConfigValue("1. 初始正式版发布，支持初一至高三全阶段闯关与错题巩固\n2. 支持在线检测新版本更新");
+            sysConfigMapper.updateById(notesCfg);
         }
     }
 
@@ -316,9 +396,24 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
         ensureConfig("github_release_repo", "gonglanglang/Chnagguan", "GitHub Release 发布仓库 (owner/repo)");
         ensureConfig("app_latest_version", "1.0.0", "App最新版本号");
         ensureConfig("app_latest_version_code", "100", "App最新版本数字编码(versionCode)");
-        ensureConfig("app_update_notes", "1. 初始正式版发布，支持六大修仙境界闯关与错题巩固\n2. 支持在线检测新版本更新", "App最新版本更新日志");
+        ensureConfig("app_update_notes", "1. 初始正式版发布，支持初一至高三全阶段闯关与错题巩固\n2. 支持在线检测新版本更新", "App最新版本更新日志（最多2500字）");
         ensureConfig("app_download_url", "", "App最新APK下载地址");
         ensureConfig("app_force_update", "false", "App是否强制更新");
+        ensureConfig("oss_custom_domain", "", "阿里云 OSS 自定义加速域名（绑定 CNAME 后客户端直连 OSS 高速下载 APK）");
+    }
+
+    private void syncOssCustomDomain() {
+        SysConfig cfg = sysConfigMapper.selectOne(
+                new LambdaQueryWrapper<SysConfig>().eq(SysConfig::getConfigKey, "oss_custom_domain").last("LIMIT 1")
+        );
+        if (cfg != null && cfg.getConfigValue() != null && !cfg.getConfigValue().isBlank()) {
+            try {
+                ossService.setRuntimeCustomDomain(cfg.getConfigValue());
+                log.info("Loaded runtime OSS custom domain from sys_config: {}", ossService.getEffectiveCustomDomain());
+            } catch (Exception e) {
+                log.warn("Ignored invalid sys_config.oss_custom_domain '{}': {}", cfg.getConfigValue(), e.getMessage());
+            }
+        }
     }
 
     private void ensureAiConfigs() {

@@ -102,7 +102,7 @@ public class DataSeedRunner implements ApplicationRunner {
         insertConfig("guest_mode_enabled", "true", "是否允许学生端免登录游客试玩第1章");
         insertConfig("default_question_count", "3", "新关卡默认每次抽题数");
         insertConfig("default_pass_count", "2", "新关卡默认最少答对过关数");
-        insertConfig("app_notice", "修仙闯关开启：练气至化神六大境界，学成可挑战进阶考核！", "前台首页公告文案");
+        insertConfig("app_notice", "初一至高三全章节已开放，支持自由刷题、阶段升级测评与错题巩固！", "前台首页公告文案");
     }
 
     private void insertConfig(String key, String value, String desc) {
@@ -211,10 +211,10 @@ public class DataSeedRunner implements ApplicationRunner {
             return;
         }
         LocalDateTime now = LocalDateTime.now();
-        AppUser s1 = createDemoUser("stu_linxiaoyu", "林小雨", "13800138001", "g7", "lianqi", 14, now.minusHours(1), "练气重点跟进弟子");
-        AppUser s2 = createDemoUser("stu_chenziyu", "陈子轩", "13800138002", "g8", "zhuji", 28, now.minusHours(3), "筑基期，可压制境界重温练气");
-        AppUser s3 = createDemoUser("stu_wangshiqi", "王诗琪", "13800138003", "h1", "jiaying", 6, now.minusDays(1), "初入假婴境");
-        AppUser s4 = createDemoUser("stu_zhaoming", "赵明哲", "13800138004", "h3", "huashen", 65, now.minusMinutes(25), "化神巅峰弟子");
+        AppUser s1 = createDemoUser("stu_linxiaoyu", "林小雨", "13800138001", "g7", "lianqi", 14, now.minusHours(1), "初一重点跟进学生");
+        AppUser s2 = createDemoUser("stu_chenziyu", "陈子轩", "13800138002", "g8", "zhuji", 28, now.minusHours(3), "初二阶段，可回刷初一巩固基础");
+        AppUser s3 = createDemoUser("stu_wangshiqi", "王诗琪", "13800138003", "h1", "jiaying", 6, now.minusDays(1), "初入高一阶段");
+        AppUser s4 = createDemoUser("stu_zhaoming", "赵明哲", "13800138004", "h3", "huashen", 65, now.minusMinutes(25), "高三冲刺阶段");
 
         List<EduGate> allGates = gateMapper.selectList(null);
         if (!allGates.isEmpty()) {

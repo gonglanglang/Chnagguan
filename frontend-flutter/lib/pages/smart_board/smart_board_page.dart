@@ -499,7 +499,9 @@ class _SmartBoardPageState extends State<SmartBoardPage>
                         final rec = _savedRecords[index];
                         final isCurrent = rec.id == _boardId;
                         return GglComicPanel(
-                          color: isCurrent ? colors.muted : colors.paper,
+                          color: isCurrent
+                              ? AppTheme.mutedSurfaceColor(itemCtx)
+                              : AppTheme.surfaceColor(itemCtx),
                           padding: const EdgeInsets.all(10),
                           shadowOffset: const Offset(2, 2),
                           onTap: () {
@@ -1500,11 +1502,7 @@ class _SmartBoardPageState extends State<SmartBoardPage>
       child: Container(
         height: 31,
         padding: const EdgeInsets.symmetric(horizontal: 9),
-        decoration: BoxDecoration(
-          color: colors.muted,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: colors.outline, width: 1.4),
-        ),
+        decoration: AppTheme.insetBoxDecoration(context, radius: 8),
         child: Row(
           children: [
             Expanded(
@@ -1513,7 +1511,7 @@ class _SmartBoardPageState extends State<SmartBoardPage>
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: colors.ink,
+                  color: AppTheme.inkColor(context),
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
@@ -1596,12 +1594,7 @@ class _SmartBoardPageState extends State<SmartBoardPage>
     );
 
     return Container(
-      decoration: BoxDecoration(
-        color: colors.paper,
-        border: Border(
-          bottom: BorderSide(color: colors.outline, width: colors.borderWidth),
-        ),
-      ),
+      decoration: AppTheme.barDecoration(context, bottomBorder: true),
       child: SafeArea(
         top: true,
         bottom: false,
@@ -1889,12 +1882,7 @@ class _SmartBoardPageState extends State<SmartBoardPage>
     required bool compactLandscape,
   }) {
     return Container(
-      decoration: BoxDecoration(
-        color: colors.paper,
-        border: Border(
-          top: BorderSide(color: colors.outline, width: colors.borderWidth),
-        ),
-      ),
+      decoration: AppTheme.barDecoration(context, topBorder: true),
       child: SafeArea(
         top: false,
         bottom: true,
@@ -1932,8 +1920,8 @@ class _SmartBoardPageState extends State<SmartBoardPage>
                                 color: (_tool == BoardToolMode.pen ||
                                             _isShapeTool) &&
                                         _activeColor == c
-                                    ? colors.accent
-                                    : colors.outline,
+                                    ? AppTheme.accentColor(context)
+                                    : AppTheme.borderColor(context),
                                 width: (_tool == BoardToolMode.pen ||
                                             _isShapeTool) &&
                                         _activeColor == c
@@ -2056,7 +2044,7 @@ class _SmartBoardPageState extends State<SmartBoardPage>
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: overlayStyle,
       child: Scaffold(
-        backgroundColor: colors.paper,
+        backgroundColor: AppTheme.surfaceColor(context),
         body: Column(
           children: [
             // 1. 顶部安全区满铺操作栏
@@ -2316,10 +2304,11 @@ class _CaptureOptionTile extends StatelessWidget {
           Container(
             width: 36,
             height: 36,
-            decoration: BoxDecoration(
+            decoration: AppTheme.insetBoxDecoration(
+              context,
               color: accent,
-              borderRadius: BorderRadius.circular(9),
-              border: Border.all(color: colors.outline, width: 1.8),
+              borderColor: AppTheme.isForui(context) ? accent : null,
+              radius: 9,
             ),
             child: Icon(icon, size: 19, color: colors.onFill(accent)),
           ),
@@ -2446,7 +2435,7 @@ class _ManualProblemSheetState extends State<_ManualProblemSheet> {
         if (previewStem.isNotEmpty) ...[
           const SizedBox(height: 10),
           GglComicPanel(
-            color: colors.muted,
+            color: AppTheme.mutedSurfaceColor(context),
             padding: const EdgeInsets.all(10),
             shadowOffset: const Offset(1.5, 1.5),
             child: Column(

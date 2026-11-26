@@ -73,6 +73,7 @@ class GglAppBar extends StatelessWidget implements PreferredSizeWidget {
                       titleAlignment:
                           centerTitle ? Alignment.center : Alignment.centerLeft,
                       style: FHeaderStyleDelta.delta(
+                        constraints: const BoxConstraints.tightFor(height: 56),
                         padding: EdgeInsetsGeometryDelta.value(EdgeInsets.zero),
                       ),
                       title: titleWidget,
@@ -81,6 +82,7 @@ class GglAppBar extends StatelessWidget implements PreferredSizeWidget {
                     )
                   : FHeader(
                       style: FHeaderStyleDelta.delta(
+                        constraints: const BoxConstraints.tightFor(height: 56),
                         padding: EdgeInsetsGeometryDelta.value(EdgeInsets.zero),
                       ),
                       title: titleWidget,
@@ -377,6 +379,7 @@ class GglButton extends StatelessWidget {
     final effectiveTap = loading ? null : onPressed;
 
     if (AppTheme.isForui(context)) {
+      final fColors = FTheme.of(context).colors;
       final fVariant = switch (variant) {
         WelkButtonVariant.primary => FButtonVariant.primary,
         WelkButtonVariant.secondary => FButtonVariant.outline,
@@ -393,25 +396,93 @@ class GglButton extends StatelessWidget {
               WelkButtonSize.medium => FButtonSizeVariant.md,
               WelkButtonSize.large => FButtonSizeVariant.lg,
             };
+      final pad = compact
+          ? const EdgeInsets.symmetric(horizontal: 10, vertical: 6)
+          : switch (size) {
+              WelkButtonSize.small =>
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              WelkButtonSize.medium =>
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              WelkButtonSize.large =>
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+            };
+      final minHeight = compact
+          ? 30.0
+          : switch (size) {
+              WelkButtonSize.small => 34.0,
+              WelkButtonSize.medium => 40.0,
+              WelkButtonSize.large => 46.0,
+            };
+      final Color? customBg = switch (variant) {
+        WelkButtonVariant.success => const Color(0xFF10B981),
+        WelkButtonVariant.warning => const Color(0xFFF59E0B),
+        _ => null,
+      };
+      final Color? customFg = switch (variant) {
+        WelkButtonVariant.success => Colors.white,
+        WelkButtonVariant.warning => const Color(0xFF18181B),
+        _ => null,
+      };
+      final styleDelta = FButtonStyleDelta.delta(
+        decoration: customBg != null
+            ? FVariantsDelta.delta([
+                FVariantOperation.all(
+                  DecorationDelta.value(
+                    BoxDecoration(
+                      color: effectiveTap == null
+                          ? customBg.withValues(alpha: 0.45)
+                          : customBg,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ])
+            : null,
+        contentStyle: FButtonContentStyleDelta.delta(
+          constraints: BoxConstraints(minHeight: minHeight),
+          padding: EdgeInsetsGeometryDelta.value(pad),
+          spacing: compact ? 4 : 6,
+          textStyle: FVariantsDelta.delta([
+            FVariantOperation.all(
+              customFg != null
+                  ? TextStyleDelta.delta(color: customFg, height: 1.25)
+                  : const TextStyleDelta.delta(height: 1.25),
+            ),
+          ]),
+          iconStyle: customFg != null
+              ? FVariantsDelta.delta([
+                  FVariantOperation.all(
+                    IconThemeDataDelta.delta(color: customFg),
+                  ),
+                ])
+              : null,
+        ),
+      );
       return FButton(
         variant: fVariant,
         size: fSize,
+        style: styleDelta,
         mainAxisSize: MainAxisSize.min,
         onPress: effectiveTap,
         prefix: loading
-            ? const SizedBox(
+            ? SizedBox(
                 width: 13,
                 height: 13,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: customFg ?? fColors.primaryForeground,
+                ),
               )
             : (icon != null ? Icon(icon, size: compact ? 14 : 16) : null),
         child: Text(
           label,
           maxLines: 1,
+          softWrap: false,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: compact ? 12 : (size == WelkButtonSize.small ? 13 : 14),
             fontWeight: FontWeight.w600,
+            height: 1.25,
             fontFamilyFallback: AppTheme.cjkFontFallback,
           ),
         ),
@@ -1160,4 +1231,154 @@ Future<T?> showGglBottomSheet<T>({
       );
     },
   );
+}
+
+/// 皮肤自适应折叠面板：
+/// - `forui` -> [FAccordion] + [FAccordionItem]（包裹在现代卡片容器中）；
+/// - `skribble` -> 手绘线稿可展开面板；
+/// - `welkui` -> [WelkAccordion]。
+class GglAccordion extends StatefulWidget {
+  const GglAccordion({
+    super.key,
+    required this.title,
+    required this.child,
+    this.initiallyExpanded = false,
+  });
+
+  final String title;
+  final Widget child;
+  final bool initiallyExpanded;
+
+  @override
+  State<GglAccordion> createState() => _GglAccordionState();
+}
+
+class _GglAccordionState extends State<GglAccordion> {
+  late bool _expanded;
+
+  @override
+  void initState() {
+    super.initState();
+    _expanded = widget.initiallyExpanded;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (AppTheme.isForui(context)) {
+      final fColors = FTheme.of(context).colors;
+      return Container(
+        decoration: BoxDecoration(
+          color: fColors.card,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: fColors.border, width: 1),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        child: FAccordion(
+          style: FAccordionStyleDelta.delta(
+            titlePadding: EdgeInsetsGeometryDelta.value(
+              const EdgeInsets.symmetric(vertical: 13),
+            ),
+            childPadding: EdgeInsetsGeometryDelta.value(
+              const EdgeInsets.only(bottom: 14),
+            ),
+          ),
+          children: [
+            FAccordionItem(
+              initiallyExpanded: widget.initiallyExpanded,
+              dividerBuilder: (_, _) => const SizedBox.shrink(),
+              title: Text(
+                widget.title,
+                style: TextStyle(
+                  color: fColors.foreground,
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w600,
+                  fontFamilyFallback: AppTheme.cjkFontFallback,
+                ),
+              ),
+              child: DefaultTextStyle.merge(
+                style: TextStyle(
+                  color: fColors.mutedForeground,
+                  fontSize: 13.5,
+                  height: 1.6,
+                  fontFamilyFallback: AppTheme.cjkFontFallback,
+                ),
+                child: widget.child,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (AppTheme.isSkribble(context)) {
+      final wired = WiredTheme.of(context);
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => setState(() => _expanded = !_expanded),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: RoughBoxDecoration(
+            drawConfig: wired.drawConfig,
+            shape: RoughBoxShape.roundedRectangle,
+            borderRadius: BorderRadius.circular(12),
+            borderStyle: RoughDrawingStyle(
+              width: wired.strokeWidth,
+              color: wired.borderColor,
+            ),
+            fillStyle: RoughDrawingStyle(color: wired.fillColor),
+            filler: SolidFiller(FillerConfig.build()),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: TextStyle(
+                        color: wired.textColor,
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w800,
+                        fontFamilyFallback: AppTheme.cjkFontFallback,
+                      ),
+                    ),
+                  ),
+                  AnimatedRotation(
+                    turns: _expanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 180),
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: wired.textColor,
+                    ),
+                  ),
+                ],
+              ),
+              if (_expanded) ...[
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: WiredDivider(),
+                ),
+                DefaultTextStyle.merge(
+                  style: TextStyle(
+                    color: wired.textColor,
+                    fontSize: 13.5,
+                    height: 1.6,
+                    fontFamilyFallback: AppTheme.cjkFontFallback,
+                  ),
+                  child: widget.child,
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
+    return WelkAccordion(
+      initiallyExpanded: widget.initiallyExpanded,
+      title: Text(widget.title),
+      child: widget.child,
+    );
+  }
 }

@@ -66,6 +66,25 @@ class UpdateUtils {
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
+  static String formatDownloadSpeed(double bytesPerSec) {
+    if (bytesPerSec <= 0) return '';
+    if (bytesPerSec < 1024 * 1024) {
+      final kb = (bytesPerSec / 1024).round();
+      return '${kb < 1 ? 1 : kb} KB/s';
+    }
+    return '${(bytesPerSec / (1024 * 1024)).toStringAsFixed(1)} MB/s';
+  }
+
+  static String downloadChannelLabel(String channel) {
+    return switch (channel.trim().toUpperCase()) {
+      'OSS_DIRECT' => 'OSS 直连高速通道',
+      'SERVER_PROXY' => '应用内安全中转通道',
+      'EXTERNAL_DIRECT' => '直链高速通道',
+      'LOCAL' => '应用内下载通道',
+      _ => '应用内直连更新',
+    };
+  }
+
   static int computeDownloadPercent(int downloadedBytes, int totalBytes) {
     if (totalBytes <= 0) return 0;
     final safeDownloaded = downloadedBytes < 0 ? 0 : downloadedBytes;

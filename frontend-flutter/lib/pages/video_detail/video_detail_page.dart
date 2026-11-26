@@ -212,7 +212,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     return Scaffold(
       backgroundColor: AppTheme.pageBackground(context),
       appBar: GglAppBar(
-        title: detail?.series.title ?? '修炼课堂',
+        title: detail?.series.title ?? '数学课堂',
         showBack: true,
       ),
       body: Column(
@@ -259,7 +259,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                             GglStatusTag(
                               label: detail.series.realmName.isNotEmpty
                                   ? detail.series.realmName
-                                  : '全境界',
+                                  : '全部年级',
                               variant: WelkBadgeVariant.success,
                             ),
                           ],
@@ -324,7 +324,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                               Padding(
                                 padding: const EdgeInsets.only(bottom: 8),
                                 child: GglComicPanel(
-                                  color: colors.muted,
+                                  color: AppTheme.mutedSurfaceColor(context),
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 12,
                                     vertical: 10,
@@ -338,7 +338,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                                             ? Icons.image_rounded
                                             : Icons.description_rounded,
                                         size: 20,
-                                        color: colors.ink,
+                                        color: AppTheme.inkColor(context),
                                       ),
                                       const SizedBox(width: 10),
                                       Expanded(
@@ -351,7 +351,8 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                               style: TextStyle(
-                                                color: colors.ink,
+                                                color:
+                                                    AppTheme.inkColor(context),
                                                 fontSize: 13.5,
                                                 fontWeight: FontWeight.w700,
                                               ),
@@ -432,6 +433,8 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
         : (detail?.series.coverImageUrl ?? '');
 
     if (!isAuth) {
+      final isForui = AppTheme.isForui(context);
+      final accent = AppTheme.accentColor(context);
       return GestureDetector(
         onTap: _requireLoginToWatch,
         child: Container(
@@ -441,8 +444,8 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
             color: const Color(0xFF0F172A),
             border: Border(
               bottom: BorderSide(
-                color: colors.outline,
-                width: colors.borderWidth,
+                color: isForui ? const Color(0xFF27272A) : colors.outline,
+                width: isForui ? 1 : colors.borderWidth,
               ),
             ),
           ),
@@ -463,15 +466,15 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                     Container(
                       width: 60,
                       height: 60,
-                      decoration: BoxDecoration(
-                        color: colors.accent,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: colors.outline, width: 2.5),
+                      decoration: AppTheme.badgeCircleDecoration(
+                        context,
+                        color: accent,
+                        borderColor: isForui ? accent : null,
                       ),
                       child: Icon(
                         Icons.play_arrow_rounded,
                         size: 36,
-                        color: colors.onFill(colors.accent),
+                        color: AppTheme.onAccentColor(context),
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -566,6 +569,9 @@ class _LessonTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = WelkTheme.of(context).resolveColors(context);
+    final ink = AppTheme.inkColor(context);
+    final accent = AppTheme.accentColor(context);
+    final isForui = AppTheme.isForui(context);
     final thumb =
         (lesson.coverImageUrl != null && lesson.coverImageUrl!.isNotEmpty)
             ? lesson.coverImageUrl!
@@ -577,15 +583,15 @@ class _LessonTile extends StatelessWidget {
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: active
-                ? colors.accent.withValues(alpha: colors.isDark ? 0.25 : 0.35)
-                : colors.muted,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: colors.outline,
-              width: active ? colors.borderWidth : 1.4,
+          decoration: AppTheme.selectableTileDecoration(
+            context,
+            selected: active,
+            selectedFill: accent.withValues(
+              alpha: isForui
+                  ? (colors.isDark ? 0.18 : 0.10)
+                  : (colors.isDark ? 0.25 : 0.35),
             ),
+            unselectedFill: AppTheme.mutedSurfaceColor(context),
           ),
           child: Row(
             children: [
@@ -612,7 +618,7 @@ class _LessonTile extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: colors.ink,
+                    color: ink,
                     fontSize: 14,
                     fontWeight: active ? FontWeight.w800 : FontWeight.w600,
                   ),
@@ -632,7 +638,7 @@ class _LessonTile extends StatelessWidget {
               Icon(
                 Icons.play_circle_fill_rounded,
                 size: 20,
-                color: active ? colors.ink : AppTheme.mutedText(context),
+                color: active ? ink : AppTheme.mutedText(context),
               ),
             ],
           ),
@@ -650,20 +656,24 @@ class _IndexBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = WelkTheme.of(context).resolveColors(context);
+    final accent = AppTheme.accentColor(context);
+    final isForui = AppTheme.isForui(context);
     return Container(
       width: 30,
       height: 30,
       alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: active ? colors.accent : colors.paper,
-        borderRadius: BorderRadius.circular(7),
-        border: Border.all(color: colors.outline, width: 1.5),
+      decoration: AppTheme.insetBoxDecoration(
+        context,
+        color: active ? accent : AppTheme.surfaceColor(context),
+        borderColor: isForui && active ? accent : null,
+        radius: 7,
       ),
       child: Text(
         '$index',
         style: TextStyle(
-          color: active ? colors.onFill(colors.accent) : colors.ink,
+          color: active
+              ? AppTheme.onAccentColor(context)
+              : AppTheme.inkColor(context),
           fontSize: 12.5,
           fontWeight: FontWeight.w800,
         ),

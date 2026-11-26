@@ -690,7 +690,7 @@ onBeforeUnmount(() => {
           <div>
             <div class="flex items-center gap-2">
               <h2 class="text-base font-bold text-slate-800">{{ series?.title || "教学系列" }}</h2>
-              <el-tag size="small" type="success">{{ series?.realmName || "全境界通用" }}</el-tag>
+              <el-tag size="small" type="success">{{ series?.realmName || "全年级通用" }}</el-tag>
               <el-tag size="small" type="info">共 {{ lessons.length }} 节</el-tag>
             </div>
             <p class="mt-1 text-xs text-slate-500">{{ series?.intro || "暂无介绍" }}</p>

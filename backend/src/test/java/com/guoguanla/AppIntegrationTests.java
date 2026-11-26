@@ -220,9 +220,9 @@ class AppIntegrationTests {
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "realmName", "练气",
+                                "realmName", "初一",
                                 "difficultyLabel", "难度一 · 基础",
-                                "description", "测试进阶条件",
+                                "description", "测试升级测评条件",
                                 "unlockGates", 1,
                                 "examQuestionCount", 3,
                                 "examPassScore", 60
@@ -289,6 +289,6 @@ class AppIntegrationTests {
                         .header("Authorization", "Bearer " + studentToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.realmCode").value("yuanying"))
-                .andExpect(jsonPath("$.data.realmName").value("元婴"));
+                .andExpect(jsonPath("$.data.realmName").value("高二"));
     }
 }

@@ -9,7 +9,7 @@ import lombok.Data;
 @Data
 public class RealmConfigReq {
 
-    @NotBlank(message = "境界名称不能为空")
+    @NotBlank(message = "学习阶段名称不能为空")
     private String realmName;
 
     @NotBlank(message = "难度标签不能为空")

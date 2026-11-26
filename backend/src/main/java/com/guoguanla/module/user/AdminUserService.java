@@ -223,7 +223,7 @@ public class AdminUserService {
                     EduChapter ch = r.getChapterId() != null ? chapterMap.get(r.getChapterId()) : null;
                     EduGate gt = r.getGateId() != null ? gateMap.get(r.getGateId()) : null;
                     String title = "ADVANCE_EXAM".equals(r.getMode())
-                            ? "境界进阶考核"
+                            ? "阶段升级测评"
                             : (ch != null ? ch.getName() : "错题重做");
                     String gateLabel = "ADVANCE_EXAM".equals(r.getMode())
                             ? (realmMap.containsKey(r.getRealmCode()) ? realmMap.get(r.getRealmCode()).getRealmName() : "-")
@@ -511,7 +511,7 @@ public class AdminUserService {
         }
         EduRealm targetRealm = realmHelper.findByRealmCode(realmCode);
         if (targetRealm == null) {
-            throw new BizException(ErrorCode.BAD_REQUEST, "无效的境界编码: " + realmCode);
+            throw new BizException(ErrorCode.BAD_REQUEST, "无效的学习阶段编码: " + realmCode);
         }
         user.setRealmCode(targetRealm.getRealmCode());
         user.setGradeCode(targetRealm.getGradeCode());

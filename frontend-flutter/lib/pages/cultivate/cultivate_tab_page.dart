@@ -154,7 +154,8 @@ class _CultivateTabPageState extends State<CultivateTabPage> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = WelkTheme.of(context).resolveColors(context);
+    final ink = AppTheme.inkColor(context);
+    final isForui = AppTheme.isForui(context);
     final realms = context.watch<UserProvider>().realms;
     final cache = context.read<GlobalCache>();
     final showInitialSkeleton =
@@ -163,7 +164,7 @@ class _CultivateTabPageState extends State<CultivateTabPage> {
     return Scaffold(
       backgroundColor: AppTheme.pageBackground(context),
       appBar: const GglAppBar(
-        title: '修炼课堂',
+        title: '数学课堂',
         centerTitle: false,
       ),
       body: RefreshIndicator(
@@ -219,10 +220,10 @@ class _CultivateTabPageState extends State<CultivateTabPage> {
                                         item.coverImageUrl,
                                         fit: BoxFit.cover,
                                         errorBuilder: (_, _, _) =>
-                                            _CoursePlaceholder(colors: colors),
+                                            const _CoursePlaceholder(),
                                       )
                                     else
-                                      _CoursePlaceholder(colors: colors),
+                                      const _CoursePlaceholder(),
                                     Positioned(
                                       right: 10,
                                       bottom: 8,
@@ -244,7 +245,7 @@ class _CultivateTabPageState extends State<CultivateTabPage> {
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
-                                        color: colors.ink,
+                                        color: ink,
                                         fontSize: 15.5,
                                         fontWeight: FontWeight.w800,
                                       ),
@@ -283,11 +284,13 @@ class _CultivateTabPageState extends State<CultivateTabPage> {
                             margin: const EdgeInsets.symmetric(horizontal: 3),
                             decoration: BoxDecoration(
                               color: i == _featuredIndex
-                                  ? colors.accent
-                                  : colors.muted,
+                                  ? AppTheme.accentColor(context)
+                                  : AppTheme.mutedSurfaceColor(context),
                               borderRadius: BorderRadius.circular(4),
-                              border:
-                                  Border.all(color: colors.outline, width: 1.2),
+                              border: Border.all(
+                                color: AppTheme.borderColor(context),
+                                width: isForui ? 1 : 1.2,
+                              ),
                             ),
                           ),
                       ],
@@ -350,14 +353,14 @@ class _CultivateTabPageState extends State<CultivateTabPage> {
                               Text(
                                 '暂无教学课程',
                                 style: TextStyle(
-                                  color: colors.ink,
+                                  color: ink,
                                   fontSize: 15,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '切换其他境界查看，或等待教研老师上传新课',
+                                '切换其他年级查看，或等待教研老师上传新课',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   color: AppTheme.mutedText(context),
@@ -380,12 +383,10 @@ class _CultivateTabPageState extends State<CultivateTabPage> {
                               Container(
                                 width: 108,
                                 height: 70,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: colors.outline,
-                                    width: 1.6,
-                                  ),
+                                decoration: AppTheme.insetBoxDecoration(
+                                  context,
+                                  radius: 8,
+                                  width: isForui ? 1 : 1.6,
                                 ),
                                 clipBehavior: Clip.antiAlias,
                                 child: item.coverImageUrl.isNotEmpty
@@ -393,9 +394,9 @@ class _CultivateTabPageState extends State<CultivateTabPage> {
                                         item.coverImageUrl,
                                         fit: BoxFit.cover,
                                         errorBuilder: (_, _, _) =>
-                                            _CoursePlaceholder(colors: colors),
+                                            const _CoursePlaceholder(),
                                       )
-                                    : _CoursePlaceholder(colors: colors),
+                                    : const _CoursePlaceholder(),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -407,7 +408,7 @@ class _CultivateTabPageState extends State<CultivateTabPage> {
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
-                                        color: colors.ink,
+                                        color: ink,
                                         fontSize: 15,
                                         fontWeight: FontWeight.w800,
                                       ),
@@ -422,7 +423,7 @@ class _CultivateTabPageState extends State<CultivateTabPage> {
                                         Text(
                                           item.realmName.isNotEmpty
                                               ? item.realmName
-                                              : '全境界',
+                                              : '全部年级',
                                           style: TextStyle(
                                             color: AppTheme.mutedText(context),
                                             fontSize: 12,
@@ -486,19 +487,17 @@ class _CultivateTabPageState extends State<CultivateTabPage> {
 }
 
 class _CoursePlaceholder extends StatelessWidget {
-  const _CoursePlaceholder({required this.colors});
-
-  final WelkColors colors;
+  const _CoursePlaceholder();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: colors.accent.withValues(alpha: 0.3),
+      color: AppTheme.accentColor(context).withValues(alpha: 0.22),
       alignment: Alignment.center,
       child: Icon(
         Icons.play_circle_outline_rounded,
         size: 32,
-        color: colors.ink,
+        color: AppTheme.inkColor(context),
       ),
     );
   }

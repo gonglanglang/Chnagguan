@@ -50,6 +50,7 @@ public class AppVersionController {
             AliyunOssService.OssObjectStream stream = action.ossStream();
             ResponseEntity.BodyBuilder builder = ResponseEntity.status(stream.statusCode())
                     .header(HttpHeaders.CACHE_CONTROL, "no-store, no-cache, must-revalidate")
+                    .header("X-Accel-Buffering", "no")
                     .header(HttpHeaders.CONTENT_TYPE, stream.contentType())
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + action.fileName() + "\"")
                     .header(HttpHeaders.ACCEPT_RANGES, "bytes");
@@ -61,7 +62,12 @@ public class AppVersionController {
             }
             StreamingResponseBody body = out -> {
                 try (InputStream in = stream.body()) {
-                    in.transferTo(out);
+                    byte[] buf = new byte[65536];
+                    int read;
+                    while ((read = in.read(buf)) != -1) {
+                        out.write(buf, 0, read);
+                    }
+                    out.flush();
                 }
             };
             return builder.body(body);

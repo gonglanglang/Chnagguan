@@ -25,7 +25,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import java.util.List;
 import java.util.Map;
 
-@Tag(name = "管理后台-境界与系统配置")
+@Tag(name = "管理后台-阶段与系统配置")
 @RestController
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
@@ -34,14 +34,14 @@ public class AdminSystemController {
     private final AdminSystemService systemService;
     private final AppVersionService appVersionService;
 
-    @Operation(summary = "修仙境界与进阶考核规则列表")
+    @Operation(summary = "学习阶段与升级测评规则列表")
     @GetMapping("/realms")
     public Result<List<RealmConfigVO>> listRealms() {
         return Result.ok(systemService.listRealms());
     }
 
-    @Operation(summary = "保存修仙境界与进阶抽题/分数线配置")
-    @OperLog(module = "REALM", action = "修改境界进阶配置")
+    @Operation(summary = "保存学习阶段与升级抽题/分数线配置")
+    @OperLog(module = "REALM", action = "修改阶段升级配置")
     @PutMapping("/realms/{id}")
     public Result<Void> updateRealm(@PathVariable Long id, @Valid @RequestBody RealmConfigReq req) {
         systemService.updateRealm(id, req);
