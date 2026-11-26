@@ -31,6 +31,7 @@ public class AppAuthService {
     private final UserGateProgressMapper gateProgressMapper;
     private final AppBankService bankService;
     private final RealmHelperService realmHelper;
+    private final CaptchaService captchaService;
 
     @Transactional(rollbackFor = Exception.class)
     public AppUserProfileVO.AuthVO login(AppLoginReq req) {
@@ -61,6 +62,8 @@ public class AppAuthService {
 
     @Transactional(rollbackFor = Exception.class)
     public AppUserProfileVO.AuthVO register(AppLoginReq.RegisterReq req) {
+        captchaService.verifyAndConsume(req.getCaptchaKey(), req.getCaptchaCode());
+
         String username = req.getUsername().trim();
         long exists = userMapper.selectCount(
                 new LambdaQueryWrapper<AppUser>().eq(AppUser::getUsername, username)

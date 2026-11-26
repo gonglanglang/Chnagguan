@@ -57,6 +57,14 @@ public class AppUserProfileVO {
 
     @Data
     @Builder
+    public static class CaptchaVO {
+        private String captchaKey;
+        private String imageBase64;
+        private Integer expireSeconds;
+    }
+
+    @Data
+    @Builder
     public static class HomeSummaryVO {
         private boolean guestModeEnabled;
         private String appNotice;

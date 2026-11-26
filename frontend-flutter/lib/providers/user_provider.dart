@@ -156,6 +156,8 @@ class UserProvider extends ChangeNotifier {
     required String password,
     required String nickname,
     required String gradeCode,
+    required String captchaKey,
+    required String captchaCode,
   }) async {
     final guestIds = List<int>.from(_guestPassedIds);
     final res = await _api.register(
@@ -163,6 +165,8 @@ class UserProvider extends ChangeNotifier {
       password: password,
       nickname: nickname,
       gradeCode: gradeCode,
+      captchaKey: captchaKey,
+      captchaCode: captchaCode,
       guestPassedGateIds: guestIds,
     );
     await _setSession(res.token, res.profile);

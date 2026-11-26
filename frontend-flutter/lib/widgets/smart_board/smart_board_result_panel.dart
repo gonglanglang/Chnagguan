@@ -34,6 +34,7 @@ class SmartBoardResultPanel extends StatefulWidget {
     required this.onEditProblem,
     required this.onRecropFigure,
     required this.onCloseActiveTab,
+    this.onDrawDiagramToBoard,
     this.onClearHandwritingToSolve,
     this.showClearHandwritingAction = false,
     this.problem,
@@ -62,6 +63,7 @@ class SmartBoardResultPanel extends StatefulWidget {
   final VoidCallback? onEditProblem;
   final VoidCallback? onRecropFigure;
   final VoidCallback? onCloseActiveTab;
+  final ValueChanged<BoardDiagramSpec>? onDrawDiagramToBoard;
   final VoidCallback? onClearHandwritingToSolve;
   final bool showClearHandwritingAction;
 
@@ -87,6 +89,81 @@ class SmartBoardResultPanel extends StatefulWidget {
 
 class _SmartBoardResultPanelState extends State<SmartBoardResultPanel> {
   bool _solutionIdeaExpanded = true;
+  bool _showOriginalPhotoRef = false;
+
+  @override
+  void didUpdateWidget(covariant SmartBoardResultPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.problem?.problemText != widget.problem?.problemText) {
+      _showOriginalPhotoRef = false;
+    }
+  }
+
+  void _openZoomDiagram(BuildContext context, BoardDiagramSpec spec) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: const Color(0xFF0F172A),
+        insetPadding: const EdgeInsets.all(14),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 10, 10, 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      spec.title.isNotEmpty ? spec.title : '题目矢量配图',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  GglButton(
+                    label: '关闭',
+                    variant: WelkButtonVariant.secondary,
+                    compact: true,
+                    onPressed: () => Navigator.of(ctx).pop(),
+                  ),
+                ],
+              ),
+            ),
+            Flexible(
+              child: InteractiveViewer(
+                minScale: 0.8,
+                maxScale: 4.5,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 14),
+                  child: AspectRatio(
+                    aspectRatio: (spec.width > 20 ? spec.width : 320.0) /
+                        (spec.height > 20 ? spec.height : 210.0),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.all(10),
+                      child: CustomPaint(
+                        painter: _SingleDiagramPainter(
+                          spec: spec,
+                          progress: 1.0,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   List<BoardResultTab> get _availableTabs => [
         if (widget.problem != null) BoardResultTab.problem,
@@ -433,44 +510,96 @@ class _SmartBoardResultPanelState extends State<SmartBoardResultPanel> {
           ),
         ),
 
-        // 1:1 题目配图还原区
-        if (widget.extractedFigures.isNotEmpty ||
+        // 题目配图区：优先展示矢量重绘图形（支持一键画到白板与点击放大），原图截图仅作可选对照
+        if (p.diagrams.isNotEmpty ||
+            widget.extractedFigures.isNotEmpty ||
             (widget.hasSourcePhoto && p.hasFigure)) ...[
           const GglDivider(verticalPadding: 10),
           Row(
             children: [
               Expanded(
                 child: Text(
-                  '原题配图（1:1 还原）',
+                  p.diagrams.isNotEmpty && !_showOriginalPhotoRef
+                      ? '题目配图（矢量重绘）'
+                      : '原题配图对照',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: colors.ink,
+                    color: AppTheme.inkColor(context),
                     fontSize: 12.5,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
-              if (widget.extractedFigures.isNotEmpty &&
-                  widget.onTogglePurifyFigures != null) ...[
+              if (p.diagrams.isNotEmpty &&
+                  !_showOriginalPhotoRef &&
+                  widget.onDrawDiagramToBoard != null) ...[
                 GglButton(
-                  label: widget.purifyFigures ? '白板提纯' : '原图',
+                  label: '画到白板',
+                  icon: Icons.draw_rounded,
                   compact: true,
-                  variant: WelkButtonVariant.secondary,
-                  onPressed: widget.onTogglePurifyFigures,
+                  variant: WelkButtonVariant.primary,
+                  onPressed: () =>
+                      widget.onDrawDiagramToBoard!(p.diagrams.first),
                 ),
                 const SizedBox(width: 6),
               ],
-              if (widget.hasSourcePhoto)
+              if (p.diagrams.isNotEmpty && widget.extractedFigures.isNotEmpty) ...[
                 GglButton(
-                  label: '重框配图',
-                  icon: Icons.crop_rounded,
+                  label: _showOriginalPhotoRef ? '矢量重绘' : '原图对照',
                   compact: true,
                   variant: WelkButtonVariant.secondary,
-                  onPressed: widget.onRecropFigure,
+                  onPressed: () => setState(
+                    () => _showOriginalPhotoRef = !_showOriginalPhotoRef,
+                  ),
                 ),
+              ] else if (_showOriginalPhotoRef || p.diagrams.isEmpty) ...[
+                if (widget.extractedFigures.isNotEmpty &&
+                    widget.onTogglePurifyFigures != null) ...[
+                  GglButton(
+                    label: widget.purifyFigures ? '白板提纯' : '原图',
+                    compact: true,
+                    variant: WelkButtonVariant.secondary,
+                    onPressed: widget.onTogglePurifyFigures,
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                if (widget.hasSourcePhoto)
+                  GglButton(
+                    label: '重框配图',
+                    icon: Icons.crop_rounded,
+                    compact: true,
+                    variant: WelkButtonVariant.secondary,
+                    onPressed: widget.onRecropFigure,
+                  ),
+              ],
             ],
           ),
           const SizedBox(height: 8),
-          if (widget.extractedFigures.isNotEmpty)
+          if (p.diagrams.isNotEmpty && !_showOriginalPhotoRef)
+            for (final d in p.diagrams)
+              GestureDetector(
+                onTap: () => _openZoomDiagram(context, d),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _VectorDiagramBox(
+                      spec: d,
+                      progress: widget.revealProgress.clamp(0.0, 1.0),
+                    ),
+                    Text(
+                      '点击矢量图可全屏缩放 · 点「画到白板」可直接添加辅助线',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: AppTheme.mutedText(context),
+                        fontSize: 10.8,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                  ],
+                ),
+              )
+          else if (widget.extractedFigures.isNotEmpty)
             for (final fig in widget.extractedFigures) ...[
               GestureDetector(
                 onTap: () => _openZoomFigure(
@@ -521,23 +650,11 @@ class _SmartBoardResultPanelState extends State<SmartBoardResultPanel> {
             ]
           else
             GglButton(
-              label: '手动 1:1 框选题目配图',
+              label: '手动框选题目配图',
               icon: Icons.crop_rounded,
               variant: WelkButtonVariant.secondary,
               onPressed: widget.onRecropFigure,
             ),
-        ] else if (widget.hasSourcePhoto) ...[
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: GglButton(
-              label: '从原图 1:1 提取配图',
-              icon: Icons.crop_rounded,
-              compact: true,
-              variant: WelkButtonVariant.secondary,
-              onPressed: widget.onRecropFigure,
-            ),
-          ),
         ],
 
         if (p.knownConditions.isNotEmpty || p.targets.isNotEmpty) ...[

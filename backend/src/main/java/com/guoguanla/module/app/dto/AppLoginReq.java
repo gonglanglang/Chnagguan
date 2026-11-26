@@ -33,6 +33,14 @@ public class AppLoginReq {
         @NotBlank(message = "请选择所在年级")
         private String gradeCode;
         private String realmCode;
+
+        @NotBlank(message = "验证码标识缺失，请刷新图形验证码")
+        private String captchaKey;
+
+        @NotBlank(message = "请输入图形验证码")
+        @Size(min = 4, max = 8, message = "请输入 4 位图形验证码")
+        private String captchaCode;
+
         private List<Long> guestPassedGateIds;
     }
 

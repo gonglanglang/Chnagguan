@@ -374,13 +374,24 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
         }
     }
 
+    private static final String DEFAULT_RICH_NOTICE =
+            "1. 全年级同步闯关：初一至高三 51 章 204 关自由开放练习，支持基础关 → 下一关 → 下一章 → 跨年级连续闯关；\n"
+                    + "2. 精绘数学矢量配图：526 道几何、函数、统计与立体几何题目均配有清晰矢量图，点击可全屏缩放；\n"
+                    + "3. AI 智能手写画板：支持拍照与手写识题，自动矢量重绘几何配图并提供思路引导、过程诊断与解题核对；\n"
+                    + "4. 错题本高效巩固：闯关错题自动收录，重做答对即标记掌握并移出。";
+
     private void upgradeNoticeCopy() {
         SysConfig cfg = sysConfigMapper.selectOne(
                 new LambdaQueryWrapper<SysConfig>().eq(SysConfig::getConfigKey, "app_notice").last("LIMIT 1")
         );
-        if (cfg != null && cfg.getConfigValue() != null && containsCultivationKeyword(cfg.getConfigValue())) {
-            cfg.setConfigValue("初一至高三全章节已开放，支持自由刷题、阶段升级测评与错题巩固！");
-            sysConfigMapper.updateById(cfg);
+        if (cfg != null && cfg.getConfigValue() != null) {
+            String cur = cfg.getConfigValue().trim();
+            if (containsCultivationKeyword(cur)
+                    || "初一至高三全章节已开放，支持自由刷题、阶段升级测评与错题巩固！".equals(cur)
+                    || cur.isEmpty()) {
+                cfg.setConfigValue(DEFAULT_RICH_NOTICE);
+                sysConfigMapper.updateById(cfg);
+            }
         }
         SysConfig notesCfg = sysConfigMapper.selectOne(
                 new LambdaQueryWrapper<SysConfig>().eq(SysConfig::getConfigKey, "app_update_notes").last("LIMIT 1")

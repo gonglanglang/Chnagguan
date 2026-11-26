@@ -20,6 +20,7 @@ import '../../widgets/ggl_comic_panel.dart';
 import '../../widgets/ggl_feedback.dart';
 import '../../widgets/ggl_skin_widgets.dart';
 import '../../widgets/math_text.dart';
+import '../../widgets/smart_board/board_diagram_painter.dart';
 import '../../widgets/smart_board/board_handwriting_validator.dart';
 import '../../widgets/smart_board/board_models.dart';
 import '../../widgets/smart_board/photo_figure_extractor.dart';
@@ -1072,7 +1073,7 @@ class _SmartBoardPageState extends State<SmartBoardPage>
         _croppedPhotoBytes = cropped.bytes;
         _extractedFigures = const [];
         _busyAi = true;
-        _busyAiLabel = '正在识别题目与 1:1 提取配图...';
+        _busyAiLabel = '正在识别题目并矢量重绘配图...';
       });
 
       final result = await api.recognizeMathProblem(
@@ -1082,14 +1083,25 @@ class _SmartBoardPageState extends State<SmartBoardPage>
       );
       if (!mounted) return;
 
-      // 2. 若 AI 返回配图归一化框坐标，从原裁剪图直接 1:1 精准切割并提纯
+      // 2. 若 AI 返回可选原图配图框，提取作为「原图对照」备用（主展示优先使用矢量重绘 diagrams）
       var figures = await PhotoFigureExtractor.extractFromPhoto(
         cropped.bytes,
         result.figureBoxes,
       );
       if (!mounted) return;
 
+      // 导入新题前自动清空旧手写笔迹（保留 1 步撤销快照以便误触找回）
+      if (_strokes.isNotEmpty || _shapes.isNotEmpty) {
+        _pushUndoCheckpoint();
+      }
       setState(() {
+        _strokes.clear();
+        _shapes.clear();
+        _activeStroke = null;
+        _activeShape = null;
+        _zoom = 1.0;
+        _panX = 0;
+        _panY = 0;
         _problem = result;
         _ideas = null;
         _diagnosis = null;
@@ -1100,12 +1112,15 @@ class _SmartBoardPageState extends State<SmartBoardPage>
         _resultCollapsed = false;
         _resultPanelPos = const Offset(10, 10);
       });
+      if (result.diagrams.isNotEmpty) {
+        _startRevealAnimation();
+      }
       _scheduleDraftSave(immediate: true);
       _showHint(
-        figures.isNotEmpty
-            ? '题目已解析并自动保存，配图已 1:1 还原'
-            : (result.hasFigure
-                ? '题目已解析并保存，可点「重框配图」精准 1:1 框选图形'
+        result.diagrams.isNotEmpty
+            ? '题目已解析，几何配图已矢量重绘（可一键画到白板）'
+            : (figures.isNotEmpty
+                ? '题目已解析并自动保存'
                 : '题目已解析并自动保存'),
       );
     } catch (e) {
@@ -1168,20 +1183,38 @@ class _SmartBoardPageState extends State<SmartBoardPage>
       }
       if (!mounted) return;
 
+      // 识别成功后自动清除原手写题目笔迹（压入 1 条撤销快照以便需要时撤回），留出干净白板直接作答
+      if (_strokes.isNotEmpty || _shapes.isNotEmpty) {
+        _pushUndoCheckpoint();
+      }
       setState(() {
+        _strokes.clear();
+        _shapes.clear();
+        _activeStroke = null;
+        _activeShape = null;
+        _zoom = 1.0;
+        _panX = 0;
+        _panY = 0;
         _problem = result;
         _ideas = null;
         _diagnosis = null;
         _solution = null;
         _croppedPhotoBytes = figures.isNotEmpty ? pngBytes : null;
         _extractedFigures = figures;
-        _recognizedFromHandwriting = true;
+        _recognizedFromHandwriting = false;
         _activeResultTab = BoardResultTab.problem;
         _resultCollapsed = false;
         _resultPanelPos = const Offset(10, 10);
       });
+      if (result.diagrams.isNotEmpty) {
+        _startRevealAnimation();
+      }
       _scheduleDraftSave(immediate: true);
-      _showHint('手写题目已识别并自动保存，可点「清笔迹作答」开始解题');
+      _showHint(
+        result.diagrams.isNotEmpty
+            ? '手写题目已分析并自动清除笔迹，配图已矢量重绘'
+            : '手写题目已分析并自动清除笔迹，直接在白板作答吧',
+      );
     } catch (e) {
       if (mounted) {
         GglFeedback.warning(
@@ -1259,6 +1292,153 @@ class _SmartBoardPageState extends State<SmartBoardPage>
     });
     _scheduleDraftSave(immediate: true);
     _showHint('已 1:1 更新原题配图');
+  }
+
+  /// 将矢量重绘配图直接绘制到白板画布（转为可擦除/可加辅助线的白板图形与笔画）
+  void _stampDiagramToBoard(BoardDiagramSpec spec) {
+    if (spec.primitives.isEmpty) return;
+    _pushUndoCheckpoint();
+
+    final logicalW = spec.width > 20 ? spec.width : 320.0;
+    final logicalH = spec.height > 20 ? spec.height : 210.0;
+    final availW = _canvasSize.width > 0 ? _canvasSize.width : 820.0;
+    final availH = _canvasSize.height > 0 ? _canvasSize.height : 520.0;
+
+    // 优先放置在白板右侧空闲区，避开左侧题目面板
+    final double targetW = math.min(400.0, math.max(240.0, availW * 0.42));
+    final double scale = targetW / logicalW;
+    final double targetH = logicalH * scale;
+    final double screenLeft = availW > 560
+        ? math.min(availW - targetW - 24, math.max(330.0, availW * 0.44))
+        : (availW - targetW) / 2;
+    final double screenTop = math.max(28.0, (availH - targetH) * 0.32);
+
+    Offset toWorld(double x, double y) => _screenToWorld(
+          Offset(screenLeft + x * scale, screenTop + y * scale),
+        );
+
+    final addedShapes = <BoardShape>[];
+    final addedStrokes = <BoardStroke>[];
+
+    for (final p in spec.primitives) {
+      final colorVal = BoardDiagramPainter.parseColor(p.color).toARGB32();
+      switch (p.type) {
+        case 'line':
+          if (p.x1 != null && p.y1 != null && p.x2 != null && p.y2 != null) {
+            addedShapes.add(BoardShape(
+              kind: p.dashed ? BoardShapeKind.dashedLine : BoardShapeKind.line,
+              start: toWorld(p.x1!, p.y1!),
+              end: toWorld(p.x2!, p.y2!),
+              colorValue: colorVal,
+              width: 2.6,
+            ));
+          }
+        case 'arrow':
+          if (p.x1 != null && p.y1 != null && p.x2 != null && p.y2 != null) {
+            addedShapes.add(BoardShape(
+              kind: BoardShapeKind.arrow,
+              start: toWorld(p.x1!, p.y1!),
+              end: toWorld(p.x2!, p.y2!),
+              colorValue: colorVal,
+              width: 2.4,
+            ));
+          }
+        case 'polygon':
+          if (p.points.length >= 3) {
+            for (var i = 0; i < p.points.length; i++) {
+              final a = p.points[i];
+              final b = p.points[(i + 1) % p.points.length];
+              addedShapes.add(BoardShape(
+                kind: p.dashed
+                    ? BoardShapeKind.dashedLine
+                    : BoardShapeKind.line,
+                start: toWorld(a[0], a[1]),
+                end: toWorld(b[0], b[1]),
+                colorValue: colorVal,
+                width: 2.8,
+              ));
+            }
+          }
+        case 'polyline':
+          if (p.points.length >= 2) {
+            addedStrokes.add(BoardStroke(
+              colorValue: colorVal,
+              width: 2.6,
+              points: [
+                for (final pt in p.points) toWorld(pt[0], pt[1]),
+              ],
+            ));
+          }
+        case 'circle':
+          if (p.cx != null && p.cy != null && p.r != null && p.r! > 0) {
+            addedShapes.add(BoardShape(
+              kind: BoardShapeKind.oval,
+              start: toWorld(p.cx! - p.r!, p.cy! - p.r!),
+              end: toWorld(p.cx! + p.r!, p.cy! + p.r!),
+              colorValue: colorVal,
+              width: 2.6,
+            ));
+          }
+        case 'arc':
+          if (p.cx != null && p.cy != null && p.r != null && p.r! > 0) {
+            final startRad = (p.startAngle ?? 0) * math.pi / 180.0;
+            final sweepRad = (p.sweepAngle ?? 90) * math.pi / 180.0;
+            const segs = 16;
+            final pts = <Offset>[];
+            for (var i = 0; i <= segs; i++) {
+              final ang = startRad + sweepRad * (i / segs);
+              pts.add(toWorld(
+                p.cx! + p.r! * math.cos(ang),
+                p.cy! + p.r! * math.sin(ang),
+              ));
+            }
+            addedStrokes.add(BoardStroke(
+              colorValue: colorVal,
+              width: 2.0,
+              points: pts,
+            ));
+          }
+        case 'rightangle':
+        case 'right_angle':
+          if (p.vx != null &&
+              p.vy != null &&
+              p.ax != null &&
+              p.ay != null &&
+              p.bx != null &&
+              p.by != null) {
+            final v = Offset(p.vx!, p.vy!);
+            final va = Offset(p.ax!, p.ay!) - v;
+            final vb = Offset(p.bx!, p.by!) - v;
+            final la = va.distance;
+            final lb = vb.distance;
+            if (la > 0.1 && lb > 0.1) {
+              final s = p.size ?? 12.0;
+              final u = Offset(va.dx / la * s, va.dy / la * s);
+              final w = Offset(vb.dx / lb * s, vb.dy / lb * s);
+              final p1 = v + u;
+              final p2 = v + u + w;
+              final p3 = v + w;
+              addedStrokes.add(BoardStroke(
+                colorValue: colorVal,
+                width: 2.0,
+                points: [
+                  toWorld(p1.dx, p1.dy),
+                  toWorld(p2.dx, p2.dy),
+                  toWorld(p3.dx, p3.dy),
+                ],
+              ));
+            }
+          }
+      }
+    }
+
+    if (addedShapes.isEmpty && addedStrokes.isEmpty) return;
+    setState(() {
+      _shapes.addAll(addedShapes);
+      _strokes.addAll(addedStrokes);
+    });
+    _scheduleDraftSave();
+    _showHint('已将矢量图形绘制到白板，可直接画辅助线与标注');
   }
 
   Future<void> _openManualProblemDialog() async {
@@ -2141,6 +2321,7 @@ class _SmartBoardPageState extends State<SmartBoardPage>
                             },
                             onEditProblem: _openManualProblemDialog,
                             onRecropFigure: _recropFigureManually,
+                            onDrawDiagramToBoard: _stampDiagramToBoard,
                             onCloseActiveTab: () {
                               setState(() => _resultCollapsed = true);
                               _scheduleDraftSave();

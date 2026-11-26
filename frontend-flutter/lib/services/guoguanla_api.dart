@@ -49,11 +49,22 @@ class GuoguanlaApi {
     );
   }
 
+  Future<CaptchaChallenge> getRegisterCaptcha() {
+    return client.request<CaptchaChallenge>(
+      path: '/app/auth/captcha',
+      method: 'GET',
+      skipAuth: true,
+      parser: (raw) => CaptchaChallenge.fromJson(_asMap(raw)),
+    );
+  }
+
   Future<AuthResult> register({
     required String username,
     required String password,
     required String nickname,
     required String gradeCode,
+    required String captchaKey,
+    required String captchaCode,
     List<int>? guestPassedGateIds,
   }) {
     return client.request<AuthResult>(
@@ -65,6 +76,8 @@ class GuoguanlaApi {
         'password': password,
         'nickname': nickname,
         'gradeCode': gradeCode,
+        'captchaKey': captchaKey,
+        'captchaCode': captchaCode,
         if (guestPassedGateIds != null && guestPassedGateIds.isNotEmpty)
           'guestPassedGateIds': guestPassedGateIds,
       },

@@ -115,7 +115,7 @@ class UpdateUtils {
       '',
     );
     final parts = normalized
-        .split(RegExp(r'[；;]+|(?=\d+[.、]\s*)'))
+        .split(RegExp(r'[；;]+|(?<![0-9A-Za-z.])(?=\d+[.、]\s+)'))
         .map((s) => s.replaceFirst(RegExp(r'^\d+[.、]\s*'), '').trim())
         .where((s) => s.isNotEmpty)
         .toList();

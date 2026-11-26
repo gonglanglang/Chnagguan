@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:welkui_flutter/welkui_flutter.dart';
@@ -5,7 +8,9 @@ import 'package:welkui_flutter/welkui_flutter.dart';
 import '../../app/app_theme.dart';
 import '../../core/cache/global_cache.dart';
 import '../../core/network/api_client.dart';
+import '../../models/models.dart';
 import '../../providers/user_provider.dart';
+import '../../services/guoguanla_api.dart';
 import '../../widgets/ggl_comic_panel.dart';
 import '../../widgets/ggl_feedback.dart';
 import '../../widgets/ggl_skin_widgets.dart';
@@ -33,6 +38,11 @@ class _LoginPageState extends State<LoginPage> {
   String _regNickname = '';
   String _regPassword = '';
   String _regGradeCode = '';
+  String _regCaptchaCode = '';
+  CaptchaChallenge? _captcha;
+  Uint8List? _captchaBytes;
+  bool _loadingCaptcha = false;
+  bool _captchaError = false;
 
   @override
   void initState() {
@@ -55,6 +65,42 @@ class _LoginPageState extends State<LoginPage> {
       // Fallback grades remain usable offline
     } finally {
       if (mounted) setState(() => _initialLoading = false);
+    }
+  }
+
+  Future<void> _loadRegisterCaptcha() async {
+    if (_loadingCaptcha) return;
+    setState(() {
+      _loadingCaptcha = true;
+      _captchaError = false;
+    });
+    try {
+      final challenge =
+          await context.read<GuoguanlaApi>().getRegisterCaptcha();
+      final bytes = challenge.decodeBytes();
+      if (!mounted) return;
+      setState(() {
+        _captcha = challenge;
+        _captchaBytes = bytes;
+        _captchaError = bytes == null || challenge.captchaKey.isEmpty;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _captcha = null;
+          _captchaBytes = null;
+          _captchaError = true;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _loadingCaptcha = false);
+    }
+  }
+
+  void _switchAuthMode(bool toRegister) {
+    setState(() => _isRegister = toRegister);
+    if (toRegister && (_captcha == null || _captchaError)) {
+      unawaited(_loadRegisterCaptcha());
     }
   }
 
@@ -112,6 +158,17 @@ class _LoginPageState extends State<LoginPage> {
       GglFeedback.warning(context, '请选择所在年级');
       return;
     }
+    final captchaCode = _regCaptchaCode.trim();
+    final captchaKey = _captcha?.captchaKey ?? '';
+    if (captchaKey.isEmpty) {
+      GglFeedback.warning(context, '请先点击刷新获取图形验证码');
+      unawaited(_loadRegisterCaptcha());
+      return;
+    }
+    if (captchaCode.length < 4) {
+      GglFeedback.warning(context, '请输入右侧 4 位图形验证码');
+      return;
+    }
 
     final user = context.read<UserProvider>();
     setState(() => _submitting = true);
@@ -121,6 +178,8 @@ class _LoginPageState extends State<LoginPage> {
         password: _regPassword,
         nickname: nickname,
         gradeCode: _regGradeCode,
+        captchaKey: captchaKey,
+        captchaCode: captchaCode,
       );
       if (!mounted) return;
       GglFeedback.success(context, '注册成功');
@@ -132,6 +191,8 @@ class _LoginPageState extends State<LoginPage> {
       }
     } catch (e) {
       if (mounted) {
+        setState(() => _regCaptchaCode = '');
+        unawaited(_loadRegisterCaptcha());
         GglFeedback.error(context, friendlyErrorMessage(e, '注册失败'));
       }
     } finally {
@@ -231,8 +292,7 @@ class _LoginPageState extends State<LoginPage> {
                                 child: _ModeTabButton(
                                   label: '登录',
                                   active: !_isRegister,
-                                  onTap: () =>
-                                      setState(() => _isRegister = false),
+                                  onTap: () => _switchAuthMode(false),
                                 ),
                               ),
                               const SizedBox(width: 6),
@@ -240,8 +300,7 @@ class _LoginPageState extends State<LoginPage> {
                                 child: _ModeTabButton(
                                   label: '注册',
                                   active: _isRegister,
-                                  onTap: () =>
-                                      setState(() => _isRegister = true),
+                                  onTap: () => _switchAuthMode(true),
                                 ),
                               ),
                             ],
@@ -336,6 +395,84 @@ class _LoginPageState extends State<LoginPage> {
                                   placeholder: '至少 6 位',
                                   onChanged: (v) =>
                                       setState(() => _regPassword = v),
+                                ),
+                                const SizedBox(height: 14),
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Expanded(
+                                      child: GglInput(
+                                        label: '图形验证码 *',
+                                        value: _regCaptchaCode,
+                                        placeholder: '输入右侧 4 位字符',
+                                        onChanged: (v) => setState(
+                                          () => _regCaptchaCode = v,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        GestureDetector(
+                                          onTap: _loadRegisterCaptcha,
+                                          child: Container(
+                                            width: 122,
+                                            height: 46,
+                                            alignment: Alignment.center,
+                                            clipBehavior: Clip.antiAlias,
+                                            decoration:
+                                                AppTheme.insetBoxDecoration(
+                                              context,
+                                              color: const Color(0xFFF8FAFC),
+                                              radius: 10,
+                                            ),
+                                            child: _loadingCaptcha
+                                                ? const SizedBox(
+                                                    width: 18,
+                                                    height: 18,
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                    ),
+                                                  )
+                                                : _captchaBytes != null
+                                                    ? Image.memory(
+                                                        _captchaBytes!,
+                                                        width: 122,
+                                                        height: 46,
+                                                        fit: BoxFit.cover,
+                                                      )
+                                                    : Text(
+                                                        _captchaError
+                                                            ? '点击重试'
+                                                            : '点击获取',
+                                                        style: TextStyle(
+                                                          color: ink,
+                                                          fontSize: 12,
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                        ),
+                                                      ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: GestureDetector(
+                                    onTap: _loadRegisterCaptcha,
+                                    child: Text(
+                                      '看不清？点击图片刷新验证码（不区分大小写）',
+                                      style: TextStyle(
+                                        color: AppTheme.mutedText(context),
+                                        fontSize: 11.5,
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ],
                             ),

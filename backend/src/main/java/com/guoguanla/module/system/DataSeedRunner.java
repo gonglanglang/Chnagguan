@@ -102,7 +102,12 @@ public class DataSeedRunner implements ApplicationRunner {
         insertConfig("guest_mode_enabled", "true", "是否允许学生端免登录游客试玩第1章");
         insertConfig("default_question_count", "3", "新关卡默认每次抽题数");
         insertConfig("default_pass_count", "2", "新关卡默认最少答对过关数");
-        insertConfig("app_notice", "初一至高三全章节已开放，支持自由刷题、阶段升级测评与错题巩固！", "前台首页公告文案");
+        insertConfig("app_notice",
+                "1. 全年级同步闯关：初一至高三 51 章 204 关自由开放练习，支持基础关 → 下一关 → 下一章 → 跨年级连续闯关；\n"
+                        + "2. 精绘数学矢量配图：526 道几何、函数、统计与立体几何题目均配有清晰矢量图，点击可全屏缩放；\n"
+                        + "3. AI 智能手写画板：支持拍照与手写识题，自动矢量重绘几何配图并提供思路引导、过程诊断与解题核对；\n"
+                        + "4. 错题本高效巩固：闯关错题自动收录，重做答对即标记掌握并移出。",
+                "前台首页学习公告文案");
     }
 
     private void insertConfig(String key, String value, String desc) {

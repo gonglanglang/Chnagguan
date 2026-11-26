@@ -19,7 +19,6 @@ import '../../widgets/ggl_skeleton.dart';
 import '../../widgets/ggl_skin_widgets.dart';
 import '../chapter_map/chapter_map_page.dart';
 import '../grade_chapters/grade_chapters_page.dart';
-import '../levels/levels_page.dart';
 import '../login/login_page.dart';
 import '../quiz/quiz_page.dart';
 import '../smart_board/smart_board_page.dart';
@@ -130,6 +129,12 @@ class _HomeTabPageState extends State<HomeTabPage> {
     }
   }
 
+  static const String _defaultNoticeText =
+      '1. 全年级同步闯关：初一至高三 51 章 204 关自由开放练习，支持基础关 → 下一关 → 下一章 → 跨年级连续闯关；\n'
+      '2. 精绘数学矢量配图：526 道几何、函数、统计与立体几何题目均配有清晰矢量图，点击可全屏缩放；\n'
+      '3. AI 智能手写画板：支持拍照与手写识题，自动矢量重绘几何配图并提供思路引导、过程诊断与解题核对；\n'
+      '4. 错题本高效巩固：闯关错题自动收录，重做答对即标记掌握并移出。';
+
   Future<void> _maybeShowVersionAnnouncement() async {
     if (_announcementCheckedInSession || !mounted) return;
     final user = context.read<UserProvider>();
@@ -153,23 +158,217 @@ class _HomeTabPageState extends State<HomeTabPage> {
     await cache.markAnnouncementShown(versionKey);
     if (!mounted) return;
 
-    await GglFeedback.alert(
-      context,
-      title: '学习公告',
-      content: noticeText,
-      buttonText: '我知道了',
-    );
+    await _showAnnouncementDialog(noticeText);
   }
 
   String _resolveNoticeText(UserProvider user) {
-    final currentRealm = user.currentRealm;
     if (user.appNotice.trim().isNotEmpty) {
       return user.appNotice.trim();
     }
-    if (currentRealm.examEligible) {
-      return '恭喜！你在${currentRealm.realmName}阶段已达晋升条件，点击立即参加阶段升级测评';
-    }
-    return '全年级 51 章题库开放自由练习，完成当前阶段指定关卡可参加阶段升级测评';
+    return _defaultNoticeText;
+  }
+
+  List<String> _parseNoticePoints(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return const <String>[];
+    final byLines = trimmed
+        .split(RegExp(r'\r?\n'))
+        .map((line) => line
+            .replaceFirst(RegExp(r'^(?:[-*•]|\d+[.、)）])\s*'), '')
+            .trim())
+        .where((line) => line.isNotEmpty)
+        .toList();
+    if (byLines.length > 1) return byLines;
+
+    final bySemicolon = trimmed
+        .split(RegExp(r'[；;]+'))
+        .map((s) => s.replaceFirst(RegExp(r'^\d+[.、)）]\s*'), '').trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    return bySemicolon.isNotEmpty ? bySemicolon : <String>[trimmed];
+  }
+
+  String _noticePreviewLine(String raw) {
+    final points = _parseNoticePoints(raw);
+    return points.isNotEmpty ? points.first : raw.trim();
+  }
+
+  Future<void> _showAnnouncementDialog(String noticeText) async {
+    final points = _parseNoticePoints(noticeText);
+    final version = context.read<UpdateProvider>().currentVersion;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogCtx) {
+        final ink = AppTheme.inkColor(dialogCtx);
+        final muted = AppTheme.mutedText(dialogCtx);
+        final accent = AppTheme.accentColor(dialogCtx);
+        final onAccent = AppTheme.onAccentColor(dialogCtx);
+        final surface = AppTheme.surfaceColor(dialogCtx);
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440, maxHeight: 560),
+            child: GglComicPanel(
+              color: surface,
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: AppTheme.insetBoxDecoration(
+                          dialogCtx,
+                          color: accent,
+                          borderColor:
+                              AppTheme.isForui(dialogCtx) ? accent : null,
+                          radius: 10,
+                        ),
+                        child: Icon(
+                          Icons.campaign_rounded,
+                          size: 20,
+                          color: onAccent,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  '学习公告',
+                                  style: TextStyle(
+                                    color: ink,
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                GglStatusTag(
+                                  label: 'v$version',
+                                  variant: WelkBadgeVariant.info,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '云篆科技工作室 · 过关啦教研公告',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: muted,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const GglDivider(verticalPadding: 12),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          for (var i = 0; i < points.length; i++)
+                            Padding(
+                              padding: EdgeInsets.only(
+                                bottom: i == points.length - 1 ? 0 : 10,
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    width: 20,
+                                    height: 20,
+                                    margin: const EdgeInsets.only(top: 1),
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: accent.withValues(alpha: 0.16),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      '${i + 1}',
+                                      style: TextStyle(
+                                        color: accent,
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 9),
+                                  Expanded(
+                                    child: Text(
+                                      points[i],
+                                      style: TextStyle(
+                                        color: ink.withValues(alpha: 0.9),
+                                        fontSize: 13.5,
+                                        height: 1.55,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          const SizedBox(height: 14),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppTheme.mutedSurfaceColor(dialogCtx),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.verified_outlined,
+                                  size: 15,
+                                  color: muted,
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    '深圳市龙华区云篆科技工作室持续维护更新，祝你学习进步！',
+                                    style: TextStyle(
+                                      color: muted,
+                                      fontSize: 11.5,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  GglBlockButton(
+                    label: '我知道了',
+                    onPressed: () => Navigator.of(dialogCtx).pop(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   ChapterCard? get _heroChapter {
@@ -208,18 +407,6 @@ class _HomeTabPageState extends State<HomeTabPage> {
       if (r.gradeCode == gradeCode) return r;
     }
     return null;
-  }
-
-  GradeItem _findGradeForRealm(UserProvider user, RealmItem realm) {
-    for (final g in user.grades) {
-      if (g.gradeCode == realm.gradeCode) return g;
-    }
-    return GradeItem(
-      gradeCode: realm.gradeCode,
-      gradeName: realm.realmName,
-      icon: '',
-      chapterCount: realm.chapterCount,
-    );
   }
 
   Future<void> _openGradeChapters(GradeItem grade) async {
@@ -322,113 +509,6 @@ class _HomeTabPageState extends State<HomeTabPage> {
     if (mounted) await _refreshPage();
   }
 
-  Future<void> _openSystemDrawer() async {
-    final user = context.read<UserProvider>();
-    final currentRealm = user.currentRealm;
-
-    await showGglBottomSheet<void>(
-      context: context,
-      title: '学习体系 · 初一至高三',
-      closeLabel: '关闭',
-      builder: (drawerCtx) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-            Text(
-              '共 ${user.realms.length} 个学习阶段，初一至高三同步章节题库自由开放练习；完成当前阶段指定关卡后可参加阶段升级测评。',
-              style: TextStyle(
-                color: AppTheme.mutedText(drawerCtx),
-                fontSize: 13,
-              ),
-            ),
-            const SizedBox(height: 12),
-            for (final realm in user.realms)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: GglComicPanel(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                  shadowOffset: const Offset(2, 2),
-                  onTap: () {
-                    Navigator.of(drawerCtx).pop();
-                    final grade = _findGradeForRealm(user, realm);
-                    unawaited(_openGradeChapters(grade));
-                  },
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              realm.difficultyLabel.isNotEmpty
-                                  ? '${realm.realmName} · ${FormatUtils.shortDifficultyLabel(realm.difficultyLabel)}'
-                                  : realm.realmName,
-                              style: TextStyle(
-                                color: AppTheme.inkColor(drawerCtx),
-                                fontSize: 15,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              realm.description.isNotEmpty
-                                  ? realm.description
-                                  : '共 ${realm.chapterCount} 章 ${realm.gateCount} 关',
-                              style: TextStyle(
-                                color: AppTheme.mutedText(drawerCtx),
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      GglStatusTag(
-                        label: realm.isCurrent
-                            ? '学习中'
-                            : realm.isLower
-                                ? '已通过'
-                                : '自由开放',
-                        variant: realm.isCurrent
-                            ? WelkBadgeVariant.defaultStyle
-                            : realm.isLower
-                                ? WelkBadgeVariant.success
-                                : WelkBadgeVariant.info,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            const SizedBox(height: 8),
-            if (currentRealm.examEligible)
-              GglBlockButton(
-                label: '参加${currentRealm.realmName}阶段升级测评',
-                onPressed: () {
-                  Navigator.of(drawerCtx).pop();
-                  unawaited(_startAdvanceExam());
-                },
-              )
-            else
-              GglBlockButton(
-                label: '查看学习阶段与测评规则',
-                variant: WelkButtonVariant.secondary,
-                onPressed: () {
-                  Navigator.of(drawerCtx).pop();
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const LevelsPage(),
-                    ),
-                  );
-                },
-              ),
-          ],
-        ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final colors = WelkTheme.of(context).resolveColors(context);
@@ -451,6 +531,7 @@ class _HomeTabPageState extends State<HomeTabPage> {
         : '同学';
     final greeting = '${FormatUtils.greetingPrefix(DateTime.now())}，$displayName';
     final noticeText = _resolveNoticeText(user);
+    final noticePreview = _noticePreviewLine(noticeText);
     final ink = AppTheme.inkColor(context);
     final surface = AppTheme.surfaceColor(context);
     final accent = AppTheme.accentColor(context);
@@ -462,16 +543,9 @@ class _HomeTabPageState extends State<HomeTabPage> {
 
     return Scaffold(
       backgroundColor: AppTheme.pageBackground(context),
-      appBar: GglAppBar(
+      appBar: const GglAppBar(
         title: '过关啦',
         centerTitle: false,
-        actions: [
-          GglIconButton(
-            icon: Icons.layers_rounded,
-            label: '学习体系',
-            onPressed: _openSystemDrawer,
-          ),
-        ],
       ),
       body: RefreshIndicator(
         onRefresh: _refreshPage,
@@ -498,58 +572,45 @@ class _HomeTabPageState extends State<HomeTabPage> {
               const SizedBox(height: 14),
               const GglCardSkeleton(lines: 4),
             ] else ...[
-              // Greeting Row
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+              // Greeting Section
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          greeting,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: ink,
-                            fontSize: 21,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            Text(
-                              '当前阶段',
-                              style: TextStyle(
-                                color: AppTheme.mutedText(context),
-                                fontSize: 13,
-                              ),
-                            ),
-                            GglStatusTag(
-                              label: currentRealm.realmName,
-                              variant: WelkBadgeVariant.defaultStyle,
-                            ),
-                            Text(
-                              '· 已过 $totalPassed/$totalGates 关',
-                              style: TextStyle(
-                                color: AppTheme.mutedText(context),
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                  Text(
+                    greeting,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: ink,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  GglButton(
-                    label: '学习体系',
-                    variant: WelkButtonVariant.secondary,
-                    onPressed: _openSystemDrawer,
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        '当前阶段',
+                        style: TextStyle(
+                          color: AppTheme.mutedText(context),
+                          fontSize: 13,
+                        ),
+                      ),
+                      GglStatusTag(
+                        label: currentRealm.realmName,
+                        variant: WelkBadgeVariant.defaultStyle,
+                      ),
+                      Text(
+                        '· 已过 $totalPassed/$totalGates 关',
+                        style: TextStyle(
+                          color: AppTheme.mutedText(context),
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -558,22 +619,11 @@ class _HomeTabPageState extends State<HomeTabPage> {
               // Notice strip
               GglComicPanel(
                 color: colors.warning
-                    .withValues(alpha: colors.isDark ? 0.2 : 0.28),
+                    .withValues(alpha: colors.isDark ? 0.2 : 0.24),
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 shadowOffset: const Offset(2, 2),
-                onTap: () {
-                  if (currentRealm.examEligible) {
-                    unawaited(_startAdvanceExam());
-                  } else {
-                    GglFeedback.alert(
-                      context,
-                      title: '学习公告',
-                      content: noticeText,
-                      buttonText: '我知道了',
-                    );
-                  }
-                },
+                onTap: () => unawaited(_showAnnouncementDialog(noticeText)),
                 child: Row(
                   children: [
                     Icon(
@@ -582,9 +632,14 @@ class _HomeTabPageState extends State<HomeTabPage> {
                       color: ink,
                     ),
                     const SizedBox(width: 8),
+                    const GglStatusTag(
+                      label: '学习公告',
+                      variant: WelkBadgeVariant.warning,
+                    ),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        noticeText,
+                        noticePreview,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -872,12 +927,14 @@ class _HomeTabPageState extends State<HomeTabPage> {
 
               // Bottom exam tip
               GestureDetector(
-                onTap: _openSystemDrawer,
+                onTap: currentRealm.examEligible
+                    ? () => unawaited(_startAdvanceExam())
+                    : null,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Text(
                     currentRealm.examEligible
-                        ? '${currentRealm.realmName}阶段已满足升级条件，点击查看学习体系并测评晋升'
+                        ? '${currentRealm.realmName}阶段已满足升级条件，点击立即参加阶段升级测评'
                         : '全年级题库已自由开放 · 当前阶段再过 ${currentRealm.examRemainingGates > 0 ? currentRealm.examRemainingGates : 0} 关可解锁阶段升级测评',
                     textAlign: TextAlign.center,
                     style: TextStyle(

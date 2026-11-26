@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.guoguanla.module.ai.AiBoardService;
 import com.guoguanla.module.ai.AiConfigService;
 import com.guoguanla.module.ai.vo.AiBoardVO;
+import com.guoguanla.module.app.CaptchaService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -31,6 +32,9 @@ class AiModuleTests {
 
     @Autowired
     private AiBoardService aiBoardService;
+
+    @Autowired
+    private CaptchaService captchaService;
 
     private String loginAdminToken() throws Exception {
         MvcResult res = mockMvc.perform(post("/api/admin/auth/login")
@@ -270,6 +274,7 @@ class AiModuleTests {
     @Test
     void appUserCanBindPhoneAndEmailWithoutVerification() throws Exception {
         String uname = "bind_test_" + System.currentTimeMillis();
+        String capKey = captchaService.issueForTest("B8N4");
         MvcResult regRes = mockMvc.perform(post("/api/app/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -277,9 +282,11 @@ class AiModuleTests {
                                   "username": "%s",
                                   "password": "password123",
                                   "nickname": "小测同学",
-                                  "gradeCode": "g8"
+                                  "gradeCode": "g8",
+                                  "captchaKey": "%s",
+                                  "captchaCode": "B8N4"
                                 }
-                                """.formatted(uname)))
+                                """.formatted(uname, capKey)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andReturn();

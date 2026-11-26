@@ -349,12 +349,7 @@ void main() {
       (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     final storage = await GlobalCache.init();
-    final client = ApiClient(
-      baseUrl: 'http://127.0.0.1:9999/api',
-      tokenGetter: () => '',
-      revisionGetter: () => 0,
-    );
-    final api = GuoguanlaApi(client);
+    final api = _FakeGuoguanlaApi();
     final userProvider = UserProvider(storage: storage, api: api);
     final welk = AppTheme.buildWelkTheme(
       isDark: false,
@@ -388,6 +383,8 @@ void main() {
     expect(find.text('所在年级'), findsOneWidget);
     expect(find.text('初一'), findsOneWidget);
     expect(find.text('高三'), findsOneWidget);
+    expect(find.textContaining('图形验证码'), findsOneWidget);
+    expect(api.captchaCallCount, 1);
   });
 
   testWidgets('DrawAnswerPage renders comic toolbar and infinite canvas', (
@@ -461,8 +458,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
     await tester.pumpAndSettle();
 
-    // Auto-announcement popped once for v1.0.14+114 (notice strip + dialog)
-    expect(find.text('学习公告'), findsOneWidget);
+    // Auto-announcement popped once for v1.0.14+114 (notice strip tag + dialog title)
+    expect(find.text('学习公告'), findsNWidgets(2));
+    expect(find.text('我知道了'), findsOneWidget);
     expect(find.text('测试公告内容 v1.0.14'), findsNWidgets(2));
     expect(cache.lastAnnouncementVersion, '1.0.14+114');
 
@@ -470,18 +468,20 @@ void main() {
     await tester.pumpAndSettle();
 
     // Dialog dismissed (only notice strip remains) and should not pop again on refresh within same version
-    expect(find.text('学习公告'), findsNothing);
+    expect(find.text('我知道了'), findsNothing);
+    expect(find.text('学习公告'), findsOneWidget);
     expect(find.text('测试公告内容 v1.0.14'), findsOneWidget);
     refreshSignal.value++;
     await tester.pump();
     await tester.pumpAndSettle();
-    expect(find.text('学习公告'), findsNothing);
+    expect(find.text('我知道了'), findsNothing);
 
-    // Home renders AI smart board card, 3-column grade grid and removed old 章节闯关
+    // Home renders AI smart board card, 3-column grade grid and removed old 章节闯关 & 学习体系
     expect(find.text('AI 智能手写画板'), findsOneWidget);
     expect(find.text('拍照识题'), findsOneWidget);
     expect(find.text('选择年级'), findsOneWidget);
     expect(find.text('章节闯关'), findsNothing);
+    expect(find.text('学习体系'), findsNothing);
     expect(find.text('初一'), findsWidgets);
     expect(find.text('高三'), findsOneWidget);
 
@@ -921,12 +921,27 @@ void main() {
           ),
         );
 
-    // 1. AboutPage renders FAccordion (no WelkAccordion, no cultivation copy)
+    // 1. AboutPage renders studio/ICP info + FAccordion (no WelkAccordion, no cultivation copy, no private ID/phone)
     await tester.pumpWidget(wrapForui(const AboutPage()));
     await tester.pumpAndSettle();
-    expect(find.byType(FAccordion), findsNWidgets(2));
+    expect(find.text('开发与运营主体'), findsOneWidget);
+    expect(find.text('深圳市龙华区云篆科技工作室'), findsOneWidget);
+    expect(find.text('广东省深圳市龙华区'), findsOneWidget);
+    expect(find.text('粤ICP备2026130477号'), findsOneWidget);
+    expect(find.text('92440300MAKMC5Q40P'), findsOneWidget);
+    expect(find.text('gonglanglang2019@163.com'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'\b\d{17}[\dXx]\b')), findsNothing);
+    expect(find.textContaining(RegExp(r'\b1[3-9]\d{9}\b')), findsNothing);
+
+    await tester.scrollUntilVisible(
+      find.text('AI 智能画板与隐私保护'),
+      260,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(FAccordion), findsNWidgets(3));
     expect(find.byType(WelkAccordion), findsNothing);
-    expect(find.text('学习规则'), findsOneWidget);
+    expect(find.text('学习规则与说明'), findsOneWidget);
     expect(find.textContaining('修仙'), findsNothing);
 
     // 2. MineTabPage shows "Forui · ..." instead of mislabeling WelkUI
@@ -952,11 +967,180 @@ void main() {
     expect(find.text('进入初二 · 第 1 关'), findsOneWidget);
     expect(find.textContaining('即将开启初二'), findsOneWidget);
   });
+
+  testWidgets(
+      'TASK-20261126-003 LoginPage register loads/refreshes graphic captcha and submits captchaKey + captchaCode',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final cache = await GlobalCache.init();
+    final api = _FakeGuoguanlaApi();
+    final userProvider = UserProvider(storage: cache, api: api);
+    final welk = AppTheme.buildWelkTheme(
+      isDark: false,
+      accent: AppTheme.presets.first.color,
+    );
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider<GlobalCache>.value(value: cache),
+          Provider<GuoguanlaApi>.value(value: api),
+          ChangeNotifierProvider<UserProvider>.value(value: userProvider),
+        ],
+        child: WelkTheme(
+          data: welk,
+          child: MaterialApp(
+            theme: AppTheme.buildMaterialTheme(isDark: false, welk: welk),
+            home: const LoginPage(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('注册'));
+    await tester.pumpAndSettle();
+    expect(api.captchaCallCount, 1);
+    final captchaImage =
+        find.byWidgetPredicate((w) => w is Image && w.image is MemoryImage);
+    expect(captchaImage, findsOneWidget);
+
+    // 点击图形验证码图片应刷新验证码
+    await tester.ensureVisible(captchaImage);
+    await tester.pumpAndSettle();
+    await tester.tap(captchaImage);
+    await tester.pumpAndSettle();
+    expect(api.captchaCallCount, 2);
+
+    // 填写注册信息（用户名、昵称、密码、图形验证码）并选择所在年级
+    final fields = find.byType(TextField);
+    expect(fields, findsNWidgets(4));
+    await tester.enterText(fields.at(0), 'newstu01');
+    await tester.enterText(fields.at(1), '云篆同学');
+    await tester.enterText(fields.at(2), 'abc123456');
+    await tester.enterText(fields.at(3), 'ab7k');
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('初一'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('初一'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('注册并开始学习'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('注册并开始学习'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(api.registerCallCount, 1);
+    expect(api.lastCaptchaKey, 'cap_test_2');
+    expect(api.lastCaptchaCode, 'ab7k');
+    await tester.pump(const Duration(seconds: 4));
+  });
+
+  testWidgets(
+      'TASK-20261126-003 SmartBoardPage auto-clears handwriting after recognize, renders vector diagram redraw and stamps to canvas',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final cache = await GlobalCache.init();
+    final api = _FakeGuoguanlaApi();
+    final themeProvider = ThemeProvider(cache);
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider<GlobalCache>.value(value: cache),
+          Provider<GuoguanlaApi>.value(value: api),
+          ChangeNotifierProvider<ThemeProvider>.value(value: themeProvider),
+        ],
+        child: Consumer<ThemeProvider>(
+          builder: (context, theme, _) => WelkTheme(
+            data: theme.welkTheme,
+            child: WiredThemeScope(
+              data: theme.skribbleTheme,
+              child: MaterialApp(
+                theme: theme.materialTheme,
+                home: const SmartBoardPage(),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 在画板中央绘制清晰多笔画手写题干（满足 BoardHandwritingValidator）
+    Future<void> drawStroke(Offset start, Offset end) async {
+      final g = await tester.startGesture(start);
+      await tester.pump(const Duration(milliseconds: 16));
+      await g.moveTo(Offset.lerp(start, end, 0.5)!);
+      await tester.pump(const Duration(milliseconds: 16));
+      await g.moveTo(end);
+      await tester.pump(const Duration(milliseconds: 16));
+      await g.up();
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+
+    await drawStroke(const Offset(220, 220), const Offset(280, 220));
+    await drawStroke(const Offset(250, 195), const Offset(250, 255));
+    await drawStroke(const Offset(310, 200), const Offset(350, 255));
+    await drawStroke(const Offset(350, 200), const Offset(310, 255));
+    await drawStroke(const Offset(380, 220), const Offset(430, 220));
+    await drawStroke(const Offset(380, 238), const Offset(430, 238));
+    await tester.pumpAndSettle();
+
+    // 点击「手写识题」：应调用识题接口、自动清掉原手写笔迹，并展示矢量重绘配图与「画到白板」按钮
+    await tester.tap(find.text('手写识题'));
+    await tester.pump();
+    // 等待异步离屏 PNG 编码与识题响应完成
+    for (var i = 0; i < 15 && api.recognizeCallCount == 0; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 40)),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    expect(api.recognizeCallCount, 1);
+    expect(find.text('题目配图（矢量重绘）'), findsOneWidget);
+    expect(find.text('画到白板'), findsOneWidget);
+
+    // 识题后手写笔迹已被自动清空：此时再次点击「手写识题」应被空画板预检拦截，不会重复调用接口
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('手写识题'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(api.recognizeCallCount, 1);
+
+    // 点击「画到白板」将矢量重绘几何图绘制到白板画布
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('画到白板'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.textContaining('已将矢量图形绘制到白板'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 4));
+  });
 }
 
 class _FakeGuoguanlaApi extends GuoguanlaApi {
+  static const String _tinyPngBase64 =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
   String? lastSavedPhone;
   String? lastSavedEmail;
+  String? lastCaptchaKey;
+  String? lastCaptchaCode;
+  int captchaCallCount = 0;
+  int registerCallCount = 0;
   int recognizeCallCount = 0;
   int ideasCallCount = 0;
   int solveCallCount = 0;
@@ -969,6 +1153,56 @@ class _FakeGuoguanlaApi extends GuoguanlaApi {
             revisionGetter: () => 0,
           ),
         );
+
+  @override
+  Future<CaptchaChallenge> getRegisterCaptcha() async {
+    captchaCallCount++;
+    return CaptchaChallenge(
+      captchaKey: 'cap_test_$captchaCallCount',
+      imageBase64: _tinyPngBase64,
+      expireSeconds: 300,
+    );
+  }
+
+  @override
+  Future<AuthResult> register({
+    required String username,
+    required String password,
+    required String nickname,
+    required String gradeCode,
+    required String captchaKey,
+    required String captchaCode,
+    List<int>? guestPassedGateIds,
+  }) async {
+    registerCallCount++;
+    lastCaptchaKey = captchaKey;
+    lastCaptchaCode = captchaCode;
+    return AuthResult(
+      token: 'fake_reg_token',
+      profile: AppUserProfile(
+        id: 2,
+        username: username,
+        phone: '',
+        email: '',
+        nickname: nickname,
+        avatarUrl: '',
+        gradeCode: gradeCode,
+        gradeName: '初一',
+        realmCode: 'lianqi',
+        realmName: '初一',
+        realmOrder: 1,
+        difficultyLabel: '基础入门',
+        realmPassedGates: 0,
+        realmTotalGates: 40,
+        examUnlockGates: 40,
+        examRemainingGates: 40,
+        examEligible: false,
+        examQuestionCount: 5,
+        examPassScore: 60,
+        passedGateCount: 0,
+      ),
+    );
+  }
 
   @override
   Future<AppUserProfile> getProfile() async {
@@ -1257,11 +1491,41 @@ class _FakeGuoguanlaApi extends GuoguanlaApi {
   }) async {
     recognizeCallCount++;
     return const AiRecognizeResult(
-      title: '手写识别方程题',
-      problemText: r'解方程 $2x+3=7$',
-      subjectTag: '初中数学',
+      title: '三角形中线长度求解',
+      problemText: '如图，△ABC 中，AD 为 BC 的中线，已知 AB、AC 及 ∠A，求中线 AD 长。',
+      subjectTag: '初中几何',
       questionType: '解答题',
-      difficulty: '基础',
+      difficulty: '中等',
+      diagrams: [
+        BoardDiagramSpec(
+          title: '△ABC 与中线 AD',
+          width: 320,
+          height: 210,
+          primitives: [
+            DiagramPrimitive(
+              type: 'polygon',
+              points: [
+                [112, 34],
+                [56, 174],
+                [262, 174],
+              ],
+              color: '#1E293B',
+            ),
+            DiagramPrimitive(
+              type: 'line',
+              x1: 112,
+              y1: 34,
+              x2: 159,
+              y2: 174,
+              color: '#2563EB',
+            ),
+            DiagramPrimitive(type: 'point', x: 112, y: 34, label: 'A'),
+            DiagramPrimitive(type: 'point', x: 56, y: 174, label: 'B'),
+            DiagramPrimitive(type: 'point', x: 262, y: 174, label: 'C'),
+            DiagramPrimitive(type: 'point', x: 159, y: 174, label: 'D'),
+          ],
+        ),
+      ],
     );
   }
 

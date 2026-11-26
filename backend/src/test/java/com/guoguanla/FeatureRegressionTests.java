@@ -45,6 +45,9 @@ class FeatureRegressionTests {
     @Autowired
     private UserEssayAnswerMapper essayAnswerMapper;
 
+    @Autowired
+    private com.guoguanla.module.app.CaptchaService captchaService;
+
     private String loginAdmin() throws Exception {
         MvcResult res = mockMvc.perform(post("/api/admin/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -69,26 +72,32 @@ class FeatureRegressionTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(400));
 
+        String h1CapKey = captchaService.issueForTest("H1K2");
         mockMvc.perform(post("/api/app/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "username", "feat_h1_stu",
                                 "password", "oldpass123",
                                 "nickname", "高一同学",
-                                "gradeCode", "h1"
+                                "gradeCode", "h1",
+                                "captchaKey", h1CapKey,
+                                "captchaCode", "H1K2"
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.profile.gradeCode").value("h1"))
                 .andExpect(jsonPath("$.data.profile.realmCode").value("jiaying"));
 
+        String stuCapKey = captchaService.issueForTest("F3M9");
         MvcResult regRes = mockMvc.perform(post("/api/app/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "username", "feat_stu_01",
                                 "password", "oldpass123",
                                 "nickname", "测试同学",
-                                "gradeCode", "g7"
+                                "gradeCode", "g7",
+                                "captchaKey", stuCapKey,
+                                "captchaCode", "F3M9"
                         ))))
                 .andExpect(status().isOk())
                 .andReturn();
@@ -637,13 +646,16 @@ class FeatureRegressionTests {
         String adminToken = loginAdmin();
 
         // 1. Register student and verify stateless 30-day JWT expiration
+        String tokCapKey = captchaService.issueForTest("T3D7");
         MvcResult regRes = mockMvc.perform(post("/api/app/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "username", "token30d_stu",
                                 "password", "pass123456",
                                 "nickname", "三十天同学",
-                                "gradeCode", "g8"
+                                "gradeCode", "g8",
+                                "captchaKey", tokCapKey,
+                                "captchaCode", "T3D7"
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))

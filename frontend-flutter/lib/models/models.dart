@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 int _asInt(dynamic v, [int fallback = 0]) {
   if (v == null) return fallback;
   if (v is int) return v;
@@ -423,6 +426,38 @@ class AuthResult {
       profile: AppUserProfile.fromJson(
         (json['profile'] as Map<String, dynamic>?) ?? const {},
       ),
+    );
+  }
+}
+
+class CaptchaChallenge {
+  const CaptchaChallenge({
+    required this.captchaKey,
+    required this.imageBase64,
+    this.expireSeconds = 300,
+  });
+
+  final String captchaKey;
+  final String imageBase64;
+  final int expireSeconds;
+
+  Uint8List? decodeBytes() {
+    final raw = imageBase64.trim();
+    if (raw.isEmpty) return null;
+    try {
+      final commaIdx = raw.indexOf(',');
+      final payload = commaIdx >= 0 ? raw.substring(commaIdx + 1) : raw;
+      return base64Decode(payload);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  factory CaptchaChallenge.fromJson(Map<String, dynamic> json) {
+    return CaptchaChallenge(
+      captchaKey: _asString(json['captchaKey']),
+      imageBase64: _asString(json['imageBase64']),
+      expireSeconds: _asInt(json['expireSeconds'], 300),
     );
   }
 }

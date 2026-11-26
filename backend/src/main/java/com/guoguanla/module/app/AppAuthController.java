@@ -18,11 +18,18 @@ import java.util.Map;
 public class AppAuthController {
 
     private final AppAuthService authService;
+    private final CaptchaService captchaService;
 
     @Operation(summary = "健康检查")
     @GetMapping("/health")
     public Result<Map<String, Object>> health() {
         return Result.ok(Map.of("status", "UP", "service", "guoguanla"));
+    }
+
+    @Operation(summary = "获取注册图形验证码")
+    @GetMapping("/auth/captcha")
+    public Result<AppUserProfileVO.CaptchaVO> captcha() {
+        return Result.ok(captchaService.generate());
     }
 
     @Operation(summary = "学生账号登录")

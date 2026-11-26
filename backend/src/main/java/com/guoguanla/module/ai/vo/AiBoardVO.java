@@ -120,7 +120,7 @@ public class AiBoardVO {
     @AllArgsConstructor
     public static class DiagramPrimitiveVO {
         /**
-         * line / arrow / circle / polygon / polyline / point / text
+         * line / arrow / circle / arc / rightAngle / polygon / polyline / point / text
          */
         private String type;
         private Double x1;
@@ -130,6 +130,15 @@ public class AiBoardVO {
         private Double cx;
         private Double cy;
         private Double r;
+        private Double startAngle;
+        private Double sweepAngle;
+        private Double vx;
+        private Double vy;
+        private Double ax;
+        private Double ay;
+        private Double bx;
+        private Double by;
+        private Double size;
         private Double x;
         private Double y;
         private List<List<Double>> points;

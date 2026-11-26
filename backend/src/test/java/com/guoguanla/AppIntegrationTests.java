@@ -36,14 +36,20 @@ class AppIntegrationTests {
     @Autowired
     private UserWrongQuestionMapper wrongMapper;
 
+    @Autowired
+    private com.guoguanla.module.app.CaptchaService captchaService;
+
     @Test
     void studentFlowAntiCheatAndWrongRedoFixShouldWork() throws Exception {
         // 1. Register new student
+        String capKey = captchaService.issueForTest("A2C4");
         String regJson = objectMapper.writeValueAsString(Map.of(
                 "username", "app_stu_001",
                 "password", "123456",
                 "nickname", "小明",
-                "gradeCode", "g7"
+                "gradeCode", "g7",
+                "captchaKey", capKey,
+                "captchaCode", "A2C4"
         ));
         MvcResult regRes = mockMvc.perform(post("/api/app/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
