@@ -1,7 +1,7 @@
 name: guoguanla_app
-description: "过关啦 - Flutter + WelkUI 修仙数学闯关与 AI 智能手写画板应用"
+description: "过关啦 - 初中高中同步数学闯关与 AI 智能手写画板应用"
 publish_to: 'none'
-version: 2.2.0+220
+version: 2.3.0+230
 
 environment:
   sdk: ^3.13.4
