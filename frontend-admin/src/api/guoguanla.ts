@@ -388,6 +388,50 @@ export interface AiTestResult {
   errorMessage?: string;
 }
 
+export interface AiImageConfigInfo {
+  enabled: boolean;
+  baseUrl: string;
+  resolvedEndpoint: string;
+  apiKeyMasked: string;
+  hasApiKey: boolean;
+  model: string;
+  defaultSize: string;
+  timeoutSec: number;
+}
+
+export interface AiImageTestResult {
+  ok: boolean;
+  mode?: "HEALTH" | "GENERATE" | string;
+  latencyMs?: number;
+  endpoint?: string;
+  model?: string;
+  engineReady?: boolean;
+  accountCount?: number | null;
+  totalCredits?: number | null;
+  message?: string;
+  imageDataUrl?: string;
+  imageUrl?: string;
+  errorMessage?: string;
+}
+
+export interface AiImageGenerateItem {
+  index: number;
+  dataUrl: string;
+  remoteUrl: string;
+  objectKey: string;
+  storedUrl: string;
+  storageType: string;
+  contentType: string;
+}
+
+export interface AiImageGenerateResult {
+  model: string;
+  size: string;
+  endpoint: string;
+  latencyMs: number;
+  images: AiImageGenerateItem[];
+}
+
 // 1. 数据概览
 export const getDashboardOverview = () =>
   http.get<ApiResult<DashboardOverview>, any>("/dashboard/overview");
@@ -485,6 +529,37 @@ export const testAiConfig = (data?: {
   model?: string;
   timeoutSec?: number;
 }) => http.post<ApiResult<AiTestResult>, any>("/ai/test", { data, timeout: 90000 });
+
+export const getAiImageConfig = () =>
+  http.get<ApiResult<AiImageConfigInfo>, any>("/ai/image-config");
+
+export const updateAiImageConfig = (data: {
+  enabled: boolean;
+  baseUrl: string;
+  apiKey?: string;
+  clearApiKey?: boolean;
+  model: string;
+  defaultSize?: string;
+  timeoutSec?: number;
+}) => http.request<ApiResult<AiImageConfigInfo>>("put", "/ai/image-config", { data });
+
+export const testAiImageConfig = (data?: {
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+  size?: string;
+  timeoutSec?: number;
+  generateSample?: boolean;
+  prompt?: string;
+}) => http.post<ApiResult<AiImageTestResult>, any>("/ai/image/test", { data, timeout: 180000 });
+
+export const generateAiImage = (data: {
+  prompt: string;
+  size?: string;
+  model?: string;
+  count?: number;
+  saveToStorage?: boolean;
+}) => http.post<ApiResult<AiImageGenerateResult>, any>("/ai/image/generate", { data, timeout: 180000 });
 
 export const getAdminAppVersion = (refresh = false) =>
   http.get<ApiResult<AppVersionInfo>, any>("/app/version/latest", {

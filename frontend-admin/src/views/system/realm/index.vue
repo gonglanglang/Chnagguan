@@ -11,6 +11,9 @@ import {
   getAiConfig,
   updateAiConfig,
   testAiConfig,
+  getAiImageConfig,
+  updateAiImageConfig,
+  testAiImageConfig,
   getAdminAppVersion,
   initAppApkUpload,
   publishAppApk,
@@ -21,7 +24,9 @@ import {
   type AppDefaultThemeConfig,
   type AppVersionInfo,
   type AiConfigInfo,
-  type AiTestResult
+  type AiTestResult,
+  type AiImageConfigInfo,
+  type AiImageTestResult
 } from "@/api/guoguanla";
 
 defineOptions({
@@ -33,6 +38,9 @@ const savingBasic = ref(false);
 const savingTheme = ref(false);
 const savingAi = ref(false);
 const testingAi = ref(false);
+const savingAiImage = ref(false);
+const testingAiImageHealth = ref(false);
+const testingAiImageGenerate = ref(false);
 const savingVersion = ref(false);
 const syncingGithub = ref(false);
 const uploadingApk = ref(false);
@@ -41,6 +49,8 @@ const realms = ref<RealmConfig[]>([]);
 const effectiveVersion = ref<AppVersionInfo | null>(null);
 const aiConfigView = ref<AiConfigInfo | null>(null);
 const aiTestResult = ref<AiTestResult | null>(null);
+const aiImageConfigView = ref<AiImageConfigInfo | null>(null);
+const aiImageTestResult = ref<AiImageTestResult | null>(null);
 
 const basicForm = reactive({
   guestMode: true,
@@ -103,6 +113,33 @@ const aiForm = reactive({
   systemPrompt: ""
 });
 
+const aiImageModelOptions = [
+  { value: "gem_pix_2", label: "gem_pix_2（Flow Agent 实测推荐）" },
+  { value: "narwhal", label: "narwhal（Flow Agent）" },
+  { value: "harbor_seal", label: "harbor_seal（Flow Agent）" },
+  { value: "dall-e-3", label: "dall-e-3（OpenAI 兼容）" },
+  { value: "gpt-image-1", label: "gpt-image-1（OpenAI 兼容）" }
+];
+
+const aiImageSizeOptions = [
+  { value: "1024x1024", label: "1024x1024（1:1 方形）" },
+  { value: "1792x1024", label: "1792x1024（16:9 横屏）" },
+  { value: "1024x1792", label: "1024x1792（9:16 竖屏）" },
+  { value: "1365x1024", label: "1365x1024（4:3 经典横图）" },
+  { value: "1024x1365", label: "1024x1365（3:4 经典竖图）" }
+];
+
+const aiImageForm = reactive({
+  enabled: true,
+  baseUrl: "http://127.0.0.1:8001/v1",
+  apiKey: "",
+  clearApiKey: false,
+  model: "gem_pix_2",
+  defaultSize: "1024x1024",
+  timeoutSec: 120,
+  testPrompt: "a glowing crystal lotus on calm water, clean minimalist illustration"
+});
+
 const versionForm = reactive({
   githubRepo: "gonglanglang/Chnagguan",
   latestVersion: "1.0.0",
@@ -116,11 +153,12 @@ const versionForm = reactive({
 async function fetchAll() {
   loading.value = true;
   try {
-    const [realmRes, cfgRes, verRes, aiRes, themeRes] = await Promise.all([
+    const [realmRes, cfgRes, verRes, aiRes, aiImgRes, themeRes] = await Promise.all([
       getRealms(),
       getConfigs(),
       getAdminAppVersion(false),
       getAiConfig().catch(() => null),
+      getAiImageConfig().catch(() => null),
       getAdminDefaultTheme().catch(() => null)
     ]);
     realms.value = realmRes.data;
@@ -150,6 +188,9 @@ async function fetchAll() {
 
     if (aiRes?.data) {
       applyAiConfigView(aiRes.data);
+    }
+    if (aiImgRes?.data) {
+      applyAiImageConfigView(aiImgRes.data);
     }
   } finally {
     loading.value = false;
@@ -218,6 +259,92 @@ async function handleTestAi() {
     }
   } finally {
     testingAi.value = false;
+  }
+}
+
+function applyAiImageConfigView(data: AiImageConfigInfo) {
+  aiImageConfigView.value = data;
+  aiImageForm.enabled = data.enabled;
+  aiImageForm.baseUrl = data.baseUrl || "http://127.0.0.1:8001/v1";
+  aiImageForm.apiKey = "";
+  aiImageForm.clearApiKey = false;
+  aiImageForm.model = data.model || "gem_pix_2";
+  aiImageForm.defaultSize = data.defaultSize || "1024x1024";
+  aiImageForm.timeoutSec = data.timeoutSec ?? 120;
+}
+
+function applyFlowAgentPreset() {
+  aiImageForm.enabled = true;
+  aiImageForm.baseUrl = "http://127.0.0.1:8001/v1";
+  aiImageForm.apiKey = "";
+  aiImageForm.clearApiKey = true;
+  aiImageForm.model = "gem_pix_2";
+  aiImageForm.defaultSize = "1024x1024";
+  aiImageForm.timeoutSec = 120;
+  ElMessage.info("已填入本地 Flow Agent 默认参数，点击「保存生图配置」生效");
+}
+
+async function saveAiImageSettings() {
+  if (!aiImageForm.baseUrl.trim()) {
+    ElMessage.warning("请填写 AI 生图接口地址");
+    return;
+  }
+  if (!aiImageForm.model.trim()) {
+    ElMessage.warning("请填写生图模型名称");
+    return;
+  }
+  savingAiImage.value = true;
+  try {
+    const res = await updateAiImageConfig({
+      enabled: aiImageForm.enabled,
+      baseUrl: aiImageForm.baseUrl.trim(),
+      apiKey: aiImageForm.apiKey.trim(),
+      clearApiKey: aiImageForm.clearApiKey,
+      model: aiImageForm.model.trim(),
+      defaultSize: aiImageForm.defaultSize,
+      timeoutSec: aiImageForm.timeoutSec
+    });
+    applyAiImageConfigView(res.data);
+    ElMessage.success("AI 生图配置已保存并立即生效");
+  } finally {
+    savingAiImage.value = false;
+  }
+}
+
+async function handleTestAiImage(generateSample: boolean) {
+  if (!aiImageForm.baseUrl.trim()) {
+    ElMessage.warning("请先填写 AI 生图接口地址");
+    return;
+  }
+  if (generateSample) {
+    testingAiImageGenerate.value = true;
+  } else {
+    testingAiImageHealth.value = true;
+  }
+  aiImageTestResult.value = null;
+  try {
+    const res = await testAiImageConfig({
+      baseUrl: aiImageForm.baseUrl.trim(),
+      apiKey: aiImageForm.apiKey.trim() || undefined,
+      model: aiImageForm.model.trim(),
+      size: aiImageForm.defaultSize,
+      timeoutSec: aiImageForm.timeoutSec,
+      generateSample,
+      prompt: generateSample ? aiImageForm.testPrompt.trim() || undefined : undefined
+    });
+    aiImageTestResult.value = res.data;
+    if (res.data.ok) {
+      ElMessage.success(
+        generateSample
+          ? `试生图成功（${res.data.latencyMs ?? 0}ms）`
+          : `生图服务已连通（${res.data.latencyMs ?? 0}ms）`
+      );
+    } else {
+      ElMessage.error(res.data.errorMessage || "AI 生图测试失败");
+    }
+  } finally {
+    testingAiImageHealth.value = false;
+    testingAiImageGenerate.value = false;
   }
 }
 
@@ -669,6 +796,224 @@ onMounted(fetchAll);
             </el-button>
             <el-button type="success" plain :loading="testingAi" @click="handleTestAi">
               测试模型连通性
+            </el-button>
+          </div>
+        </el-form-item>
+      </el-form>
+    </el-card>
+
+    <el-card shadow="never">
+      <template #header>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-gray-800">AI 生图服务配置（Flow Agent / OpenAI 兼容）</span>
+            <el-tag
+              :type="aiImageForm.enabled && aiImageConfigView?.resolvedEndpoint ? 'success' : 'warning'"
+              size="small"
+            >
+              {{
+                !aiImageForm.enabled
+                  ? "已关闭"
+                  : aiImageConfigView?.model
+                    ? `已启用 · ${aiImageConfigView.model}`
+                    : "待保存配置"
+              }}
+            </el-tag>
+          </div>
+          <span v-if="aiImageConfigView?.resolvedEndpoint" class="text-xs text-gray-500">
+            实际生图地址：{{ aiImageConfigView.resolvedEndpoint }}
+          </span>
+        </div>
+      </template>
+
+      <el-alert
+        type="info"
+        :closable="false"
+        class="mb-4"
+        title="对接本地搭建的 Flow Agent（默认 http://127.0.0.1:8001/v1，本地无密钥模式）或任意 OpenAI /v1/images/generations 兼容生图服务。使用 Flow Agent 时请保持本地 Bridge (9222) 运行，并在 Chrome 打开 labs.google/fx/tools/flow 保持登录态。"
+      />
+
+      <el-form label-width="140px" class="max-w-3xl">
+        <el-form-item label="启用 AI 生图服务">
+          <div class="flex flex-wrap items-center gap-3">
+            <el-switch v-model="aiImageForm.enabled" class="shrink-0" />
+            <span class="text-xs text-gray-500">
+              开启后，管理后台可通过统一接口 <code>POST /api/admin/ai/image/generate</code> 调用 AI 生图
+            </span>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="生图接口地址">
+          <div class="w-full space-y-1.5">
+            <div class="flex w-full flex-wrap items-center gap-2">
+              <el-input
+                v-model="aiImageForm.baseUrl"
+                placeholder="例如：http://127.0.0.1:8001/v1 或 https://api.openai.com/v1"
+                class="min-w-[260px] flex-1"
+              />
+              <el-button plain @click="applyFlowAgentPreset">
+                填入本地 Flow Agent 默认值
+              </el-button>
+            </div>
+            <div class="text-xs text-gray-400">
+              兼容 OpenAI Images 协议，后端自动补齐 /v1/images/generations
+            </div>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="API 密钥（选填）">
+          <div class="w-full space-y-2">
+            <el-input
+              v-model="aiImageForm.apiKey"
+              type="password"
+              show-password
+              autocomplete="new-password"
+              :placeholder="
+                aiImageConfigView?.hasApiKey
+                  ? `当前已保存密钥 (${aiImageConfigView.apiKeyMasked})，留空保持不变；本地 Flow Agent 可勾选清空`
+                  : '本地 Flow Agent 无需填写；若对接云端 OpenAI 兼容生图服务请填入 API Key'
+              "
+            />
+            <div v-if="aiImageConfigView?.hasApiKey" class="flex items-center justify-between text-xs text-gray-500">
+              <span>已安全保存密钥：{{ aiImageConfigView.apiKeyMasked }}</span>
+              <el-checkbox v-model="aiImageForm.clearApiKey" size="small">
+                保存时清空已保存密钥
+              </el-checkbox>
+            </div>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="模型与默认画幅">
+          <div class="flex w-full flex-wrap items-center gap-3">
+            <el-select
+              v-model="aiImageForm.model"
+              filterable
+              allow-create
+              default-first-option
+              placeholder="选择或输入模型名"
+              style="width: 240px"
+            >
+              <el-option
+                v-for="opt in aiImageModelOptions"
+                :key="opt.value"
+                :label="opt.label"
+                :value="opt.value"
+              />
+            </el-select>
+            <el-select
+              v-model="aiImageForm.defaultSize"
+              placeholder="默认图片尺寸"
+              style="width: 210px"
+            >
+              <el-option
+                v-for="opt in aiImageSizeOptions"
+                :key="opt.value"
+                :label="opt.label"
+                :value="opt.value"
+              />
+            </el-select>
+            <div class="flex items-center gap-1.5">
+              <span class="text-xs text-gray-500">超时(秒)</span>
+              <el-input-number
+                v-model="aiImageForm.timeoutSec"
+                :min="10"
+                :max="300"
+                :step="10"
+                size="small"
+                style="width: 106px"
+              />
+            </div>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="试生图提示词">
+          <el-input
+            v-model="aiImageForm.testPrompt"
+            type="textarea"
+            :rows="2"
+            placeholder="点击「立即试生图测试」时使用的提示词（中英文均可，Flow 推荐英文提示词）"
+          />
+        </el-form-item>
+
+        <el-form-item v-if="aiImageTestResult">
+          <div class="w-full space-y-3">
+            <el-alert
+              :type="aiImageTestResult.ok ? 'success' : 'error'"
+              :closable="true"
+              @close="aiImageTestResult = null"
+              class="w-full"
+            >
+              <template #title>
+                <span v-if="aiImageTestResult.ok">
+                  {{ aiImageTestResult.mode === "GENERATE" ? "试生图成功" : "服务探测通过" }}
+                  · 模型 {{ aiImageTestResult.model || aiImageForm.model }}
+                  · 耗时 {{ aiImageTestResult.latencyMs ?? 0 }}ms
+                </span>
+                <span v-else>
+                  {{ aiImageTestResult.mode === "GENERATE" ? "试生图失败" : "服务探测失败" }}
+                  · {{ aiImageTestResult.errorMessage }}
+                </span>
+              </template>
+              <div v-if="aiImageTestResult.message" class="mt-1 text-xs text-gray-700">
+                {{ aiImageTestResult.message }}
+              </div>
+            </el-alert>
+
+            <div
+              v-if="aiImageTestResult.ok && (aiImageTestResult.imageDataUrl || aiImageTestResult.imageUrl)"
+              class="flex flex-wrap items-start gap-4 rounded-xl border border-slate-200 bg-slate-50 p-3"
+            >
+              <el-image
+                :src="aiImageTestResult.imageDataUrl || aiImageTestResult.imageUrl"
+                :preview-src-list="[aiImageTestResult.imageDataUrl || aiImageTestResult.imageUrl || '']"
+                fit="contain"
+                class="h-44 w-44 rounded-lg border border-slate-200 bg-white"
+              />
+              <div class="min-w-[200px] flex-1 space-y-2 text-xs text-slate-600">
+                <div class="font-semibold text-slate-800">试生图预览（点击图片可放大查看）</div>
+                <div>请求接口：<code>{{ aiImageTestResult.endpoint }}</code></div>
+                <div v-if="aiImageTestResult.imageUrl">
+                  上游地址：<code class="break-all">{{ aiImageTestResult.imageUrl }}</code>
+                </div>
+                <div class="pt-1">
+                  <el-button
+                    size="small"
+                    type="primary"
+                    plain
+                    tag="a"
+                    :href="aiImageTestResult.imageDataUrl || aiImageTestResult.imageUrl"
+                    download="flow-agent-test.jpg"
+                  >
+                    下载测试图片
+                  </el-button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-form-item>
+
+        <el-form-item>
+          <div class="flex flex-wrap items-center gap-2">
+            <el-button type="primary" :loading="savingAiImage" @click="saveAiImageSettings">
+              保存生图配置
+            </el-button>
+            <el-button
+              type="success"
+              plain
+              :loading="testingAiImageHealth"
+              :disabled="testingAiImageGenerate"
+              @click="handleTestAiImage(false)"
+            >
+              检测服务与余额
+            </el-button>
+            <el-button
+              type="warning"
+              plain
+              :loading="testingAiImageGenerate"
+              :disabled="testingAiImageHealth"
+              @click="handleTestAiImage(true)"
+            >
+              立即试生图测试
             </el-button>
           </div>
         </el-form-item>

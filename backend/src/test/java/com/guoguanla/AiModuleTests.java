@@ -4,8 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.guoguanla.module.ai.AiBoardService;
 import com.guoguanla.module.ai.AiConfigService;
+import com.guoguanla.module.ai.AiImageConfigService;
 import com.guoguanla.module.ai.vo.AiBoardVO;
 import com.guoguanla.module.app.CaptchaService;
+import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -14,6 +16,11 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -314,5 +321,201 @@ class AiModuleTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.phone").value("13900139888"))
                 .andExpect(jsonPath("$.data.email").value("student@example.com"));
+    }
+
+    @Test
+    void resolveAiImageUrlsAndNormalizeSizes() {
+        assertThat(AiImageConfigService.resolveImagesGenerationsUrl("http://127.0.0.1:8001"))
+                .isEqualTo("http://127.0.0.1:8001/v1/images/generations");
+        assertThat(AiImageConfigService.resolveImagesGenerationsUrl("http://127.0.0.1:8001/v1"))
+                .isEqualTo("http://127.0.0.1:8001/v1/images/generations");
+        assertThat(AiImageConfigService.resolveImagesGenerationsUrl("http://127.0.0.1:8001/api/v1"))
+                .isEqualTo("http://127.0.0.1:8001/v1/images/generations");
+        assertThat(AiImageConfigService.resolveImagesGenerationsUrl("http://127.0.0.1:8001/v1/images/generations"))
+                .isEqualTo("http://127.0.0.1:8001/v1/images/generations");
+        assertThat(AiImageConfigService.resolveServiceOrigin("http://127.0.0.1:8001/v1/images/generations"))
+                .isEqualTo("http://127.0.0.1:8001");
+        assertThat(AiImageConfigService.resolveServiceOrigin("http://127.0.0.1:8001/v1"))
+                .isEqualTo("http://127.0.0.1:8001");
+
+        assertThat(AiImageConfigService.normalizeSize("1:1")).isEqualTo("1024x1024");
+        assertThat(AiImageConfigService.normalizeSize("16:9")).isEqualTo("1792x1024");
+        assertThat(AiImageConfigService.normalizeSize("9:16")).isEqualTo("1024x1792");
+        assertThat(AiImageConfigService.normalizeSize("4:3")).isEqualTo("1365x1024");
+        assertThat(AiImageConfigService.normalizeSize("3:4")).isEqualTo("1024x1365");
+        assertThat(AiImageConfigService.normalizeSize("1536x1024")).isEqualTo("1536x1024");
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> AiImageConfigService.normalizeSize("invalid-size")
+        ).hasMessageContaining("不支持的图片尺寸格式");
+    }
+
+    @Test
+    void adminAiImageConfigAndMockFlowAgentEndToEndWork() throws Exception {
+        // 未登录禁止访问
+        mockMvc.perform(get("/api/admin/ai/image-config"))
+                .andExpect(jsonPath("$.code").value(401));
+
+        String token = loginAdminToken();
+        String fakeSecret = "img_secret_key_8877665544";
+
+        // 1x1 合法 PNG 字节，用于 Mock Flow Agent 返回 b64_json
+        byte[] tinyPng = Base64.getDecoder().decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII="
+        );
+        String tinyPngB64 = Base64.getEncoder().encodeToString(tinyPng);
+
+        HttpServer mockFlow = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        mockFlow.createContext("/health", exchange -> {
+            byte[] resp = "{\"status\":\"ok\",\"engine\":true,\"binary\":\"flow-windows.exe\"}"
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, resp.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(resp);
+            }
+        });
+        mockFlow.createContext("/api/v1/balance", exchange -> {
+            byte[] resp = "{\"accounts\":[{\"account_id\":\"acct-demo\",\"credits\":1049,\"status\":\"active\"}],\"total_credits\":1049,\"unread\":0}"
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, resp.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(resp);
+            }
+        });
+        mockFlow.createContext("/v1/images/generations", exchange -> {
+            byte[] resp = ("{\"created\":1727201000,\"data\":[{\"b64_json\":\"" + tinyPngB64 + "\"}],\"flow\":{\"model\":\"NARWHAL\",\"status\":\"succeeded\"}}")
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, resp.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(resp);
+            }
+        });
+        mockFlow.start();
+        int port = mockFlow.getAddress().getPort();
+        String mockBaseUrl = "http://127.0.0.1:" + port + "/v1";
+
+        try {
+            // 1. 保存生图配置（带密钥，校验掩码与路径解析）
+            mockMvc.perform(put("/api/admin/ai/image-config")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "enabled": true,
+                                      "baseUrl": "%s",
+                                      "apiKey": "%s",
+                                      "model": "narwhal",
+                                      "defaultSize": "16:9",
+                                      "timeoutSec": 120
+                                    }
+                                    """.formatted(mockBaseUrl, fakeSecret)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(200))
+                    .andExpect(jsonPath("$.data.enabled").value(true))
+                    .andExpect(jsonPath("$.data.defaultSize").value("1792x1024"))
+                    .andExpect(jsonPath("$.data.hasApiKey").value(true))
+                    .andExpect(jsonPath("$.data.apiKeyMasked").value("img_se****5544"))
+                    .andExpect(jsonPath("$.data.resolvedEndpoint").value(mockBaseUrl + "/images/generations"));
+
+            // 校验 /api/admin/configs 与 /api/admin/logs 均不泄露明文密钥
+            String cfgResp = mockMvc.perform(get("/api/admin/configs")
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            assertThat(cfgResp).doesNotContain(fakeSecret);
+
+            String logsResp = mockMvc.perform(get("/api/admin/logs")
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            assertThat(logsResp).doesNotContain(fakeSecret);
+
+            // 2. 清空密钥，验证本地 Flow Agent 无密钥模式
+            mockMvc.perform(put("/api/admin/ai/image-config")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "enabled": true,
+                                      "baseUrl": "%s",
+                                      "clearApiKey": true,
+                                      "model": "narwhal",
+                                      "defaultSize": "1024x1024",
+                                      "timeoutSec": 120
+                                    }
+                                    """.formatted(mockBaseUrl)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.hasApiKey").value(false))
+                    .andExpect(jsonPath("$.data.apiKeyMasked").value(""));
+
+            // 3. 测试快速健康与余额探测（不耗费额度）
+            mockMvc.perform(post("/api/admin/ai/image/test")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"generateSample\":false}"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(200))
+                    .andExpect(jsonPath("$.data.ok").value(true))
+                    .andExpect(jsonPath("$.data.mode").value("HEALTH"))
+                    .andExpect(jsonPath("$.data.engineReady").value(true))
+                    .andExpect(jsonPath("$.data.accountCount").value(1))
+                    .andExpect(jsonPath("$.data.totalCredits").value(1049));
+
+            // 4. 测试真实试生图接口
+            mockMvc.perform(post("/api/admin/ai/image/test")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"generateSample\":true,\"prompt\":\"a crystal lotus\"}"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(200))
+                    .andExpect(jsonPath("$.data.ok").value(true))
+                    .andExpect(jsonPath("$.data.mode").value("GENERATE"))
+                    .andExpect(jsonPath("$.data.imageDataUrl").value("data:image/png;base64," + tinyPngB64));
+
+            // 5. 测试通用生图接口（带转存本地/OSS）
+            mockMvc.perform(post("/api/admin/ai/image/generate")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "prompt": "a clean geometric triangle diagram",
+                                      "size": "16:9",
+                                      "count": 1,
+                                      "saveToStorage": true
+                                    }
+                                    """))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(200))
+                    .andExpect(jsonPath("$.data.size").value("1792x1024"))
+                    .andExpect(jsonPath("$.data.images[0].contentType").value("image/png"))
+                    .andExpect(jsonPath("$.data.images[0].objectKey").isNotEmpty())
+                    .andExpect(jsonPath("$.data.images[0].storedUrl").isNotEmpty());
+
+            // 6. 关闭开关后应拦截调用并返回 40001
+            mockMvc.perform(put("/api/admin/ai/image-config")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "enabled": false,
+                                      "baseUrl": "%s",
+                                      "model": "narwhal",
+                                      "defaultSize": "1024x1024",
+                                      "timeoutSec": 120
+                                    }
+                                    """.formatted(mockBaseUrl)))
+                    .andExpect(status().isOk());
+
+            mockMvc.perform(post("/api/admin/ai/image/generate")
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"prompt\":\"test disabled\"}"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(40001));
+        } finally {
+            mockFlow.stop(0);
+        }
     }
 }

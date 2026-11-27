@@ -250,6 +250,10 @@ public class AliyunOssService {
         return uploadImageFile(file, "home-banners", "banner", baseOrigin);
     }
 
+    public UploadResult uploadAiGeneratedImage(byte[] bytes, String contentType, String baseOrigin) {
+        return uploadImageBytes(bytes, contentType, "ai-generated.png", "ai-images", "aigen", baseOrigin);
+    }
+
     public UploadResult uploadCourseVideo(MultipartFile file, String baseOrigin) {
         if (file == null || file.isEmpty()) {
             throw new BizException(ErrorCode.BAD_REQUEST, "请先选择要上传的视频文件");
@@ -589,11 +593,22 @@ public class AliyunOssService {
         } catch (IOException e) {
             throw new BizException(ErrorCode.BAD_REQUEST, "读取图片失败");
         }
-        if (bytes.length == 0 || bytes.length > MAX_IMAGE_BYTES) {
+        return uploadImageBytes(bytes, file.getContentType(), file.getOriginalFilename(), folder, filenamePrefix, baseOrigin);
+    }
+
+    private UploadResult uploadImageBytes(
+            byte[] bytes,
+            String contentType,
+            String originalFilename,
+            String folder,
+            String filenamePrefix,
+            String baseOrigin
+    ) {
+        if (bytes == null || bytes.length == 0 || bytes.length > MAX_IMAGE_BYTES) {
             throw new BizException(ErrorCode.BAD_REQUEST, "图片大小需在 10MB 以内");
         }
 
-        ImageMeta meta = detectImageMeta(bytes, file.getContentType(), file.getOriginalFilename());
+        ImageMeta meta = detectImageMeta(bytes, contentType, originalFilename);
         String datePart = LocalDate.now().format(DATE_DIR_FORMATTER);
         String rand = UUID.randomUUID().toString().replace("-", "").substring(0, 10);
         String objectKey = folder + "/" + datePart + "/" + filenamePrefix + "_" + rand + "." + meta.ext();
