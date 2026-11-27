@@ -9,6 +9,7 @@ import com.guoguanla.common.result.ErrorCode;
 import com.guoguanla.common.result.PageResult;
 import com.guoguanla.common.security.StpAppUtil;
 import com.guoguanla.common.util.JsonHelper;
+import com.guoguanla.module.ai.AiBoardService;
 import com.guoguanla.module.app.dto.AppQuizDTO;
 import com.guoguanla.module.app.vo.AppQuizVO;
 import com.guoguanla.module.app.vo.AppUserProfileVO;
@@ -62,6 +63,7 @@ public class AppQuizService {
     private final AppUserMapper userMapper;
     private final QuestionEngineService engineService;
     private final AliyunOssService ossService;
+    private final AiBoardService aiBoardService;
     private final AppBankService bankService;
     private final RealmHelperService realmHelper;
     private final ObjectMapper objectMapper;
@@ -84,7 +86,10 @@ public class AppQuizService {
         private Integer userIndex;
         private String userAnswerText;
         private String userAnswerImageKey;
-        private Boolean userSelfCorrect;
+        private Boolean aiCorrect;
+        private Integer aiScore;
+        private String aiComment;
+        private String aiModel;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -352,26 +357,25 @@ public class AppQuizService {
             if (!imageKey.isEmpty()) {
                 item.setUserAnswerImageKey(imageKey);
             }
-            if (req.getSelfCorrect() != null) {
-                item.setUserSelfCorrect(req.getSelfCorrect());
-            }
+
+            AiBoardService.EssayVerifyResult verify = verifyEssayWithAi(item);
             record.setQuestionSnapshotJson(writeJson(snapshots));
             quizRecordMapper.updateById(record);
 
             upsertEssayAnswerRecord(record, item);
-            boolean pendingReview = item.getUserSelfCorrect() == null;
 
             return AppQuizVO.CheckItemVO.builder()
                     .itemIndex(item.getItemIndex())
                     .questionFormat("ESSAY")
-                    .correct(Boolean.TRUE.equals(item.getUserSelfCorrect()))
+                    .correct(verify.correct())
                     .correctIndex(0)
-                    .referenceAnswer(pendingReview ? "" : safeStr(item.getReferenceAnswer()))
+                    .referenceAnswer(safeStr(item.getReferenceAnswer()))
                     .answerText(safeStr(item.getUserAnswerText()))
                     .answerImageUrl(ossService.resolveViewUrl(item.getUserAnswerImageKey(), baseOrigin))
-                    .selfCorrect(item.getUserSelfCorrect())
-                    .pendingReview(pendingReview)
-                    .analysis(pendingReview ? "" : safeStr(item.getAnalysis()))
+                    .aiScore(verify.score())
+                    .aiComment(verify.comment())
+                    .aiModel(verify.modelUsed())
+                    .analysis(safeStr(item.getAnalysis()))
                     .build();
         }
 
@@ -393,40 +397,30 @@ public class AppQuizService {
                 .build();
     }
 
-    @Transactional(rollbackFor = Exception.class)
-    public AppQuizVO.CheckItemVO gradeEssayItem(AppQuizDTO.EssayGradeReq req, String baseOrigin) {
-        UserQuizRecord record = loadAuthorizedSession(req.getSessionNo());
-        List<SnapshotItem> snapshots = readSnapshots(record.getQuestionSnapshotJson());
-        if (req.getItemIndex() < 0 || req.getItemIndex() >= snapshots.size()) {
-            throw new BizException(ErrorCode.BAD_REQUEST, "题号超出范围");
+    private AiBoardService.EssayVerifyResult verifyEssayWithAi(SnapshotItem item) {
+        String imageDataUri = "";
+        String key = item.getUserAnswerImageKey();
+        if (key != null && !key.isBlank()) {
+            AliyunOssService.BinaryResource bin = ossService.readObjectBytes(key);
+            if (bin != null && bin.bytes() != null && bin.bytes().length > 0) {
+                String mime = (bin.contentType() == null || !bin.contentType().startsWith("image/"))
+                        ? "image/png"
+                        : bin.contentType().split(";")[0].trim();
+                imageDataUri = "data:" + mime + ";base64," + Base64.getEncoder().encodeToString(bin.bytes());
+            }
         }
-        SnapshotItem item = snapshots.get(req.getItemIndex());
-        if (!"ESSAY".equalsIgnoreCase(item.getQuestionFormat())) {
-            throw new BizException(ErrorCode.BAD_REQUEST, "该题不是解答题");
-        }
-        if (req.getAnswerText() != null) {
-            item.setUserAnswerText(req.getAnswerText().trim());
-        }
-        if (req.getAnswerImageKey() != null && !req.getAnswerImageKey().isBlank()) {
-            item.setUserAnswerImageKey(req.getAnswerImageKey().trim());
-        }
-        item.setUserSelfCorrect(req.getCorrect());
-        record.setQuestionSnapshotJson(writeJson(snapshots));
-        quizRecordMapper.updateById(record);
-
-        upsertEssayAnswerRecord(record, item);
-
-        return AppQuizVO.CheckItemVO.builder()
-                .itemIndex(item.getItemIndex())
-                .questionFormat("ESSAY")
-                .correct(Boolean.TRUE.equals(req.getCorrect()))
-                .correctIndex(0)
-                .referenceAnswer(safeStr(item.getReferenceAnswer()))
-                .answerText(safeStr(item.getUserAnswerText()))
-                .answerImageUrl(ossService.resolveViewUrl(item.getUserAnswerImageKey(), baseOrigin))
-                .selfCorrect(item.getUserSelfCorrect())
-                .analysis(safeStr(item.getAnalysis()))
-                .build();
+        AiBoardService.EssayVerifyResult verify = aiBoardService.verifyEssayAnswer(
+                item.getStem(),
+                item.getReferenceAnswer(),
+                item.getAnalysis(),
+                item.getUserAnswerText(),
+                imageDataUri
+        );
+        item.setAiCorrect(verify.correct());
+        item.setAiScore(verify.score());
+        item.setAiComment(verify.comment());
+        item.setAiModel(verify.modelUsed());
+        return verify;
     }
 
     public PageResult<AppQuizVO.EssayAnswerRecordVO> listMyEssayAnswers(Long pageNum, Long pageSize, String baseOrigin) {
@@ -474,12 +468,12 @@ public class AppQuizService {
                             .referenceAnswer(e.getReferenceAnswer())
                             .answerText(e.getAnswerText())
                             .answerImageUrl(ossService.resolveViewUrl(e.getAnswerImageKey(), baseOrigin))
-                            .selfCorrect(e.getSelfCorrect())
-                            .teacherStatus(e.getTeacherStatus())
-                            .teacherComment(e.getTeacherComment())
-                            .teacherImageUrl(ossService.resolveViewUrl(e.getTeacherImageKey(), baseOrigin))
+                            .aiStatus(e.getAiStatus())
+                            .aiScore(e.getAiScore())
+                            .aiComment(safeStr(e.getAiComment()))
+                            .aiModel(safeStr(e.getAiModel()))
                             .createdAt(e.getCreatedAt())
-                            .reviewedAt(e.getReviewedAt())
+                            .verifiedAt(e.getVerifiedAt())
                             .build();
                 })
                 .toList();
@@ -497,7 +491,6 @@ public class AppQuizService {
 
     private record EvalOutcome(
             int correctCount,
-            int pendingReviewCount,
             List<SnapshotItem> wrongSnaps,
             List<AppQuizVO.WrongReviewItem> wrongReview
     ) {}
@@ -527,20 +520,17 @@ public class AppQuizService {
 
     private EvalOutcome evaluateSnapshots(List<SnapshotItem> snapshots, String baseOrigin) {
         int correctCount = 0;
-        int pendingReviewCount = 0;
         List<SnapshotItem> wrongSnaps = new ArrayList<>();
         List<AppQuizVO.WrongReviewItem> wrongReview = new ArrayList<>();
         for (SnapshotItem item : snapshots) {
             if (isSnapshotItemCorrect(item)) {
                 correctCount++;
-            } else if (isEssaySubmittedPendingReview(item)) {
-                pendingReviewCount++;
             } else {
                 wrongSnaps.add(item);
                 wrongReview.add(toWrongReviewItem(item, baseOrigin));
             }
         }
-        return new EvalOutcome(correctCount, pendingReviewCount, wrongSnaps, wrongReview);
+        return new EvalOutcome(correctCount, wrongSnaps, wrongReview);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -598,7 +588,6 @@ public class AppQuizService {
                 .mode("GATE")
                 .totalCount(snapshots.size())
                 .correctCount(eval.correctCount())
-                .pendingReviewCount(eval.pendingReviewCount())
                 .score(score)
                 .passCount(passCount)
                 .passed(passed)
@@ -823,7 +812,6 @@ public class AppQuizService {
                 .mode("ADVANCE_EXAM")
                 .totalCount(snapshots.size())
                 .correctCount(eval.correctCount())
-                .pendingReviewCount(eval.pendingReviewCount())
                 .score(score)
                 .passScore(passScore)
                 .passCount((int) Math.ceil(snapshots.size() * passScore / 100.0))
@@ -923,103 +911,6 @@ public class AppQuizService {
                 .build();
     }
 
-    @Transactional(rollbackFor = Exception.class)
-    public void syncEssayTeacherReview(UserEssayAnswer ans, boolean approved) {
-        if (ans == null) return;
-        UserQuizRecord record = quizRecordMapper.selectOne(
-                new LambdaQueryWrapper<UserQuizRecord>()
-                        .eq(UserQuizRecord::getSessionNo, ans.getSessionNo())
-                        .last("LIMIT 1")
-        );
-        LocalDateTime now = LocalDateTime.now();
-        SnapshotItem targetSnap = null;
-        if (record != null) {
-            List<SnapshotItem> snapshots = readSnapshots(record.getQuestionSnapshotJson());
-            for (SnapshotItem item : snapshots) {
-                if (Objects.equals(item.getItemIndex(), ans.getItemIndex())) {
-                    item.setUserSelfCorrect(approved);
-                    targetSnap = item;
-                    break;
-                }
-            }
-            int correctCount = (int) snapshots.stream().filter(this::isSnapshotItemCorrect).count();
-            int score = snapshots.isEmpty() ? 0 : (int) Math.round(correctCount * 100.0 / snapshots.size());
-            record.setQuestionSnapshotJson(writeJson(snapshots));
-            record.setCorrectCount(correctCount);
-            record.setScore(score);
-
-            boolean passed = false;
-            if ("ADVANCE_EXAM".equals(record.getMode())) {
-                AppUser user = ans.getUserId() != null && ans.getUserId() > 0 ? userMapper.selectById(ans.getUserId()) : null;
-                EduRealm examRealm = realmHelper.findByRealmCode(record.getRealmCode());
-                if (examRealm == null && user != null) {
-                    examRealm = realmHelper.resolveUserRealm(user);
-                }
-                int passScore = examRealm != null && examRealm.getExamPassScore() != null ? examRealm.getExamPassScore() : 60;
-                passed = score >= passScore;
-                if (user != null && examRealm != null) {
-                    applyAdvanceExamPromotion(user, examRealm, passed, now);
-                }
-            } else if ("REDO_WRONG".equals(record.getMode())) {
-                int passNeed = (int) Math.ceil(snapshots.size() * 2.0 / 3.0);
-                passed = correctCount >= passNeed;
-            } else {
-                EduGate gate = record.getGateId() != null ? gateMapper.selectById(record.getGateId()) : null;
-                EduChapter chapter = record.getChapterId() != null ? chapterMapper.selectById(record.getChapterId()) : null;
-                int passCount = gate != null ? Math.min(gate.getPassCount(), snapshots.size())
-                        : (int) Math.ceil(snapshots.size() * 2.0 / 3.0);
-                passed = correctCount >= passCount;
-                if (ans.getUserId() != null && ans.getUserId() > 0 && gate != null && chapter != null) {
-                    applyGatePassOutcome(ans.getUserId(), gate, chapter, correctCount, passed);
-                }
-            }
-            record.setIsPassed(passed ? 1 : 0);
-            quizRecordMapper.updateById(record);
-        }
-
-        if (ans.getUserId() == null || ans.getUserId() <= 0) {
-            return;
-        }
-        if (targetSnap == null) {
-            targetSnap = new SnapshotItem();
-            targetSnap.setItemIndex(ans.getItemIndex());
-            targetSnap.setQuestionId(ans.getQuestionId());
-            targetSnap.setChapterId(ans.getChapterId());
-            targetSnap.setGradeCode(ans.getGradeCode());
-            targetSnap.setQuestionFormat("ESSAY");
-            targetSnap.setStem(ans.getStem());
-            targetSnap.setOptions(List.of());
-            targetSnap.setReferenceAnswer(ans.getReferenceAnswer());
-            targetSnap.setUserAnswerText(ans.getAnswerText());
-            targetSnap.setUserAnswerImageKey(ans.getAnswerImageKey());
-        }
-        String stemHash = sha256(safeStr(targetSnap.getStem()) + "|ESSAY|" + safeStr(targetSnap.getReferenceAnswer()));
-        if (!approved) {
-            upsertWrongItem(
-                    ans.getUserId(),
-                    safeStr(ans.getGradeCode()),
-                    ans.getChapterId() == null ? 0L : ans.getChapterId(),
-                    safeStr(ans.getChapterName()),
-                    safeStr(ans.getGateName()),
-                    targetSnap,
-                    now
-            );
-        } else {
-            UserWrongQuestion exist = wrongMapper.selectOne(
-                    new LambdaQueryWrapper<UserWrongQuestion>()
-                            .eq(UserWrongQuestion::getUserId, ans.getUserId())
-                            .eq(UserWrongQuestion::getStemHash, stemHash)
-                            .eq(UserWrongQuestion::getIsMastered, 0)
-                            .last("LIMIT 1")
-            );
-            if (exist != null) {
-                exist.setIsMastered(1);
-                exist.setMasteredAt(now);
-                wrongMapper.updateById(exist);
-            }
-        }
-    }
-
     public UserQuizRecord loadAuthorizedSession(String sessionNo) {
         UserQuizRecord record = quizRecordMapper.selectOne(
                 new LambdaQueryWrapper<UserQuizRecord>()
@@ -1046,17 +937,27 @@ public class AppQuizService {
             }
             SnapshotItem item = snapshots.get(sel.getItemIndex());
             if ("ESSAY".equalsIgnoreCase(item.getQuestionFormat())) {
+                String prevText = safeStr(item.getUserAnswerText());
+                String prevImg = safeStr(item.getUserAnswerImageKey());
                 if (sel.getAnswerText() != null) {
                     item.setUserAnswerText(sel.getAnswerText().trim());
                 }
                 if (sel.getAnswerImageKey() != null && !sel.getAnswerImageKey().isBlank()) {
                     item.setUserAnswerImageKey(sel.getAnswerImageKey().trim());
                 }
-                if (sel.getSelfCorrect() != null) {
-                    item.setUserSelfCorrect(sel.getSelfCorrect());
-                }
-                if ((item.getUserAnswerText() != null && !item.getUserAnswerText().isBlank())
-                        || (item.getUserAnswerImageKey() != null && !item.getUserAnswerImageKey().isBlank())) {
+                boolean hasAnswer = !safeStr(item.getUserAnswerText()).isBlank()
+                        || !safeStr(item.getUserAnswerImageKey()).isBlank();
+                boolean changed = !Objects.equals(prevText, safeStr(item.getUserAnswerText()))
+                        || !Objects.equals(prevImg, safeStr(item.getUserAnswerImageKey()));
+                if (hasAnswer && (item.getAiCorrect() == null || changed)) {
+                    try {
+                        verifyEssayWithAi(item);
+                    } catch (BizException e) {
+                        item.setAiCorrect(false);
+                        item.setAiScore(0);
+                        item.setAiComment(e.getMessage() == null ? "AI 批改暂不可用，请稍后重试" : e.getMessage());
+                        item.setAiModel("AI");
+                    }
                     upsertEssayAnswerRecord(record, item);
                 }
             } else if (sel.getSelectedIndex() != null) {
@@ -1067,21 +968,9 @@ public class AppQuizService {
 
     public boolean isSnapshotItemCorrect(SnapshotItem item) {
         if ("ESSAY".equalsIgnoreCase(item.getQuestionFormat())) {
-            return Boolean.TRUE.equals(item.getUserSelfCorrect());
+            return Boolean.TRUE.equals(item.getAiCorrect());
         }
         return Objects.equals(item.getAnswerIndex(), item.getUserIndex());
-    }
-
-    public boolean isEssaySubmittedPendingReview(SnapshotItem item) {
-        if (!"ESSAY".equalsIgnoreCase(item.getQuestionFormat())) {
-            return false;
-        }
-        if (item.getUserSelfCorrect() != null) {
-            return false;
-        }
-        boolean hasText = item.getUserAnswerText() != null && !item.getUserAnswerText().isBlank();
-        boolean hasImg = item.getUserAnswerImageKey() != null && !item.getUserAnswerImageKey().isBlank();
-        return hasText || hasImg;
     }
 
     private void upsertEssayAnswerRecord(UserQuizRecord record, SnapshotItem item) {
@@ -1147,7 +1036,10 @@ public class AppQuizService {
             );
         }
 
-        Integer selfVal = item.getUserSelfCorrect() == null ? null : (item.getUserSelfCorrect() ? 1 : 0);
+        int aiStatus = item.getAiCorrect() == null ? 0 : (item.getAiCorrect() ? 1 : 2);
+        int aiScore = item.getAiScore() == null ? (aiStatus == 1 ? 100 : 0) : item.getAiScore();
+        String aiComment = safeStr(item.getAiComment());
+        String aiModel = safeStr(item.getAiModel());
         LocalDateTime now = LocalDateTime.now();
         if (exist != null) {
             boolean sameSessionItem = Objects.equals(exist.getSessionNo(), record.getSessionNo())
@@ -1167,21 +1059,15 @@ public class AppQuizService {
 
             if (!sameSessionItem) {
                 exist.setAnswerImageKey(safeStr(item.getUserAnswerImageKey()));
-                exist.setSelfCorrect(selfVal);
-                exist.setTeacherStatus(0);
-                exist.setTeacherComment("");
-                exist.setTeacherImageKey(null);
-                exist.setReviewedBy(null);
-                exist.setReviewedAt(null);
                 exist.setCreatedAt(now);
-            } else {
-                if (item.getUserAnswerImageKey() != null && !item.getUserAnswerImageKey().isBlank()) {
-                    exist.setAnswerImageKey(item.getUserAnswerImageKey());
-                }
-                if (selfVal != null) {
-                    exist.setSelfCorrect(selfVal);
-                }
+            } else if (item.getUserAnswerImageKey() != null && !item.getUserAnswerImageKey().isBlank()) {
+                exist.setAnswerImageKey(item.getUserAnswerImageKey());
             }
+            exist.setAiStatus(aiStatus);
+            exist.setAiScore(aiScore);
+            exist.setAiComment(aiComment);
+            exist.setAiModel(aiModel);
+            exist.setVerifiedAt(aiStatus > 0 ? now : null);
             essayAnswerMapper.updateById(exist);
             return;
         }
@@ -1201,10 +1087,11 @@ public class AppQuizService {
         ans.setReferenceAnswer(safeStr(item.getReferenceAnswer()));
         ans.setAnswerText(safeStr(item.getUserAnswerText()));
         ans.setAnswerImageKey(safeStr(item.getUserAnswerImageKey()));
-        ans.setSelfCorrect(selfVal);
-        ans.setTeacherStatus(0);
-        ans.setTeacherComment("");
-        ans.setTeacherImageKey(null);
+        ans.setAiStatus(aiStatus);
+        ans.setAiScore(aiScore);
+        ans.setAiComment(aiComment);
+        ans.setAiModel(aiModel);
+        ans.setVerifiedAt(aiStatus > 0 ? now : null);
         essayAnswerMapper.insert(ans);
     }
 

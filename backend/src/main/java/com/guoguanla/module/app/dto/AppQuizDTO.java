@@ -28,20 +28,6 @@ public class AppQuizDTO {
         private String answerText;
         /** 解答题手写板上传返回的对象键或URL */
         private String answerImageKey;
-        /** 解答题是否已自评 */
-        private Boolean selfCorrect;
-    }
-
-    @Data
-    public static class EssayGradeReq {
-        @NotBlank(message = "会话编号不能为空")
-        private String sessionNo;
-        @NotNull(message = "题号不能为空")
-        private Integer itemIndex;
-        @NotNull(message = "自评结果不能为空")
-        private Boolean correct;
-        private String answerText;
-        private String answerImageKey;
     }
 
     @Data
@@ -59,7 +45,6 @@ public class AppQuizDTO {
         private Integer selectedIndex;
         private String answerText;
         private String answerImageKey;
-        private Boolean selfCorrect;
     }
 
     @Data

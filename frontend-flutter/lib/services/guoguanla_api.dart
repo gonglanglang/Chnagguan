@@ -314,11 +314,13 @@ class GuoguanlaApi {
     int? selectedIndex,
     String? answerText,
     String? answerImageKey,
-    bool? selfCorrect,
   }) {
+    final isEssayCheck = (answerText != null && answerText.trim().isNotEmpty) ||
+        (answerImageKey != null && answerImageKey.isNotEmpty);
     return client.request<CheckItemResult>(
       path: '/app/quiz/check-item',
       method: 'POST',
+      timeout: isEssayCheck ? const Duration(seconds: 95) : null,
       data: {
         'sessionNo': sessionNo,
         'itemIndex': itemIndex,
@@ -326,7 +328,6 @@ class GuoguanlaApi {
         'answerText': ?answerText,
         if (answerImageKey != null && answerImageKey.isNotEmpty)
           'answerImageKey': answerImageKey,
-        'selfCorrect': ?selfCorrect,
       },
       parser: (raw) => CheckItemResult.fromJson(_asMap(raw)),
     );

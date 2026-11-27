@@ -1091,6 +1091,118 @@ public class AiBoardService {
         return "data:" + mime + ";base64," + s;
     }
 
+    public record EssayVerifyResult(
+            boolean correct,
+            int score,
+            String comment,
+            String mistakePoint,
+            String modelUsed
+    ) {}
+
+    /**
+     * 闯关解答题 AI 实时批改判题：支持学生手写画板图片（多模态视觉）与文字步骤联合验证。
+     */
+    public EssayVerifyResult verifyEssayAnswer(
+            String stem,
+            String referenceAnswer,
+            String analysis,
+            String studentAnswerText,
+            String studentAnswerImageDataUri
+    ) {
+        String text = studentAnswerText == null ? "" : studentAnswerText.trim();
+        String imgUri = studentAnswerImageDataUri == null ? "" : studentAnswerImageDataUri.trim();
+        if (text.isEmpty() && imgUri.isEmpty()) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "请先在画板书写或输入解答步骤后再提交 AI 验证");
+        }
+
+        AiConfigService.RuntimeAiConfig cfg = requireReadyConfig();
+        List<String> images = new ArrayList<>();
+        if (!imgUri.isEmpty()) {
+            images.add(normalizeImageDataUri(imgUri, "image/png"));
+        }
+
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("任务：你是专业严谨的初高中数学阅卷老师，请实时批改学生在数学闯关解答题中的作答。\n");
+        prompt.append("评判标准：\n");
+        prompt.append("1. 若附带学生手写画板图片，请先仔细辨认图片中的所有算式、几何证明与最终结论；若同时有文字作答，则结合两者综合批改。\n");
+        prompt.append("2. 重点核对核心数学推导逻辑与最终答案是否与参考答案等价（允许不同合法解法与等价化简形式，不苛求逐字一致）。\n");
+        prompt.append("3. 若图片为空白、随手涂鸦、胡乱填写、未得出关键结论或存在明显计算/推理错误，必须判定 correct=false，并精准指出错因。\n");
+        prompt.append("4. score 为 0~100 整数：完全正确或仅极轻微书写笔误给 80~100 且 correct=true；思路部分正确但算错/缺关键步给 30~75 且 correct=false；空白/无关/全错给 0~25 且 correct=false。\n");
+        prompt.append("5. comment 用简洁友好的中文（30~120字）给出直接点评与订正建议，不要输出客套废话。\n\n");
+        prompt.append("【题目】\n").append(stem == null ? "" : stem.trim()).append("\n");
+        if (referenceAnswer != null && !referenceAnswer.isBlank()) {
+            prompt.append("\n【标准参考答案】\n").append(referenceAnswer.trim()).append("\n");
+        }
+        if (analysis != null && !analysis.isBlank()) {
+            prompt.append("\n【题目解析要点】\n").append(analysis.trim()).append("\n");
+        }
+        if (!text.isEmpty()) {
+            prompt.append("\n【学生文字作答】\n").append(text).append("\n");
+        }
+        if (!images.isEmpty()) {
+            prompt.append("\n【学生手写画板图片】已随附于消息图片中，请直接识图批改。\n");
+        }
+        prompt.append("""
+
+                请严格输出合法 JSON（JSON 字符串内 LaTeX 反斜杠双写）：
+                {
+                  "correct": true,
+                  "score": 95,
+                  "comment": "简洁明确的 AI 批改评语与订正建议",
+                  "mistakePoint": "关键错误定位（若正确则留空字符串）"
+                }
+                """);
+
+        String targetModel = images.isEmpty() ? cfg.getModel() : cfg.effectiveVisionModel();
+        OpenAiCompatibleClient.ChatCallResult res = openAiClient.chat(
+                OpenAiCompatibleClient.ChatCallRequest.builder()
+                        .endpoint(cfg.getChatCompletionsUrl())
+                        .apiKey(cfg.getApiKey())
+                        .model(targetModel)
+                        .systemPrompt(effectiveSystemPrompt(cfg))
+                        .userPrompt(prompt.toString())
+                        .imageDataUris(images)
+                        .temperature(Math.min(0.2, cfg.getTemperature()))
+                        .maxTokens(Math.min(1024, cfg.getMaxTokens()))
+                        .timeoutSec(cfg.getTimeoutSec())
+                        .disableThinking(true)
+                        .jsonObjectResponse(true)
+                        .build()
+        );
+        return parseEssayVerifyResult(res.getContent(), res.getModelUsed());
+    }
+
+    public EssayVerifyResult parseEssayVerifyResult(String rawContent, String modelUsed) {
+        JsonNode root = tryParseJsonObject(rawContent);
+        String safeModel = (modelUsed == null || modelUsed.isBlank()) ? "AI" : modelUsed.trim();
+        if (root == null) {
+            String plain = cleanRawFallback(rawContent);
+            boolean likelyOk = plain.contains("正确") && !plain.contains("不正确") && !plain.contains("错误") && !plain.contains("有误");
+            String msg = plain.isBlank() ? (likelyOk ? "AI 验证通过" : "AI 判题未通过，请核对参考答案与解题步骤") : plain;
+            if (msg.length() > 300) {
+                msg = msg.substring(0, 300);
+            }
+            return new EssayVerifyResult(likelyOk, likelyOk ? 85 : 30, msg, likelyOk ? "" : "请检查解题步骤与最终结果", safeModel);
+        }
+
+        boolean correct = root.path("correct").asBoolean(false);
+        int score = root.path("score").asInt(correct ? 90 : 30);
+        score = Math.max(0, Math.min(100, score));
+        if (correct && score < 60) {
+            score = 80;
+        }
+        String comment = root.path("comment").asText("").trim();
+        String mistakePoint = root.path("mistakePoint").asText("").trim();
+        if (comment.isBlank()) {
+            comment = correct
+                    ? "步骤清晰、结论正确，AI 验证通过！"
+                    : (mistakePoint.isBlank() ? "解答存在偏差或步骤不完整，请对照参考答案订正。" : "发现问题：" + mistakePoint);
+        } else if (!correct && !mistakePoint.isBlank() && !comment.contains(mistakePoint)) {
+            comment = comment + "（错因：" + mistakePoint + "）";
+        }
+        return new EssayVerifyResult(correct, score, comment, correct ? "" : mistakePoint, safeModel);
+    }
+
     private String normalizeMimeType(String contentType, String fileName) {
         if (contentType != null && contentType.startsWith("image/")) {
             return contentType;

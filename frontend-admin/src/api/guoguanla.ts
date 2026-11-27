@@ -120,7 +120,6 @@ export interface StudentUser {
   realmOrder: number;
   passedGateCount: number;
   wrongCount: number;
-  pendingEssayCount?: number;
   status: number;
   remark: string;
   lastActiveAt: string;
@@ -137,7 +136,8 @@ export interface QuizSessionItem {
   referenceAnswer: string;
   userAnswerText: string;
   userAnswerImageUrl: string;
-  userSelfCorrect: boolean | null;
+  aiScore?: number | null;
+  aiComment?: string;
   correct: boolean;
   analysis: string;
 }
@@ -161,12 +161,12 @@ export interface EssayAnswerItem {
   analysis?: string;
   answerText: string;
   answerImageUrl: string;
-  selfCorrect: number | null;
-  teacherStatus: number;
-  teacherComment: string;
-  teacherImageUrl?: string;
+  aiStatus: number;
+  aiScore?: number;
+  aiComment: string;
+  aiModel?: string;
   createdAt: string;
-  reviewedAt: string | null;
+  verifiedAt: string | null;
 }
 
 export interface VideoSeriesItem {
@@ -620,31 +620,6 @@ export const getUserQuizRecordDetail = (id: number, sessionNo: string) =>
 
 export const getUserEssayAnswers = (id: number, params?: { pageNum?: number; pageSize?: number }) =>
   http.get<ApiResult<PageData<EssayAnswerItem>>, any>(`/users/${id}/essay-answers`, { params });
-
-export const getEssayAnswerDetail = (essayId: number) =>
-  http.get<ApiResult<EssayAnswerItem>, any>(`/users/essay-answers/${essayId}`);
-
-export const getEssayAnswerImageBlob = (essayId: number) =>
-  http.request<Blob>("get", `/users/essay-answers/${essayId}/image`, {
-    responseType: "blob"
-  });
-
-export const uploadEssayReviewImage = (essayId: number, formData: FormData) =>
-  http.post<ApiResult<{ objectKey: string; previewUrl: string; storageType: string }>, any>(
-    `/users/essay-answers/${essayId}/review-image`,
-    {
-      data: formData,
-      headers: { "Content-Type": "multipart/form-data" }
-    }
-  );
-
-export const reviewEssayAnswer = (
-  essayId: number,
-  data: { teacherStatus: number; teacherComment: string; teacherImageKey?: string }
-) =>
-  http.request<ApiResult<void>>("put", `/users/essay-answers/${essayId}/review`, {
-    data
-  });
 
 export const updateUserRealm = (id: number, realmCode: string) =>
   http.request<ApiResult<void>>("put", `/users/${id}/realm`, {

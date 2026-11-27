@@ -233,11 +233,6 @@ public class AliyunOssService {
         return uploadImageFile(file, "avatars", "avatar_u" + uid, baseOrigin);
     }
 
-    public UploadResult uploadTeacherReviewImage(MultipartFile file, Long essayId, String baseOrigin) {
-        String eid = essayId == null ? "0" : String.valueOf(essayId);
-        return uploadImageFile(file, "teacher-reviews", "review_e" + eid, baseOrigin);
-    }
-
     public UploadResult uploadVideoCover(MultipartFile file, String baseOrigin) {
         return uploadImageFile(file, "video-covers", "cover", baseOrigin);
     }

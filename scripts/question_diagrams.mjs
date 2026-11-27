@@ -1,7 +1,9 @@
-// 「过关啦」数学题库矢量配图生成器 (TASK-20261126-001)
-// 统一输出兼容 Flutter BoardDiagramPainter 与 Admin SVG 渲染器的 BoardDiagramSpec JSON：
-// 支持图元类型：line / arrow / circle / arc / rightAngle / polygon / polyline / point / text
+// 「过关啦」数学题库矢量配图生成器 (TASK-20261126-001 / TASK-20261128-002 升级 JSXGraph studioState)
+// 统一输出兼容 Flutter BoardDiagramPainter、Admin SVG 渲染器与 MathDiagramStudioDialog 的 BoardDiagramSpec JSON：
+// 支持图元类型：line / arrow / circle / arc / rightAngle / polygon / polyline / point / text，并内嵌 studioState。
 // 动态模板题支持在 text / label / title 中保留 {{expr}}，由后端 QuestionEngineService 随随机参数实时渲染。
+
+import { compileStudioState, synthesizeStudioStateFromDiagram } from './studio_diagram_compiler.mjs';
 
 const INK = '#1E293B';
 const MUTED = '#64748B';
@@ -1218,9 +1220,9 @@ const EXACT_DIAGRAMS = {
       P.line(...p(1, 0), ...p(4.2, 288), RED),
       P.point(...p(1, 0), '1', RED),
       P.point(...p(3, 180), '追上?', AMBER),
-      P.text(24, 24, 'y(km)', MUTED),
+      P.text(58, 16, 'y(km)', MUTED),
       P.text(266, 178, 't(h)', MUTED),
-      P.text(14, 34, '300', MUTED),
+      P.text(14, 36, '300', MUTED),
       P.text(224, 72, '甲(60km/h)', BLUE),
       P.text(176, 44, '乙(90km/h)', RED),
     ]);
@@ -2468,7 +2470,7 @@ function buildSineWaveDiagram() {
     ...axesPrimitives(ox, oy, 26, 294, 18, 194),
     P.polyline(pts, BLUE),
     P.text(ox + 52, 34, 'A', RED),
-    P.text(ox + 226, oy + 10, 'T', BLUE),
+    P.text(ox + 208, oy + 14, 'T', BLUE),
   ]);
 }
 
@@ -2728,7 +2730,7 @@ function buildComplexPlaneDiagram() {
     P.text(124, 50, 'b', MUTED),
     P.text(176, 72, '|z|', RED),
     P.text(254, oy - 18, '实轴', MUTED),
-    P.text(ox + 8, 22, '虚轴', MUTED),
+    P.text(ox - 34, 22, '虚轴', MUTED),
   ]);
 }
 
@@ -2780,14 +2782,362 @@ function buildRegressionScatterDiagram() {
   ]);
 }
 
+// ============================================================================
+// JSXGraph 新制图工具 (MathStudioState) 原生矢量图构建器 (TASK-20261128-002)
+// ============================================================================
+function buildStudioSystemLinesDiagram(parallel = false) {
+  if (parallel) {
+    return compileStudioState({
+      title: '平行两直线无交点（方程组无解）',
+      boardMode: 'cartesian',
+      bounds: [-4.8, 5, 4.8, -3],
+      showGrid: true,
+      points: [],
+      shapes: [
+        { type: 'text', x: -3.6, y: 3.7, text: 'l1 // l2 无交点', color: RED, fontSize: 11.5 },
+      ],
+      functions: [
+        { expr: '1.5*x + 1', label: 'l1', color: BLUE, dashed: false, xMin: -4.2, xMax: 3.2 },
+        { expr: '1.5*x - 2', label: 'l2', color: RED, dashed: true, xMin: -2.2, xMax: 4.2 },
+      ],
+    });
+  }
+  return compileStudioState({
+    title: '二元一次方程组与两直线交点示意',
+    boardMode: 'cartesian',
+    bounds: [-3.2, 5, 6.4, -2],
+    showGrid: true,
+    points: [
+      { id: 'p', name: 'P(x,y)', x: 2, y: 3, color: RED, showLabel: true },
+    ],
+    shapes: [],
+    functions: [
+      { expr: '2*x - 1', label: 'l1', color: BLUE, dashed: false, xMin: -1, xMax: 3.5 },
+      { expr: '-x + 5', label: 'l2', color: GREEN, dashed: false, xMin: -0.5, xMax: 5.5 },
+    ],
+  });
+}
+
+function buildStudioDataVarianceDiagram() {
+  return compileStudioState({
+    title: '甲乙成绩波动与方差对比示意',
+    boardMode: 'cartesian',
+    bounds: [-0.8, 10, 6.2, -1],
+    showGrid: true,
+    points: [
+      { id: 'a1', name: '', x: 1, y: 5.2, color: BLUE, showLabel: false },
+      { id: 'a2', name: '', x: 2, y: 5.8, color: BLUE, showLabel: false },
+      { id: 'a3', name: '', x: 3, y: 5.5, color: BLUE, showLabel: false },
+      { id: 'a4', name: '', x: 4, y: 6.1, color: BLUE, showLabel: false },
+      { id: 'a5', name: '', x: 5, y: 5.4, color: BLUE, showLabel: false },
+      { id: 'b1', name: '', x: 1, y: 2.5, color: RED, showLabel: false },
+      { id: 'b2', name: '', x: 2, y: 8.6, color: RED, showLabel: false },
+      { id: 'b3', name: '', x: 3, y: 3.2, color: RED, showLabel: false },
+      { id: 'b4', name: '', x: 4, y: 8.8, color: RED, showLabel: false },
+      { id: 'b5', name: '', x: 5, y: 4.9, color: RED, showLabel: false },
+      { id: 'm1', name: '', x: 0.4, y: 5.6, color: GREEN, showLabel: false, hidden: true },
+      { id: 'm2', name: '', x: 5.6, y: 5.6, color: GREEN, showLabel: false, hidden: true },
+    ],
+    shapes: [
+      { type: 'segment', p1: 'm1', p2: 'm2', color: GREEN, dashed: true, strokeWidth: 1.5 },
+      { type: 'segment', p1: 'a1', p2: 'a2', color: BLUE, strokeWidth: 2 },
+      { type: 'segment', p1: 'a2', p2: 'a3', color: BLUE, strokeWidth: 2 },
+      { type: 'segment', p1: 'a3', p2: 'a4', color: BLUE, strokeWidth: 2 },
+      { type: 'segment', p1: 'a4', p2: 'a5', color: BLUE, strokeWidth: 2 },
+      { type: 'segment', p1: 'b1', p2: 'b2', color: RED, dashed: true, strokeWidth: 1.8 },
+      { type: 'segment', p1: 'b2', p2: 'b3', color: RED, dashed: true, strokeWidth: 1.8 },
+      { type: 'segment', p1: 'b3', p2: 'b4', color: RED, dashed: true, strokeWidth: 1.8 },
+      { type: 'segment', p1: 'b4', p2: 'b5', color: RED, dashed: true, strokeWidth: 1.8 },
+      { type: 'text', x: 0.6, y: 9.1, text: '方差小更稳定', color: BLUE, fontSize: 11 },
+      { type: 'text', x: 3.8, y: 1.4, text: '波动大方差大', color: RED, fontSize: 11 },
+    ],
+    functions: [],
+  });
+}
+
+function buildStudioTournamentGraphDiagram() {
+  return compileStudioState({
+    title: '单循环赛两两连线模型',
+    boardMode: 'geometry',
+    bounds: [-6.4, 4, 6.4, -4],
+    showGrid: false,
+    points: [
+      { id: 'v1', name: '队1', x: 0, y: 2.7, color: BLUE, showLabel: true },
+      { id: 'v2', name: '队2', x: 2.6, y: 0.8, color: BLUE, showLabel: true },
+      { id: 'v3', name: '队3', x: 1.6, y: -2.2, color: BLUE, showLabel: true },
+      { id: 'v4', name: '队4', x: -1.6, y: -2.2, color: BLUE, showLabel: true },
+      { id: 'v5', name: '队5', x: -2.6, y: 0.8, color: BLUE, showLabel: true },
+    ],
+    shapes: [
+      { type: 'polygon', pointIds: ['v1', 'v2', 'v3', 'v4', 'v5'], color: INK, fillColor: FILL_BLUE, strokeWidth: 1.8 },
+      { type: 'segment', p1: 'v1', p2: 'v3', color: RED, dashed: true, strokeWidth: 1.5 },
+      { type: 'segment', p1: 'v1', p2: 'v4', color: RED, dashed: true, strokeWidth: 1.5 },
+      { type: 'segment', p1: 'v2', p2: 'v4', color: AMBER, dashed: true, strokeWidth: 1.4 },
+      { type: 'segment', p1: 'v2', p2: 'v5', color: AMBER, dashed: true, strokeWidth: 1.4 },
+      { type: 'segment', p1: 'v3', p2: 'v5', color: GREEN, dashed: true, strokeWidth: 1.4 },
+      { type: 'text', x: -5.6, y: -3.2, text: '场次 = n(n-1)/2', color: BLUE, fontSize: 11.5 },
+    ],
+    functions: [],
+  });
+}
+
+function buildStudioSymmetryDiagram() {
+  return compileStudioState({
+    title: '轴对称与中心对称双对称示意',
+    boardMode: 'geometry',
+    bounds: [-6.4, 4, 6.4, -4],
+    showGrid: false,
+    points: [
+      { id: 'a', name: 'A', x: 0, y: 2.5, color: INK, showLabel: true },
+      { id: 'b', name: 'B', x: 3.4, y: 0, color: INK, showLabel: true },
+      { id: 'c', name: 'C', x: 0, y: -2.5, color: INK, showLabel: true },
+      { id: 'd', name: 'D', x: -3.4, y: 0, color: INK, showLabel: true },
+      { id: 'o', name: 'O', x: 0, y: 0, color: RED, showLabel: true },
+      { id: 'lx1', name: '', x: -4.8, y: 0, color: BLUE, showLabel: false, hidden: true },
+      { id: 'lx2', name: '', x: 4.8, y: 0, color: BLUE, showLabel: false, hidden: true },
+      { id: 'ly1', name: '', x: 0, y: -3.3, color: BLUE, showLabel: false, hidden: true },
+      { id: 'ly2', name: '', x: 0, y: 3.3, color: BLUE, showLabel: false, hidden: true },
+    ],
+    shapes: [
+      { type: 'polygon', pointIds: ['a', 'b', 'c', 'd'], color: INK, fillColor: FILL_BLUE, strokeWidth: 2 },
+      { type: 'segment', p1: 'lx1', p2: 'lx2', color: BLUE, dashed: true, strokeWidth: 1.4 },
+      { type: 'segment', p1: 'ly1', p2: 'ly2', color: BLUE, dashed: true, strokeWidth: 1.4 },
+      { type: 'text', x: 2.6, y: 2.8, text: '对称中心 O', color: RED, fontSize: 11 },
+    ],
+    functions: [],
+  });
+}
+
+function buildStudioUrnProbabilityDiagram() {
+  return compileStudioState({
+    title: '不透明袋中摸球概率模型',
+    boardMode: 'geometry',
+    bounds: [-6.4, 4, 6.4, -4],
+    showGrid: false,
+    points: [
+      { id: 'b1', name: '', x: -3.4, y: 2.2, color: INK, showLabel: false, hidden: true },
+      { id: 'b2', name: '', x: 3.4, y: 2.2, color: INK, showLabel: false, hidden: true },
+      { id: 'b3', name: '', x: 3.4, y: -2.4, color: INK, showLabel: false, hidden: true },
+      { id: 'b4', name: '', x: -3.4, y: -2.4, color: INK, showLabel: false, hidden: true },
+      { id: 'r1c', name: '', x: -1.8, y: 0.7, color: RED, showLabel: false, hidden: true },
+      { id: 'r1e', name: '', x: -1.15, y: 0.7, color: RED, showLabel: false, hidden: true },
+      { id: 'r2c', name: '', x: 0.0, y: 0.7, color: RED, showLabel: false, hidden: true },
+      { id: 'r2e', name: '', x: 0.65, y: 0.7, color: RED, showLabel: false, hidden: true },
+      { id: 'r3c', name: '', x: 1.8, y: 0.7, color: RED, showLabel: false, hidden: true },
+      { id: 'r3e', name: '', x: 2.45, y: 0.7, color: RED, showLabel: false, hidden: true },
+      { id: 'w1c', name: '', x: -1.0, y: -1.0, color: BLUE, showLabel: false, hidden: true },
+      { id: 'w1e', name: '', x: -0.35, y: -1.0, color: BLUE, showLabel: false, hidden: true },
+      { id: 'w2c', name: '', x: 1.0, y: -1.0, color: BLUE, showLabel: false, hidden: true },
+      { id: 'w2e', name: '', x: 1.65, y: -1.0, color: BLUE, showLabel: false, hidden: true },
+    ],
+    shapes: [
+      { type: 'polygon', pointIds: ['b1', 'b2', 'b3', 'b4'], color: INK, fillColor: '#E2E8F0', strokeWidth: 2 },
+      { type: 'circle', p1: 'r1c', p2: 'r1e', color: RED, fillColor: FILL_RED, strokeWidth: 1.8 },
+      { type: 'circle', p1: 'r2c', p2: 'r2e', color: RED, fillColor: FILL_RED, strokeWidth: 1.8 },
+      { type: 'circle', p1: 'r3c', p2: 'r3e', color: RED, fillColor: FILL_RED, strokeWidth: 1.8 },
+      { type: 'circle', p1: 'w1c', p2: 'w1e', color: BLUE, fillColor: FILL_BLUE, strokeWidth: 1.8 },
+      { type: 'circle', p1: 'w2c', p2: 'w2e', color: BLUE, fillColor: FILL_BLUE, strokeWidth: 1.8 },
+      { type: 'text', x: -3.2, y: 3.1, text: '古典概型：P(A) = m / n', color: BLUE, fontSize: 11.5 },
+    ],
+    functions: [],
+  });
+}
+
+function buildStudioTreeProbabilityDiagram() {
+  return compileStudioState({
+    title: '分步随机事件树状图模型',
+    boardMode: 'geometry',
+    bounds: [-6.4, 4, 6.4, -4],
+    showGrid: false,
+    points: [
+      { id: 's', name: '起点', x: -5.0, y: 0, color: INK, showLabel: true },
+      { id: 'a1', name: '成功', x: -0.8, y: 1.9, color: GREEN, showLabel: true },
+      { id: 'a2', name: '失败', x: -0.8, y: -1.9, color: RED, showLabel: true },
+      { id: 'b1', name: '胜胜', x: 3.6, y: 2.9, color: GREEN, showLabel: true },
+      { id: 'b2', name: '胜负', x: 3.6, y: 0.9, color: BLUE, showLabel: true },
+      { id: 'b3', name: '负胜', x: 3.6, y: -0.9, color: BLUE, showLabel: true },
+      { id: 'b4', name: '负负', x: 3.6, y: -2.9, color: RED, showLabel: true },
+    ],
+    shapes: [
+      { type: 'arrow', p1: 's', p2: 'a1', color: GREEN, strokeWidth: 1.8 },
+      { type: 'arrow', p1: 's', p2: 'a2', color: RED, strokeWidth: 1.8 },
+      { type: 'arrow', p1: 'a1', p2: 'b1', color: GREEN, strokeWidth: 1.6 },
+      { type: 'arrow', p1: 'a1', p2: 'b2', color: BLUE, strokeWidth: 1.6 },
+      { type: 'arrow', p1: 'a2', p2: 'b3', color: BLUE, strokeWidth: 1.6 },
+      { type: 'arrow', p1: 'a2', p2: 'b4', color: RED, strokeWidth: 1.6 },
+      { type: 'text', x: -3.5, y: 1.7, text: 'P(A)', color: GREEN, fontSize: 10.5 },
+      { type: 'text', x: -3.7, y: -2.0, text: '1-P(A)', color: RED, fontSize: 10.5 },
+    ],
+    functions: [],
+  });
+}
+
+function buildStudioMapScaleDiagram() {
+  return compileStudioState({
+    title: '比例尺与实际距离换算示意',
+    boardMode: 'geometry',
+    bounds: [-6.4, 4, 6.4, -4],
+    showGrid: false,
+    points: [
+      { id: 'a', name: 'A地', x: -4.2, y: 0.5, color: BLUE, showLabel: true },
+      { id: 'b', name: 'B地', x: 4.0, y: 0.5, color: RED, showLabel: true },
+    ],
+    shapes: [
+      { type: 'segment', p1: 'a', p2: 'b', color: BLUE, strokeWidth: 2.5 },
+      { type: 'text', x: -1.8, y: 1.8, text: '图上距离 d (cm)', color: BLUE, fontSize: 11.5 },
+      { type: 'text', x: -3.4, y: -1.6, text: '比例尺 = 图上距离 : 实际距离', color: MUTED, fontSize: 11 },
+    ],
+    functions: [],
+  });
+}
+
+function buildStudioProjectionDiagram(kind = 'parallel') {
+  if (kind === 'central') {
+    return compileStudioState({
+      title: '点光源中心投影（皮影/手影）示意',
+      boardMode: 'geometry',
+      bounds: [-6.4, 4, 6.4, -4],
+      showGrid: false,
+      points: [
+        { id: 'l', name: '光源S', x: -4.8, y: 2.3, color: AMBER, showLabel: true },
+        { id: 't', name: 'A', x: -0.8, y: 1.0, color: INK, showLabel: true },
+        { id: 'b', name: 'B', x: -0.8, y: -1.6, color: INK, showLabel: true },
+        { id: 'st', name: "A'", x: 4.2, y: -0.6, color: BLUE, showLabel: true },
+        { id: 'sb', name: "B'", x: 4.2, y: -2.6, color: BLUE, showLabel: true },
+        { id: 'g1', name: '', x: -5.4, y: -2.6, color: MUTED, showLabel: false, hidden: true },
+        { id: 'g2', name: '', x: 5.4, y: -2.6, color: MUTED, showLabel: false, hidden: true },
+      ],
+      shapes: [
+        { type: 'segment', p1: 'g1', p2: 'g2', color: MUTED, strokeWidth: 1.5 },
+        { type: 'segment', p1: 't', p2: 'b', color: INK, strokeWidth: 2.6 },
+        { type: 'arrow', p1: 'l', p2: 'st', color: AMBER, dashed: true, strokeWidth: 1.5 },
+        { type: 'arrow', p1: 'l', p2: 'sb', color: AMBER, dashed: true, strokeWidth: 1.5 },
+        { type: 'segment', p1: 'st', p2: 'sb', color: BLUE, strokeWidth: 3 },
+      ],
+      functions: [],
+    });
+  }
+  return compileStudioState({
+    title: '太阳光平行投影示意（物高与影长成正比）',
+    boardMode: 'geometry',
+    bounds: [-6.4, 4, 6.4, -4],
+    showGrid: false,
+    points: [
+      { id: 't1', name: 'A', x: -3.6, y: 2.4, color: INK, showLabel: true },
+      { id: 'b1', name: 'B', x: -3.6, y: -2.2, color: INK, showLabel: true },
+      { id: 's1', name: 'C', x: -0.6, y: -2.2, color: BLUE, showLabel: true },
+      { id: 't2', name: 'D', x: 1.4, y: 0.9, color: INK, showLabel: true },
+      { id: 'b2', name: 'E', x: 1.4, y: -2.2, color: INK, showLabel: true },
+      { id: 's2', name: 'F', x: 3.4, y: -2.2, color: BLUE, showLabel: true },
+      { id: 'g1', name: '', x: -5.2, y: -2.2, color: MUTED, showLabel: false, hidden: true },
+      { id: 'g2', name: '', x: 5.2, y: -2.2, color: MUTED, showLabel: false, hidden: true },
+    ],
+    shapes: [
+      { type: 'segment', p1: 'g1', p2: 'g2', color: MUTED, strokeWidth: 1.5 },
+      { type: 'segment', p1: 't1', p2: 'b1', color: INK, strokeWidth: 2.4 },
+      { type: 'segment', p1: 't2', p2: 'b2', color: INK, strokeWidth: 2.4 },
+      { type: 'arrow', p1: 't1', p2: 's1', color: AMBER, dashed: true, strokeWidth: 1.6 },
+      { type: 'arrow', p1: 't2', p2: 's2', color: AMBER, dashed: true, strokeWidth: 1.6 },
+      { type: 'segment', p1: 'b1', p2: 's1', color: BLUE, strokeWidth: 2.6 },
+      { type: 'segment', p1: 'b2', p2: 's2', color: BLUE, strokeWidth: 2.6 },
+      { type: 'rightAngle', p1: 't1', p2: 'b1', p3: 's1', color: BLUE },
+      { type: 'rightAngle', p1: 't2', p2: 'b2', p3: 's2', color: BLUE },
+    ],
+    functions: [],
+  });
+}
+
+function buildStudioLogDomainDiagram() {
+  return compileStudioState({
+    title: '对数复合函数定义域与图像示意',
+    boardMode: 'cartesian',
+    bounds: [-5.6, 3.8, 5.6, -3.2],
+    showGrid: true,
+    points: [
+      { id: 'p1', name: 'x=-2', x: -2, y: 0, color: RED, showLabel: true },
+      { id: 'p2', name: 'x=2', x: 2, y: 0, color: RED, showLabel: true },
+      { id: 'a1', name: '', x: -2, y: -3, color: RED, showLabel: false, hidden: true },
+      { id: 'a2', name: '', x: -2, y: 3.4, color: RED, showLabel: false, hidden: true },
+      { id: 'b1', name: '', x: 2, y: -3, color: RED, showLabel: false, hidden: true },
+      { id: 'b2', name: '', x: 2, y: 3.4, color: RED, showLabel: false, hidden: true },
+    ],
+    shapes: [
+      { type: 'segment', p1: 'a1', p2: 'a2', color: RED, dashed: true, strokeWidth: 1.4 },
+      { type: 'segment', p1: 'b1', p2: 'b2', color: RED, dashed: true, strokeWidth: 1.4 },
+    ],
+    functions: [
+      { expr: 'ln(x^2 - 4)/ln(2)', label: 'log2(x²-4)', color: BLUE, dashed: false, xMin: 2.08, xMax: 5.2 },
+      { expr: 'ln(x^2 - 4)/ln(2)', label: '', color: BLUE, dashed: false, xMin: -5.2, xMax: -2.08 },
+    ],
+  });
+}
+
+function buildStudioCubicFunctionDiagram(expr, title, centerPt = null) {
+  const points = centerPt ? [centerPt] : [];
+  return compileStudioState({
+    title,
+    boardMode: 'cartesian',
+    bounds: [-4.2, 6, 4.8, -4],
+    showGrid: true,
+    points,
+    shapes: [],
+    functions: [
+      { expr, label: 'f(x)', color: BLUE, dashed: false, xMin: -3.2, xMax: 3.8 },
+    ],
+  });
+}
+
+function buildStudioSequencePlotDiagram(kind = 'arithmetic') {
+  if (kind === 'geometric') {
+    return compileStudioState({
+      title: '等比数列 {a_n} 离散点列图像',
+      boardMode: 'cartesian',
+      bounds: [-0.6, 10, 6.2, -1],
+      showGrid: true,
+      points: [
+        { id: 'p1', name: 'a1', x: 1, y: 1, color: BLUE, showLabel: true },
+        { id: 'p2', name: 'a2', x: 2, y: 2, color: BLUE, showLabel: true },
+        { id: 'p3', name: 'a3', x: 3, y: 4, color: BLUE, showLabel: true },
+        { id: 'p4', name: 'a4', x: 4, y: 8, color: RED, showLabel: true },
+      ],
+      shapes: [],
+      functions: [
+        { expr: '2^(x-1)', label: '指数增长', color: AMBER, dashed: true, xMin: 0.5, xMax: 4.3 },
+      ],
+    });
+  }
+  return compileStudioState({
+    title: '等差数列 {a_n} 离散点列与线性关系',
+    boardMode: 'cartesian',
+    bounds: [-0.6, 10, 6.4, -1],
+    showGrid: true,
+    points: [
+      { id: 'p1', name: 'a1', x: 1, y: 1.5, color: BLUE, showLabel: true },
+      { id: 'p2', name: 'a2', x: 2, y: 3.2, color: BLUE, showLabel: true },
+      { id: 'p3', name: 'a3', x: 3, y: 4.9, color: BLUE, showLabel: true },
+      { id: 'p4', name: 'a4', x: 4, y: 6.6, color: BLUE, showLabel: true },
+      { id: 'p5', name: 'a5', x: 5, y: 8.3, color: RED, showLabel: true },
+    ],
+    shapes: [],
+    functions: [
+      { expr: '1.7*x - 0.2', label: 'a_n = a_1+(n-1)d', color: GREEN, dashed: true, xMin: 0.4, xMax: 5.5 },
+    ],
+  });
+}
+
 /**
  * 根据章节编码、关卡序号、题序与题目内容解析最匹配的矢量配图。
  * 规则：
- * 1. 所有 33 道含“如图”题目及二次审计 65 道场景/几何/统计/函数/概率题强制命中 1:1 精绘配图；
- * 2. 其他几何/函数/坐标系/不等式数轴/集合韦恩图/统计直方图/导数/复平面/回归散点题按语义精准配图；
- * 3. 纯代数运算（整式/分式/方程化简计算等）保持无多余配图，避免喧宾夺主。
+ * 1. 所有含“如图”题目及场景/几何/统计/函数/概率题强制命中 1:1 精绘配图；
+ * 2. 其他几何/函数/坐标系/不等式数轴/集合韦恩图/统计直方图/导数/复平面/回归散点/数列点列题按语义精准配图；
+ * 3. 所有返回配图均包含可二次拖拽编辑的 JSXGraph `studioState`。
  */
 export function resolveDiagramForQuestion(chapterCode, gateIndex, qIndex, q) {
+  const raw = _resolveRawDiagramForQuestion(chapterCode, gateIndex, qIndex, q);
+  return raw ? synthesizeStudioStateFromDiagram(raw) : null;
+}
+
+function _resolveRawDiagramForQuestion(chapterCode, gateIndex, qIndex, q) {
   const key = `${chapterCode}-g${gateIndex}-q${qIndex + 1}`;
   if (EXACT_DIAGRAMS[key]) {
     return EXACT_DIAGRAMS[key](q);
@@ -2968,6 +3318,29 @@ export function resolveDiagramForQuestion(chapterCode, gateIndex, qIndex, q) {
     return null;
   }
 
+  // 13.5) 第8章 二元一次方程组 / 第20章 数据的分析 / 第21章 一元二次方程场景 / 第23章 对称 / 第25章 概率初步
+  if (chapterCode === 'c8') {
+    if (/无解/.test(s)) return buildStudioSystemLinesDiagram(true);
+    if (/解为|方程组.*的解/.test(s)) return buildStudioSystemLinesDiagram(false);
+    return null;
+  }
+  if (chapterCode === 'c20') {
+    if (/方差|稳定性|波动|模拟成绩/.test(s)) return buildStudioDataVarianceDiagram();
+    return null;
+  }
+  if (chapterCode === 'c21') {
+    if (/单循环|两队之间/.test(s)) return buildStudioTournamentGraphDiagram();
+    return null;
+  }
+  if (chapterCode === 'c23' && /轴对称.*中心对称/.test(s)) {
+    return buildStudioSymmetryDiagram();
+  }
+  if (chapterCode === 'c25') {
+    if (/摸|袋|暗盒|箱中/.test(s)) return buildStudioUrnProbabilityDiagram();
+    if (/扑克|硬币|十字路口/.test(s)) return buildStudioTreeProbabilityDiagram();
+    return null;
+  }
+
   // 14) 第24章 圆
   if (chapterCode === 'c24') {
     if (/弦|垂径/.test(s)) return buildCircleDiagram('chord');
@@ -2989,6 +3362,7 @@ export function resolveDiagramForQuestion(chapterCode, gateIndex, qIndex, q) {
     if (/射影|子母|CD \\perp AB/.test(s)) return buildSimilarityDiagram('sub');
     if (/DE \\parallel BC|ADE|相似三角形|\\triangle/.test(s)) return buildSimilarityDiagram('a_model');
     if (/矩形/.test(s)) return buildQuadrilateralDiagram('rectangle');
+    if (/比例尺/.test(s)) return buildStudioMapScaleDiagram();
     return null;
   }
 
@@ -3009,6 +3383,8 @@ export function resolveDiagramForQuestion(chapterCode, gateIndex, qIndex, q) {
     if (/圆柱/.test(s)) return buildSolidDiagram('cylinder');
     if (/球/.test(s)) return buildSolidDiagram('sphere');
     if (/正方体|长方体|棱柱|三视图|视图/.test(s)) return buildSolidDiagram('cube');
+    if (/皮影|手影|中心投影/.test(s)) return buildStudioProjectionDiagram('central');
+    if (/太阳光|平行投影/.test(s)) return buildStudioProjectionDiagram('parallel');
     return null;
   }
 
@@ -3034,7 +3410,8 @@ export function resolveDiagramForQuestion(chapterCode, gateIndex, qIndex, q) {
   }
   if (chapterCode === 'c33') {
     if (/\\begin\{cases\}/.test(s)) return buildFunctionFeatureDiagram('piecewise');
-    if (/\\mathrm\{log\}|\\mathrm\{ln\}|\\mathrm\{lg\}/.test(s) && /单调|零点|图象|实数根|不等式/.test(s)) {
+    if (/x\^2 - 4/.test(s)) return buildStudioLogDomainDiagram();
+    if (/\\mathrm\{log\}|\\mathrm\{ln\}|\\mathrm\{lg\}/.test(s) && /单调|零点|图象|实数根|不等式|定义域|奇偶/.test(s)) {
       return buildExpLogDiagram('log');
     }
     if (/指数函数|定点|4\^x|a\^\{x/.test(s)) return buildExpLogDiagram('exp');
@@ -3062,6 +3439,11 @@ export function resolveDiagramForQuestion(chapterCode, gateIndex, qIndex, q) {
   if (chapterCode === 'c38' && /直方图/.test(s)) {
     return buildHistogramDiagram('频率分布直方图示意');
   }
+  if (chapterCode === 'c39') {
+    if (/袋|口袋|奖券/.test(s)) return buildStudioUrnProbabilityDiagram();
+    if (/三道独立关卡|三轮答题/.test(s)) return buildStudioTreeProbabilityDiagram();
+    return null;
+  }
   if (chapterCode === 'c41') {
     if (/圆|切线|弦/.test(s)) return buildLineCircleDiagram();
     if (/平行/.test(s)) return buildParallelLinesDiagram('std');
@@ -3074,17 +3456,43 @@ export function resolveDiagramForQuestion(chapterCode, gateIndex, qIndex, q) {
     if (/圆/.test(s)) return buildLineCircleDiagram();
     return null;
   }
+  if (chapterCode === 'c43') {
+    if (/等差数列/.test(s) && /前.*项和|公差|通项/.test(s)) return buildStudioSequencePlotDiagram('arithmetic');
+    if (/等比数列/.test(s)) return buildStudioSequencePlotDiagram('geometric');
+    return null;
+  }
   if (chapterCode === 'c44' || chapterCode === 'c48') {
     if (/切线|相切/.test(s)) return buildDerivativeDiagram('tangent');
-    if (/极大|极小|极值|单调|最小值|最大值|恒成立/.test(s)) return buildDerivativeDiagram('extrema');
+    if (/x\^3 - 3x \+ 2/.test(s)) {
+      return buildStudioCubicFunctionDiagram('x^3 - 3*x + 2', '三次函数 f(x) = x³ - 3x + 2 图像');
+    }
+    if (/\(x - 1\)\^3 \+ 2\(x - 1\) \+ 3/.test(s)) {
+      return buildStudioCubicFunctionDiagram('(x-1)^3 + 2*(x-1) + 3', '中心对称函数 (对称中心 (1,3))', {
+        id: 'sym',
+        name: '(1,3)',
+        x: 1,
+        y: 3,
+        color: RED,
+        showLabel: true,
+      });
+    }
+    if (/极大|极小|极值|单调|最小值|最大值|恒成立|导函数|导数值/.test(s)) return buildDerivativeDiagram('extrema');
+    return null;
+  }
+  if (chapterCode === 'c46' || chapterCode === 'c50') {
+    if (/盒|袋|箱/.test(s)) return buildStudioUrnProbabilityDiagram();
+    if (/两台车床|两轮独立|全概率|条件概率/.test(s)) return buildStudioTreeProbabilityDiagram();
     return null;
   }
   if (chapterCode === 'c47') {
     if (/回归|相关系数|残差|样本中心|离群点/.test(s)) return buildRegressionScatterDiagram();
     return null;
   }
-  if (chapterCode === 'c51' && /\\triangle|三角形/.test(s)) {
-    return buildTriangleAnglesDiagram(q);
+  if (chapterCode === 'c51') {
+    if (/\\triangle|三角形/.test(s)) return buildTriangleAnglesDiagram(q);
+    if (/等差数列/.test(s)) return buildStudioSequencePlotDiagram('arithmetic');
+    if (/等比数列/.test(s)) return buildStudioSequencePlotDiagram('geometric');
+    return null;
   }
 
   return null;

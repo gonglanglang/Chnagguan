@@ -7,19 +7,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.guoguanla.common.exception.BizException;
 import com.guoguanla.common.result.ErrorCode;
 import com.guoguanla.common.result.PageResult;
-import com.guoguanla.common.security.StpAdminUtil;
 import com.guoguanla.common.util.JsonHelper;
-import com.guoguanla.module.app.AppQuizService;
 import com.guoguanla.module.bank.entity.EduChapter;
 import com.guoguanla.module.bank.entity.EduGate;
 import com.guoguanla.module.bank.entity.EduGrade;
-import com.guoguanla.module.bank.entity.EduQuestion;
 import com.guoguanla.module.bank.mapper.EduChapterMapper;
 import com.guoguanla.module.bank.mapper.EduGateMapper;
 import com.guoguanla.module.bank.mapper.EduGradeMapper;
-import com.guoguanla.module.bank.mapper.EduQuestionMapper;
 import com.guoguanla.module.oss.AliyunOssService;
-import org.springframework.web.multipart.MultipartFile;
 import com.guoguanla.module.progress.entity.UserEssayAnswer;
 import com.guoguanla.module.progress.entity.UserGateProgress;
 import com.guoguanla.module.progress.entity.UserQuizRecord;
@@ -56,7 +51,6 @@ public class AdminUserService {
     private final EduGradeMapper gradeMapper;
     private final EduChapterMapper chapterMapper;
     private final EduGateMapper gateMapper;
-    private final EduQuestionMapper questionMapper;
     private final EduLevelRuleMapper levelRuleMapper;
     private final UserGateProgressMapper gateProgressMapper;
     private final UserQuizRecordMapper quizRecordMapper;
@@ -64,7 +58,6 @@ public class AdminUserService {
     private final UserEssayAnswerMapper essayAnswerMapper;
     private final AliyunOssService ossService;
     private final RealmHelperService realmHelper;
-    private final AppQuizService quizService;
     private final ObjectMapper objectMapper;
 
     public PageResult<UserPageVO> page(UserQueryReq req) {
@@ -106,17 +99,11 @@ public class AdminUserService {
                         .in(UserWrongQuestion::getUserId, userIds)
                         .eq(UserWrongQuestion::getIsMastered, 0)
         ).stream().collect(Collectors.groupingBy(UserWrongQuestion::getUserId, Collectors.counting()));
-        Map<Long, Long> pendingEssayMap = essayAnswerMapper.selectList(
-                new LambdaQueryWrapper<UserEssayAnswer>()
-                        .in(UserEssayAnswer::getUserId, userIds)
-                        .eq(UserEssayAnswer::getTeacherStatus, 0)
-        ).stream().collect(Collectors.groupingBy(UserEssayAnswer::getUserId, Collectors.counting()));
 
         List<UserPageVO> records = page.getRecords().stream()
                 .map(u -> toPageVO(
                         u, gradeNameMap, realmMap, levels,
                         wrongCountMap.getOrDefault(u.getId(), 0L),
-                        pendingEssayMap.getOrDefault(u.getId(), 0L),
                         ""
                 ))
                 .toList();
@@ -145,12 +132,7 @@ public class AdminUserService {
                         .eq(UserWrongQuestion::getUserId, userId)
                         .eq(UserWrongQuestion::getIsMastered, 0)
         );
-        long pendingEssayCount = essayAnswerMapper.selectCount(
-                new LambdaQueryWrapper<UserEssayAnswer>()
-                        .eq(UserEssayAnswer::getUserId, userId)
-                        .eq(UserEssayAnswer::getTeacherStatus, 0)
-        );
-        UserPageVO profile = toPageVO(user, gradeNameMap, realmMap, levels, wrongCount, pendingEssayCount, baseOrigin);
+        UserPageVO profile = toPageVO(user, gradeNameMap, realmMap, levels, wrongCount, baseOrigin);
 
         Map<Long, EduChapter> chapterMap = chapterMapper.selectList(null).stream()
                 .collect(Collectors.toMap(EduChapter::getId, c -> c, (a, b) -> a));
@@ -348,9 +330,11 @@ public class AdminUserService {
                     }
                     int ansIdx = n.path("answerIndex").asInt(0);
                     Integer userIdx = n.hasNonNull("userIndex") ? n.get("userIndex").asInt() : null;
-                    Boolean selfCorrect = n.hasNonNull("userSelfCorrect") ? n.get("userSelfCorrect").asBoolean() : null;
+                    Boolean aiCorrect = n.hasNonNull("aiCorrect") ? n.get("aiCorrect").asBoolean() : null;
+                    Integer aiScore = n.hasNonNull("aiScore") ? n.get("aiScore").asInt() : null;
+                    String aiComment = n.path("aiComment").asText("");
                     boolean correct = "ESSAY".equalsIgnoreCase(fmt)
-                            ? Boolean.TRUE.equals(selfCorrect)
+                            ? Boolean.TRUE.equals(aiCorrect)
                             : Objects.equals(ansIdx, userIdx);
                     String imgKey = n.path("userAnswerImageKey").asText("");
                     items.add(UserDetailVO.QuizSessionItemVO.builder()
@@ -363,7 +347,8 @@ public class AdminUserService {
                             .referenceAnswer(n.path("referenceAnswer").asText(""))
                             .userAnswerText(n.path("userAnswerText").asText(""))
                             .userAnswerImageUrl(ossService.resolveViewUrl(imgKey, baseOrigin))
-                            .userSelfCorrect(selfCorrect)
+                            .aiScore(aiScore)
+                            .aiComment(aiComment)
                             .correct(correct)
                             .analysis(n.path("analysis").asText(""))
                             .build());
@@ -411,96 +396,16 @@ public class AdminUserService {
                             .referenceAnswer(e.getReferenceAnswer())
                             .answerText(e.getAnswerText())
                             .answerImageUrl(ossService.resolveViewUrl(e.getAnswerImageKey(), baseOrigin))
-                            .selfCorrect(e.getSelfCorrect())
-                            .teacherStatus(e.getTeacherStatus())
-                            .teacherComment(e.getTeacherComment())
-                            .teacherImageUrl(ossService.resolveViewUrl(e.getTeacherImageKey(), baseOrigin))
+                            .aiStatus(e.getAiStatus())
+                            .aiScore(e.getAiScore())
+                            .aiComment(e.getAiComment() == null ? "" : e.getAiComment())
+                            .aiModel(e.getAiModel() == null ? "" : e.getAiModel())
                             .createdAt(e.getCreatedAt())
-                            .reviewedAt(e.getReviewedAt())
+                            .verifiedAt(e.getVerifiedAt())
                             .build();
                 })
                 .toList();
         return PageResult.of(list, page.getTotal(), p, s);
-    }
-
-    public UserDetailVO.EssayAnswerItem getEssayAnswerDetail(Long essayId, String baseOrigin) {
-        UserEssayAnswer e = essayAnswerMapper.selectById(essayId);
-        if (e == null) {
-            throw new BizException(ErrorCode.NOT_FOUND, "解答题作答记录不存在");
-        }
-        AppUser student = e.getUserId() != null && e.getUserId() > 0 ? userMapper.selectById(e.getUserId()) : null;
-        EduRealm stuRealm = student != null ? realmHelper.resolveUserRealm(student) : null;
-        EduRealm itemRealm = (e.getRealmCode() != null && !e.getRealmCode().isBlank())
-                ? realmHelper.findByRealmCode(e.getRealmCode())
-                : realmHelper.findByGradeCode(e.getGradeCode());
-        EduQuestion q = e.getQuestionId() != null ? questionMapper.selectById(e.getQuestionId()) : null;
-        String analysis = q != null && q.getAnalysis() != null ? q.getAnalysis() : "";
-
-        return UserDetailVO.EssayAnswerItem.builder()
-                .id(e.getId())
-                .sessionNo(e.getSessionNo())
-                .itemIndex(e.getItemIndex())
-                .userId(e.getUserId())
-                .studentNickname(student != null ? student.getNickname() : "游客")
-                .studentUsername(student != null ? student.getUsername() : "-")
-                .studentRealmName(stuRealm != null ? stuRealm.getRealmName() : "")
-                .realmCode(itemRealm != null ? itemRealm.getRealmCode() : (e.getRealmCode() == null ? "" : e.getRealmCode()))
-                .realmName(itemRealm != null ? itemRealm.getRealmName() : "")
-                .chapterId(e.getChapterId())
-                .chapterName(e.getChapterName())
-                .gateId(e.getGateId())
-                .gateName(e.getGateName())
-                .stem(e.getStem())
-                .referenceAnswer(e.getReferenceAnswer())
-                .analysis(analysis)
-                .answerText(e.getAnswerText())
-                .answerImageUrl(ossService.resolveViewUrl(e.getAnswerImageKey(), baseOrigin))
-                .selfCorrect(e.getSelfCorrect())
-                .teacherStatus(e.getTeacherStatus())
-                .teacherComment(e.getTeacherComment())
-                .teacherImageUrl(ossService.resolveViewUrl(e.getTeacherImageKey(), baseOrigin))
-                .createdAt(e.getCreatedAt())
-                .reviewedAt(e.getReviewedAt())
-                .build();
-    }
-
-    public AliyunOssService.BinaryResource readEssayAnswerImage(Long essayId) {
-        UserEssayAnswer e = essayAnswerMapper.selectById(essayId);
-        if (e == null) {
-            throw new BizException(ErrorCode.NOT_FOUND, "解答题作答记录不存在");
-        }
-        return ossService.readObjectBytes(e.getAnswerImageKey());
-    }
-
-    public AliyunOssService.UploadResult uploadEssayReviewImage(Long essayId, MultipartFile file, String baseOrigin) {
-        UserEssayAnswer e = essayAnswerMapper.selectById(essayId);
-        if (e == null) {
-            throw new BizException(ErrorCode.NOT_FOUND, "解答题作答记录不存在");
-        }
-        return ossService.uploadTeacherReviewImage(file, essayId, baseOrigin);
-    }
-
-    @Transactional(rollbackFor = Exception.class)
-    public void reviewEssayAnswer(Long essayId, Integer teacherStatus, String teacherComment, String teacherImageKey) {
-        UserEssayAnswer ans = essayAnswerMapper.selectById(essayId);
-        if (ans == null) {
-            throw new BizException(ErrorCode.NOT_FOUND, "解答题作答记录不存在");
-        }
-        int status = (teacherStatus == null || (teacherStatus != 1 && teacherStatus != 2)) ? 1 : teacherStatus;
-        ans.setTeacherStatus(status);
-        ans.setTeacherComment(teacherComment == null ? "" : teacherComment.trim());
-        if (teacherImageKey != null && !teacherImageKey.isBlank()) {
-            ans.setTeacherImageKey(teacherImageKey.trim());
-        }
-        try {
-            if (StpAdminUtil.isLogin()) {
-                ans.setReviewedBy(StpAdminUtil.getLoginIdAsLong());
-            }
-        } catch (Exception ignored) {
-        }
-        ans.setReviewedAt(LocalDateTime.now());
-        essayAnswerMapper.updateById(ans);
-        quizService.syncEssayTeacherReview(ans, status == 1);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -542,7 +447,7 @@ public class AdminUserService {
     private UserPageVO toPageVO(AppUser u, Map<String, String> gradeMap,
                                 Map<String, EduRealm> realmMap,
                                 List<EduLevelRule> levels, long wrongCount,
-                                long pendingEssayCount, String baseOrigin) {
+                                String baseOrigin) {
         EduLevelRule lv = resolveLevel(levels, u.getPassedGateCount());
         EduRealm realm = realmMap.getOrDefault(u.getRealmCode(), realmHelper.resolveUserRealm(u));
         return UserPageVO.builder()
@@ -561,7 +466,6 @@ public class AdminUserService {
                 .levelIcon(lv != null ? lv.getIcon() : "")
                 .levelName(realm.getRealmName())
                 .wrongCount(wrongCount)
-                .pendingEssayCount(pendingEssayCount)
                 .status(u.getStatus())
                 .remark(u.getRemark())
                 .lastActiveAt(u.getLastActiveAt())

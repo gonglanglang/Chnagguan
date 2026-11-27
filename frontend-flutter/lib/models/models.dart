@@ -856,8 +856,9 @@ class CheckItemResult {
     this.referenceAnswer,
     this.answerText,
     this.answerImageUrl,
-    this.selfCorrect,
-    required this.pendingReview,
+    this.aiScore,
+    this.aiComment = '',
+    this.aiModel = '',
     required this.analysis,
   });
 
@@ -868,8 +869,9 @@ class CheckItemResult {
   final String? referenceAnswer;
   final String? answerText;
   final String? answerImageUrl;
-  final bool? selfCorrect;
-  final bool pendingReview;
+  final int? aiScore;
+  final String aiComment;
+  final String aiModel;
   final String analysis;
 
   factory CheckItemResult.fromJson(Map<String, dynamic> json) {
@@ -881,10 +883,9 @@ class CheckItemResult {
       referenceAnswer: _asNullableString(json['referenceAnswer']),
       answerText: _asNullableString(json['answerText']),
       answerImageUrl: _asNullableString(json['answerImageUrl']),
-      selfCorrect: json['selfCorrect'] is bool
-          ? json['selfCorrect'] as bool
-          : null,
-      pendingReview: _asBool(json['pendingReview']),
+      aiScore: _asNullableInt(json['aiScore']),
+      aiComment: _asString(json['aiComment']),
+      aiModel: _asString(json['aiModel']),
       analysis: _asString(json['analysis']),
     );
   }
@@ -926,12 +927,12 @@ class EssayAnswerRecord {
     required this.referenceAnswer,
     required this.answerText,
     required this.answerImageUrl,
-    this.selfCorrect,
-    required this.teacherStatus,
-    required this.teacherComment,
-    this.teacherImageUrl,
+    required this.aiStatus,
+    this.aiScore,
+    this.aiComment = '',
+    this.aiModel = '',
     required this.createdAt,
-    this.reviewedAt,
+    this.verifiedAt,
   });
 
   final int id;
@@ -948,12 +949,12 @@ class EssayAnswerRecord {
   final String referenceAnswer;
   final String answerText;
   final String answerImageUrl;
-  final int? selfCorrect;
-  final int teacherStatus;
-  final String teacherComment;
-  final String? teacherImageUrl;
+  final int aiStatus;
+  final int? aiScore;
+  final String aiComment;
+  final String aiModel;
   final String createdAt;
-  final String? reviewedAt;
+  final String? verifiedAt;
 
   factory EssayAnswerRecord.fromJson(Map<String, dynamic> json) {
     return EssayAnswerRecord(
@@ -973,12 +974,12 @@ class EssayAnswerRecord {
       referenceAnswer: _asString(json['referenceAnswer']),
       answerText: _asString(json['answerText']),
       answerImageUrl: _asString(json['answerImageUrl']),
-      selfCorrect: _asNullableInt(json['selfCorrect']),
-      teacherStatus: _asInt(json['teacherStatus']),
-      teacherComment: _asString(json['teacherComment']),
-      teacherImageUrl: _asNullableString(json['teacherImageUrl']),
+      aiStatus: _asInt(json['aiStatus']),
+      aiScore: _asNullableInt(json['aiScore']),
+      aiComment: _asString(json['aiComment']),
+      aiModel: _asString(json['aiModel']),
       createdAt: _asString(json['createdAt']),
-      reviewedAt: _asNullableString(json['reviewedAt']),
+      verifiedAt: _asNullableString(json['verifiedAt']),
     );
   }
 }
@@ -1184,7 +1185,6 @@ class SubmitResult {
     required this.mode,
     required this.totalCount,
     required this.correctCount,
-    this.pendingReviewCount,
     this.score,
     this.passScore,
     required this.passCount,
@@ -1210,7 +1210,6 @@ class SubmitResult {
   final String mode;
   final int totalCount;
   final int correctCount;
-  final int? pendingReviewCount;
   final int? score;
   final int? passScore;
   final int passCount;
@@ -1249,7 +1248,6 @@ class SubmitResult {
       mode: mode,
       totalCount: totalCount,
       correctCount: correctCount,
-      pendingReviewCount: pendingReviewCount,
       score: score,
       passScore: passScore,
       passCount: passCount,
@@ -1279,7 +1277,6 @@ class SubmitResult {
       mode: _asString(json['mode'], 'GATE'),
       totalCount: _asInt(json['totalCount']),
       correctCount: _asInt(json['correctCount']),
-      pendingReviewCount: _asNullableInt(json['pendingReviewCount']),
       score: _asNullableInt(json['score']),
       passScore: _asNullableInt(json['passScore']),
       passCount: _asInt(json['passCount']),
@@ -1418,21 +1415,18 @@ class AnswerSubmitPayload {
     this.selectedIndex,
     this.answerText,
     this.answerImageKey,
-    this.selfCorrect,
   });
 
   final int itemIndex;
   final int? selectedIndex;
   final String? answerText;
   final String? answerImageKey;
-  final bool? selfCorrect;
 
   Map<String, dynamic> toJson() {
     final map = <String, dynamic>{'itemIndex': itemIndex};
     if (selectedIndex != null) map['selectedIndex'] = selectedIndex;
     if (answerText != null) map['answerText'] = answerText;
     if (answerImageKey != null) map['answerImageKey'] = answerImageKey;
-    if (selfCorrect != null) map['selfCorrect'] = selfCorrect;
     return map;
   }
 }

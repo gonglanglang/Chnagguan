@@ -10,6 +10,7 @@ import {
   updateVideoSeries,
   deleteVideoSeries,
   uploadVideoCover,
+  generateAiImage,
   type RealmConfig,
   type VideoSeriesItem
 } from "@/api/guoguanla";
@@ -35,6 +36,7 @@ const dialogVisible = ref(false);
 const editId = ref<number | null>(null);
 const saving = ref(false);
 const coverUploading = ref(false);
+const coverGenerating = ref(false);
 const coverInputRef = ref<HTMLInputElement | null>(null);
 
 const form = reactive({
@@ -122,6 +124,30 @@ async function onCoverFileChange(evt: Event) {
     ElMessage.success("系列封面上传成功");
   } finally {
     coverUploading.value = false;
+  }
+}
+
+async function handleGenerateAiVideoCover() {
+  coverGenerating.value = true;
+  try {
+    const topic = form.title.trim() || "mathematics classroom course";
+    const prompt = `Modern clean 3D illustration for an online mathematics video course cover about "${topic}", bright sky-blue and mint pastel studio atmosphere, frosted glass screen with glowing geometric triangle and smooth sine curve ribbon, translucent crystal pyramid, inviting study aesthetic, strictly no text, no letters, no numbers, no watermark`;
+    const res = await generateAiImage({
+      prompt,
+      size: "1792x1024",
+      count: 1,
+      saveToStorage: true
+    });
+    const first = res.data.images?.[0];
+    if (!first) {
+      ElMessage.error("AI 未返回图片结果");
+      return;
+    }
+    form.coverImageKey = first.objectKey || "";
+    form.coverPreviewUrl = first.storedUrl || first.dataUrl;
+    ElMessage.success("AI 课程封面生成成功");
+  } finally {
+    coverGenerating.value = false;
   }
 }
 
@@ -344,10 +370,20 @@ onMounted(async () => {
                 class="hidden"
                 @change="onCoverFileChange"
               />
-              <el-button :loading="coverUploading" plain @click="triggerCoverPick">
-                上传封面图片
-              </el-button>
-              <div class="mt-1 text-xs text-slate-400">支持 PNG/JPG/WEBP，建议 16:9 横图</div>
+              <div class="flex flex-wrap items-center gap-2">
+                <el-button :loading="coverUploading" plain @click="triggerCoverPick">
+                  上传封面图片
+                </el-button>
+                <el-button
+                  type="success"
+                  plain
+                  :loading="coverGenerating"
+                  @click="handleGenerateAiVideoCover"
+                >
+                  AI 生成封面
+                </el-button>
+              </div>
+              <div class="mt-1 text-xs text-slate-400">支持 PNG/JPG/WEBP 或直接调用已配置 AI 生图，建议 16:9 横图</div>
             </div>
           </div>
         </el-form-item>

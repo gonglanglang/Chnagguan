@@ -56,7 +56,8 @@ public class UserDetailVO {
         private String referenceAnswer;
         private String userAnswerText;
         private String userAnswerImageUrl;
-        private Boolean userSelfCorrect;
+        private Integer aiScore;
+        private String aiComment;
         private boolean correct;
         private String analysis;
     }
@@ -82,12 +83,12 @@ public class UserDetailVO {
         private String analysis;
         private String answerText;
         private String answerImageUrl;
-        private Integer selfCorrect;
-        private Integer teacherStatus;
-        private String teacherComment;
-        private String teacherImageUrl;
+        private Integer aiStatus;
+        private Integer aiScore;
+        private String aiComment;
+        private String aiModel;
         private LocalDateTime createdAt;
-        private LocalDateTime reviewedAt;
+        private LocalDateTime verifiedAt;
     }
 
     @Data

@@ -501,7 +501,7 @@ class _DrawAnswerPageState extends State<DrawAnswerPage> {
       );
     } catch (e) {
       if (mounted) {
-        GglFeedback.error(context, friendlyErrorMessage(e, '保存手写作答失败'));
+        GglFeedback.error(context, friendlyErrorMessage(e, 'AI 批改失败'));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -656,7 +656,7 @@ class _DrawAnswerPageState extends State<DrawAnswerPage> {
                           const Spacer(),
                         const SizedBox(width: 8),
                         GglButton(
-                          label: _saving ? '保存中...' : '完成保存',
+                          label: _saving ? 'AI 批改中...' : '提交 AI 批改',
                           compact: true,
                           loading: _saving,
                           size: WelkButtonSize.small,

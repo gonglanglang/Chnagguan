@@ -10,7 +10,6 @@ import {
   getRealms,
   updateUserRealm,
   updateUserPassword,
-  reviewEssayAnswer,
   type StudentDetail,
   type EssayAnswerItem,
   type RealmConfig
@@ -31,7 +30,7 @@ const detailData = ref<StudentDetail | null>(null);
 const essayList = ref<EssayAnswerItem[]>([]);
 const essayTotal = ref(0);
 const essayPage = ref(1);
-const statusFilter = ref<"ALL" | "0" | "1" | "2">("ALL");
+const statusFilter = ref<"ALL" | "1" | "2">("ALL");
 const activeTab = ref("homework");
 
 const realms = ref<RealmConfig[]>([]);
@@ -48,7 +47,7 @@ const pwdForm = reactive({
 
 const filteredEssays = computed(() => {
   if (statusFilter.value === "ALL") return essayList.value;
-  return essayList.value.filter(e => String(e.teacherStatus) === statusFilter.value);
+  return essayList.value.filter(e => String(e.aiStatus) === statusFilter.value);
 });
 
 async function loadData() {
@@ -78,19 +77,6 @@ async function loadEssays() {
 
 function goBack() {
   router.push("/user/index");
-}
-
-function goEssayReview(item: EssayAnswerItem) {
-  router.push(`/user/essay-review/${item.id}`);
-}
-
-async function quickPass(item: EssayAnswerItem) {
-  await reviewEssayAnswer(item.id, {
-    teacherStatus: 1,
-    teacherComment: item.teacherComment || "解答正确"
-  });
-  ElMessage.success("已批改通过并同步学生进度");
-  await Promise.all([loadData(), loadEssays()]);
 }
 
 async function confirmRealmAdjust() {
@@ -164,13 +150,6 @@ onMounted(async () => {
               <el-tag :type="detailData.profile.status === 1 ? 'success' : 'danger'" size="small">
                 {{ detailData.profile.status === 1 ? "正常" : "禁用" }}
               </el-tag>
-              <el-tag
-                v-if="(detailData.profile.pendingEssayCount || 0) > 0"
-                type="warning"
-                size="small"
-              >
-                待批作业 {{ detailData.profile.pendingEssayCount }}
-              </el-tag>
             </div>
             <div class="mt-1 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-slate-500">
               <span>账号：{{ detailData.profile.username || "-" }}</span>
@@ -189,20 +168,19 @@ onMounted(async () => {
       </div>
     </el-card>
 
-    <!-- 底部 Tabs：目前仅保留「作业批改」 -->
+    <!-- 底部 Tabs：只读展示 AI 解答批改记录（已全面升级为 AI 自动判题） -->
     <el-card shadow="never">
       <el-tabs v-model="activeTab">
-        <el-tab-pane label="作业批改" name="homework">
+        <el-tab-pane label="AI 解答记录" name="homework">
           <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-2">
               <el-radio-group v-model="statusFilter" size="small">
                 <el-radio-button value="ALL">全部 ({{ essayList.length }})</el-radio-button>
-                <el-radio-button value="0">待批改</el-radio-button>
-                <el-radio-button value="1">已通过</el-radio-button>
-                <el-radio-button value="2">待订正</el-radio-button>
+                <el-radio-button value="1">AI 判对通过</el-radio-button>
+                <el-radio-button value="2">AI 判错待订正</el-radio-button>
               </el-radio-group>
               <span class="text-xs text-slate-400">
-                说明：同年级、同章节、同关卡多次提交解答题时自动覆盖保留最新 1 份作答
+                说明：解答题由 AI 大模型实时判题评分并同步错题本，无需后台人工批改
               </span>
             </div>
             <el-button size="small" @click="loadEssays">刷新列表</el-button>
@@ -227,40 +205,24 @@ onMounted(async () => {
                   <div class="flex items-center gap-2">
                     <el-tag
                       size="small"
-                      :type="
-                        item.teacherStatus === 1
-                          ? 'success'
-                          : item.teacherStatus === 2
-                            ? 'danger'
-                            : 'warning'
-                      "
+                      :type="item.aiStatus === 1 ? 'success' : item.aiStatus === 2 ? 'danger' : 'info'"
                     >
                       {{
-                        item.teacherStatus === 1
-                          ? "批改通过"
-                          : item.teacherStatus === 2
-                            ? "待订正（已入错题）"
-                            : "待批改"
+                        item.aiStatus === 1
+                          ? `AI 判对通过${item.aiScore != null ? ` · ${item.aiScore}分` : ""}`
+                          : item.aiStatus === 2
+                            ? `AI 判错（已入错题）${item.aiScore != null ? ` · ${item.aiScore}分` : ""}`
+                            : "未判题"
                       }}
                     </el-tag>
-                    <el-button
-                      v-if="item.teacherStatus !== 1"
-                      size="small"
-                      type="success"
-                      plain
-                      @click="quickPass(item)"
-                    >
-                      快捷通过
-                    </el-button>
-                    <el-button size="small" type="primary" @click="goEssayReview(item)">
-                      <GglIcon name="brush" :size="14" class="mr-1" />
-                      {{ item.teacherStatus === 0 ? "进入画板批改" : "打开/修改批改" }}
-                    </el-button>
+                    <el-tag v-if="item.aiModel" size="small" type="info" effect="plain">
+                      {{ item.aiModel }}
+                    </el-tag>
                   </div>
                 </div>
 
                 <div class="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-12">
-                  <div class="space-y-2 lg:col-span-6">
+                  <div class="space-y-2 lg:col-span-7">
                     <div class="text-sm font-semibold text-slate-800">
                       <MathFormulaText :text="item.stem" />
                     </div>
@@ -270,41 +232,27 @@ onMounted(async () => {
                     <div v-if="item.answerText" class="rounded bg-white px-3 py-2 text-xs text-slate-700">
                       学生文字作答：{{ item.answerText }}
                     </div>
-                    <div v-if="item.teacherComment" class="rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                      老师点评：{{ item.teacherComment }}
+                    <div v-if="item.aiComment" class="rounded bg-sky-50 px-3 py-2 text-xs text-sky-900">
+                      AI 批改点评：{{ item.aiComment }}
                     </div>
                   </div>
 
-                  <div class="flex flex-wrap gap-3 lg:col-span-6">
-                    <div v-if="item.answerImageUrl">
+                  <div v-if="item.answerImageUrl" class="flex flex-wrap gap-3 lg:col-span-5">
+                    <div>
                       <div class="mb-1 text-xs text-slate-500">学生手写作答</div>
                       <el-image
                         :src="item.answerImageUrl"
-                        :preview-src-list="
-                          item.teacherImageUrl
-                            ? [item.answerImageUrl, item.teacherImageUrl]
-                            : [item.answerImageUrl]
-                        "
+                        :preview-src-list="[item.answerImageUrl]"
                         preview-teleported
                         fit="contain"
                         class="h-36 w-56 rounded border border-slate-200 bg-white"
-                      />
-                    </div>
-                    <div v-if="item.teacherImageUrl">
-                      <div class="mb-1 text-xs font-semibold text-red-600">老师批注留痕</div>
-                      <el-image
-                        :src="item.teacherImageUrl"
-                        :preview-src-list="[item.teacherImageUrl]"
-                        preview-teleported
-                        fit="contain"
-                        class="h-36 w-56 rounded border border-red-200 bg-white"
                       />
                     </div>
                   </div>
                 </div>
               </div>
             </template>
-            <el-empty v-else description="暂无需要批改的解答题作业" />
+            <el-empty v-else description="暂无学生解答题 AI 批改记录" />
           </div>
 
           <div v-if="essayTotal > 20" class="mt-4 flex justify-end">

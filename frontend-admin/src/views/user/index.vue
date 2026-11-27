@@ -285,14 +285,6 @@ onMounted(() => {
               >
                 {{ row.nickname }}
               </el-button>
-              <el-tag
-                v-if="(row.pendingEssayCount || 0) > 0"
-                type="warning"
-                size="small"
-                class="shrink-0 whitespace-nowrap"
-              >
-                待批 {{ row.pendingEssayCount }}
-              </el-tag>
             </div>
             <div class="truncate text-xs text-gray-500">账号：{{ row.username || "-" }}</div>
           </template>
@@ -334,7 +326,7 @@ onMounted(() => {
         <el-table-column label="操作" width="280" align="center">
           <template #default="{ row }">
             <div class="inline-flex items-center justify-center whitespace-nowrap">
-              <el-button link type="primary" @click="openDetail(row)">详情批改</el-button>
+              <el-button link type="primary" @click="openDetail(row)">学习详情</el-button>
               <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
               <el-button link type="warning" @click="openPasswordDialog(row)">改密</el-button>
               <el-button

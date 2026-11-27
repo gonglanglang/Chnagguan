@@ -218,11 +218,12 @@ class _EssayRecordsPageState extends State<EssayRecordsPage> {
     WelkColors colors,
     EssayAnswerRecord item,
   ) {
+    final scoreSuffix = item.aiScore != null ? ' · ${item.aiScore}分' : '';
     final (String statusLabel, WelkBadgeVariant statusVariant) =
-        switch (item.teacherStatus) {
-      1 => ('老师已批通过', WelkBadgeVariant.success),
-      2 => ('老师批：待订正', WelkBadgeVariant.error),
-      _ => ('待老师批改', WelkBadgeVariant.info),
+        switch (item.aiStatus) {
+      1 => ('AI 判对$scoreSuffix', WelkBadgeVariant.success),
+      2 => ('AI 判错$scoreSuffix', WelkBadgeVariant.error),
+      _ => ('待 AI 验证', WelkBadgeVariant.info),
     };
 
     final sourceParts = <String>[
@@ -302,20 +303,52 @@ class _EssayRecordsPageState extends State<EssayRecordsPage> {
               title: '我的手写作答',
             ),
           ],
-          if (item.teacherImageUrl != null &&
-              item.teacherImageUrl!.isNotEmpty) ...[
+          if (item.aiComment.trim().isNotEmpty) ...[
             const SizedBox(height: 12),
-            Text(
-              '老师画板批注（点击放大）：',
-              style: TextStyle(
-                color: AppTheme.mutedText(context),
-                fontSize: 12,
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: AppTheme.insetBoxDecoration(
+                context,
+                color: (item.aiStatus == 1 ? colors.success : colors.info)
+                    .withValues(alpha: colors.isDark ? 0.16 : 0.2),
+                radius: 8,
               ),
-            ),
-            const SizedBox(height: 6),
-            _PreviewThumb(
-              imageUrl: item.teacherImageUrl!,
-              title: '老师画板批注',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'AI 批改点评',
+                        style: TextStyle(
+                          color: AppTheme.inkColor(context),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      if (item.aiModel.trim().isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          item.aiModel.trim(),
+                          style: TextStyle(
+                            color: AppTheme.mutedText(context),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  MathText(
+                    item.aiComment.trim(),
+                    style: TextStyle(
+                      color: AppTheme.inkColor(context),
+                      fontSize: 13.5,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
           if (item.referenceAnswer.trim().isNotEmpty) ...[
@@ -353,20 +386,13 @@ class _EssayRecordsPageState extends State<EssayRecordsPage> {
               ),
             ),
           ],
-          if (item.teacherComment.trim().isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              '老师点评：${item.teacherComment}',
-              style: TextStyle(
-                color: colors.ink,
-                fontSize: 13.5,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
           const SizedBox(height: 8),
           Text(
-            FormatUtils.formatDateTimeShort(item.createdAt),
+            FormatUtils.formatDateTimeShort(
+              (item.verifiedAt != null && item.verifiedAt!.isNotEmpty)
+                  ? item.verifiedAt!
+                  : item.createdAt,
+            ),
             style: TextStyle(
               color: AppTheme.mutedText(context),
               fontSize: 11.5,

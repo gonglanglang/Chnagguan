@@ -88,7 +88,7 @@ class Task20261126Tests {
             int idx = s.path("itemIndex").asInt();
             String fmt = s.path("questionFormat").asText("SINGLE_CHOICE");
             if ("ESSAY".equals(fmt)) {
-                ans.add(Map.of("itemIndex", idx, "answerText", "解答过程", "selfCorrect", true));
+                ans.add(Map.of("itemIndex", idx, "answerText", s.path("referenceAnswer").asText("解答过程")));
             } else {
                 ans.add(Map.of("itemIndex", idx, "selectedIndex", s.path("answerIndex").asInt(0)));
             }

@@ -418,7 +418,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('返回'), findsOneWidget);
-    expect(find.text('完成保存'), findsOneWidget);
+    expect(find.text('提交 AI 批改'), findsOneWidget);
     expect(find.text('100%'), findsOneWidget);
   });
 
@@ -1211,13 +1211,21 @@ void main() {
     expect(find.text('首页'), findsOneWidget);
     expect(find.text('闯关'), findsNothing);
 
-    // 2. WrongTabPage restores original horizontal GglPillChip tabs (全部/高频/年级)
+    // 2. WrongTabPage compact 3-button top bar (错题重做 / 导出 Word / 清空) & no bulky summary card
     await tester.pumpWidget(wrapShell(WrongTabPage(refreshSignal: wrongSignal)));
     await tester.pumpAndSettle();
-    expect(find.byType(GglPillChip), findsWidgets);
+    expect(find.byType(GglPillChip), findsNothing);
+    expect(find.text('待巩固'), findsNothing);
+    expect(find.text('错题重做'), findsOneWidget);
+    expect(find.text('导出 Word'), findsOneWidget);
+    expect(find.text('清空'), findsOneWidget);
+    // Filter still accessible via AppBar filter icon sheet
+    await tester.tap(find.byIcon(Icons.filter_list_rounded));
+    await tester.pumpAndSettle();
     expect(find.text('全部'), findsOneWidget);
     expect(find.text('高频'), findsOneWidget);
-    expect(find.text('导出 Word'), findsOneWidget);
+    await tester.tap(find.text('全部'));
+    await tester.pumpAndSettle();
 
     // 3. WrongExportPreviewPage: default collapsed config bar + floating dropdown (does not shift A4 paper!) + Select All + no choice reflection box
     await tester.pumpWidget(
@@ -1659,14 +1667,12 @@ class _FakeGuoguanlaApi extends GuoguanlaApi {
     int? selectedIndex,
     String? answerText,
     String? answerImageKey,
-    bool? selfCorrect,
   }) async {
     return CheckItemResult(
       itemIndex: itemIndex,
       questionFormat: 'SINGLE_CHOICE',
       correct: selectedIndex == 0,
       correctIndex: 0,
-      pendingReview: false,
       analysis: '由勾股定理可得 AB = 5',
     );
   }

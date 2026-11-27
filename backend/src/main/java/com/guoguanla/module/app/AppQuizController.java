@@ -45,22 +45,13 @@ public class AppQuizController {
         ));
     }
 
-    @Operation(summary = "单题提交保存/判题（兼容选择题与解答题）")
+    @Operation(summary = "单题提交判题（选择题服务端判分，解答题调用 AI 实时视觉/文字批改）")
     @PostMapping("/check-item")
     public Result<AppQuizVO.CheckItemVO> checkItem(
             @Valid @RequestBody AppQuizDTO.CheckItemReq req,
             HttpServletRequest request
     ) {
         return Result.ok(quizService.checkItem(req, ServletUrlHelper.resolveBaseOrigin(request)));
-    }
-
-    @Operation(summary = "解答题核对参考答案后保存自评结果")
-    @PostMapping("/essay-grade")
-    public Result<AppQuizVO.CheckItemVO> gradeEssay(
-            @Valid @RequestBody AppQuizDTO.EssayGradeReq req,
-            HttpServletRequest request
-    ) {
-        return Result.ok(quizService.gradeEssayItem(req, ServletUrlHelper.resolveBaseOrigin(request)));
     }
 
     @Operation(summary = "整关交卷结算（更新进度、判断段位晋升、返回下一关信息与错题入库）")

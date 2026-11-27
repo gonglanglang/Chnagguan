@@ -59,8 +59,9 @@ public class AppQuizVO {
         private String referenceAnswer;
         private String answerText;
         private String answerImageUrl;
-        private Boolean selfCorrect;
-        private boolean pendingReview;
+        private Integer aiScore;
+        private String aiComment;
+        private String aiModel;
         private String analysis;
     }
 
@@ -71,7 +72,6 @@ public class AppQuizVO {
         private String mode;
         private Integer totalCount;
         private Integer correctCount;
-        private Integer pendingReviewCount;
         private Integer score;
         private Integer passScore;
         private Integer passCount;
@@ -147,11 +147,11 @@ public class AppQuizVO {
         private String referenceAnswer;
         private String answerText;
         private String answerImageUrl;
-        private Integer selfCorrect;
-        private Integer teacherStatus;
-        private String teacherComment;
-        private String teacherImageUrl;
+        private Integer aiStatus;
+        private Integer aiScore;
+        private String aiComment;
+        private String aiModel;
         private LocalDateTime createdAt;
-        private LocalDateTime reviewedAt;
+        private LocalDateTime verifiedAt;
     }
 }

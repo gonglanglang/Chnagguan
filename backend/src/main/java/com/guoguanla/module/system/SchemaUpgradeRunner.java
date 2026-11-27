@@ -72,7 +72,18 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
         ensureColumn("user_wrong_question", "last_answer_image_key", "VARCHAR(512) DEFAULT NULL");
         ensureColumn("user_essay_answer", "realm_code", "VARCHAR(24) NOT NULL DEFAULT ''");
         ensureColumn("user_essay_answer", "gate_id", "BIGINT UNSIGNED DEFAULT NULL");
-        ensureColumn("user_essay_answer", "teacher_image_key", "VARCHAR(512) DEFAULT NULL");
+        ensureColumn("user_essay_answer", "ai_status", "TINYINT NOT NULL DEFAULT 0");
+        ensureColumn("user_essay_answer", "ai_score", "INT NOT NULL DEFAULT 0");
+        ensureColumn("user_essay_answer", "ai_comment", "TEXT DEFAULT NULL");
+        ensureColumn("user_essay_answer", "ai_model", "VARCHAR(64) NOT NULL DEFAULT ''");
+        ensureColumn("user_essay_answer", "verified_at", "DATETIME DEFAULT NULL");
+        // 移除历史人工老师批改与手动自评字段，统一改为 AI 实时判题
+        dropColumnIfExists("user_essay_answer", "self_correct");
+        dropColumnIfExists("user_essay_answer", "teacher_status");
+        dropColumnIfExists("user_essay_answer", "teacher_comment");
+        dropColumnIfExists("user_essay_answer", "teacher_image_key");
+        dropColumnIfExists("user_essay_answer", "reviewed_by");
+        dropColumnIfExists("user_essay_answer", "reviewed_at");
         ensureColumn("edu_video_lesson", "cover_image_key", "VARCHAR(512) NOT NULL DEFAULT ''");
         ensureColumn("edu_video_lesson", "notes_attachments", "TEXT DEFAULT NULL");
 
@@ -130,12 +141,11 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
                   reference_answer TEXT DEFAULT NULL,
                   answer_text TEXT DEFAULT NULL,
                   answer_image_key VARCHAR(512) DEFAULT NULL,
-                  self_correct TINYINT DEFAULT NULL,
-                  teacher_status TINYINT NOT NULL DEFAULT 0,
-                  teacher_comment VARCHAR(512) NOT NULL DEFAULT '',
-                  teacher_image_key VARCHAR(512) DEFAULT NULL,
-                  reviewed_by BIGINT UNSIGNED DEFAULT NULL,
-                  reviewed_at DATETIME DEFAULT NULL,
+                  ai_status TINYINT NOT NULL DEFAULT 0,
+                  ai_score INT NOT NULL DEFAULT 0,
+                  ai_comment TEXT DEFAULT NULL,
+                  ai_model VARCHAR(64) NOT NULL DEFAULT '',
+                  verified_at DATETIME DEFAULT NULL,
                   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                   PRIMARY KEY (id),
@@ -313,6 +323,15 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
             }
         }
         return false;
+    }
+
+    private void dropColumnIfExists(String table, String column) throws Exception {
+        try (Connection conn = dataSource.getConnection()) {
+            if (hasColumn(conn, table, column)) {
+                jdbcTemplate.execute("ALTER TABLE " + table + " DROP COLUMN " + column);
+                log.info("Dropped legacy column {}.{}", table, column);
+            }
+        }
     }
 
     private boolean hasColumn(Connection conn, String tableName, String columnName) throws Exception {

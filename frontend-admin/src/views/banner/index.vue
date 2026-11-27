@@ -12,6 +12,7 @@ import {
   toggleAdminBannerStatus,
   deleteAdminBanner,
   uploadAdminBannerImage,
+  generateAiImage,
   type HomeBannerItem
 } from "@/api/guoguanla";
 
@@ -22,6 +23,7 @@ defineOptions({
 const loading = ref(false);
 const saving = ref(false);
 const uploadingCover = ref(false);
+const generatingAiCover = ref(false);
 const list = ref<HomeBannerItem[]>([]);
 
 const dialogVisible = ref(false);
@@ -127,6 +129,32 @@ async function openEdit(row: HomeBannerItem) {
 function selectPresetCover(preset: { key: string; url: string }) {
   form.imageKey = preset.key;
   form.imageUrl = preset.url;
+}
+
+async function handleGenerateAiBannerCover() {
+  generatingAiCover.value = true;
+  try {
+    const topic = [form.title.trim(), form.subtitle.trim()].filter(Boolean).join(" - ") || "high school mathematics teaching studio";
+    const prompt = `Modern clean 3D editorial educational banner illustration inspired by "${topic}", translucent glass geometric solids, golden compass and glowing parabolic light ribbons, refined deep-to-bright studio gradient, strictly no text, no letters, no numbers, no watermark`;
+    const res = await generateAiImage({
+      prompt,
+      size: "1792x1024",
+      count: 1,
+      saveToStorage: true
+    });
+    const first = res.data.images?.[0];
+    if (!first) {
+      ElMessage.error("AI 未返回图片结果");
+      return;
+    }
+    form.imageKey = first.objectKey || "";
+    form.imageUrl = first.objectKey
+      ? `/api/app/banners/media?key=${encodeURIComponent(first.objectKey)}`
+      : first.storedUrl || first.dataUrl;
+    ElMessage.success(`AI 封面生成成功（耗时 ${Math.round((res.data.latencyMs || 0) / 1000)}s）`);
+  } finally {
+    generatingAiCover.value = false;
+  }
 }
 
 async function handleCoverUpload(options: UploadRequestOptions) {
@@ -301,13 +329,24 @@ onBeforeUnmount(destroyEditor);
 
           <!-- 封面图上传 -->
           <div class="space-y-2 md:col-span-5">
-            <div class="flex items-center justify-between">
+            <div class="flex flex-wrap items-center justify-between gap-2">
               <span class="text-xs font-semibold text-slate-600">轮播图封面（建议 16:7 横版，如 960×400）*</span>
-              <el-upload :show-file-list="false" accept="image/*" :http-request="handleCoverUpload">
-                <el-button size="small" type="primary" plain :loading="uploadingCover">
-                  上传封面图
+              <div class="flex items-center gap-1.5">
+                <el-button
+                  size="small"
+                  type="success"
+                  plain
+                  :loading="generatingAiCover"
+                  @click="handleGenerateAiBannerCover"
+                >
+                  AI 生成封面
                 </el-button>
-              </el-upload>
+                <el-upload :show-file-list="false" accept="image/*" :http-request="handleCoverUpload">
+                  <el-button size="small" type="primary" plain :loading="uploadingCover">
+                    上传封面图
+                  </el-button>
+                </el-upload>
+              </div>
             </div>
             <div class="relative h-28 w-full overflow-hidden rounded-lg border border-slate-200 bg-white">
               <img

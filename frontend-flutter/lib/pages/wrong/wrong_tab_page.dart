@@ -100,28 +100,6 @@ class _WrongTabPageState extends State<WrongTabPage> {
   int get _displayedTotal =>
       _selectedFilter == 'high' ? _displayedList.length : _total;
 
-  List<({String realmCode, String realmName, int count})> get _realmTags {
-    final map = <String, ({String realmCode, String realmName, int count})>{};
-    for (final item in _displayedList) {
-      final code = item.realmCode.isNotEmpty ? item.realmCode : 'other';
-      final prev = map[code];
-      if (prev != null) {
-        map[code] = (
-          realmCode: code,
-          realmName: prev.realmName,
-          count: prev.count + 1,
-        );
-      } else {
-        map[code] = (
-          realmCode: code,
-          realmName: item.realmName.isNotEmpty ? item.realmName : '综合',
-          count: 1,
-        );
-      }
-    }
-    return map.values.toList();
-  }
-
   Future<void> _fetchList(bool reset) async {
     final user = context.read<UserProvider>();
     if (!user.isAuthenticated) return;
@@ -263,58 +241,117 @@ class _WrongTabPageState extends State<WrongTabPage> {
     );
   }
 
+  void _openFilterSheet(UserProvider user) {
+    final colors = WelkTheme.of(context).resolveColors(context);
+    showGglBottomSheet<void>(
+      context: context,
+      title: '筛选错题',
+      closeLabel: '完成',
+      builder: (sheetCtx) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            GglPillChip(
+              label: '全部',
+              selected: _selectedFilter == 'all',
+              onTap: () {
+                _selectFilter('all');
+                Navigator.of(sheetCtx).pop();
+              },
+            ),
+            GglPillChip(
+              label: '高频',
+              selected: _selectedFilter == 'high',
+              selectedColor: colors.error,
+              onTap: () {
+                _selectFilter('high');
+                Navigator.of(sheetCtx).pop();
+              },
+            ),
+            for (final r in user.realms)
+              GglPillChip(
+                label: r.realmName,
+                selected: _selectedFilter == r.realmCode,
+                onTap: () {
+                  _selectFilter(r.realmCode);
+                  Navigator.of(sheetCtx).pop();
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = WelkTheme.of(context).resolveColors(context);
     final user = context.watch<UserProvider>();
+    final titleText = !user.isAuthenticated
+        ? '错题本'
+        : _selectedFilter == 'all'
+            ? (_displayedTotal > 0 ? '错题本 ($_displayedTotal)' : '错题本')
+            : '错题本 · ${_currentFilterLabel(user)} ($_displayedTotal)';
 
     return Scaffold(
       backgroundColor: AppTheme.pageBackground(context),
-      appBar: const GglAppBar(
-        title: '错题本',
+      appBar: GglAppBar(
+        title: titleText,
         centerTitle: false,
+        actions: user.isAuthenticated
+            ? [
+                GglIconButton(
+                  icon: _selectedFilter == 'all'
+                      ? Icons.filter_list_rounded
+                      : Icons.filter_alt_rounded,
+                  label: '筛选错题',
+                  onPressed: () => _openFilterSheet(user),
+                ),
+              ]
+            : null,
       ),
       body: Column(
         children: [
-          // 保持原有顶部横向筛选胶囊条（紧凑单行不占主空间）
+          // 顶部极简三按钮操作栏（省空间，直达核心动作）
           if (user.isAuthenticated)
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
               decoration: AppTheme.barDecoration(context, bottomBorder: true),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                child: Row(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: GglPillChip(
-                        label: '全部',
-                        selected: _selectedFilter == 'all',
-                        onTap: () => _selectFilter('all'),
-                      ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: GglBlockButton(
+                      label: '错题重做',
+                      icon: Icons.refresh_rounded,
+                      size: WelkButtonSize.small,
+                      variant: WelkButtonVariant.primary,
+                      onPressed: _displayedTotal == 0 ? null : _startRedo,
                     ),
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: GglPillChip(
-                        label: '高频',
-                        selected: _selectedFilter == 'high',
-                        selectedColor: colors.error,
-                        onTap: () => _selectFilter('high'),
-                      ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: GglBlockButton(
+                      label: '导出 Word',
+                      icon: Icons.description_outlined,
+                      size: WelkButtonSize.small,
+                      variant: WelkButtonVariant.info,
+                      onPressed:
+                          _displayedTotal == 0 ? null : _openExportPreview,
                     ),
-                    for (final r in user.realms)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: GglPillChip(
-                          label: r.realmName,
-                          selected: _selectedFilter == r.realmCode,
-                          onTap: () => _selectFilter(r.realmCode),
-                        ),
-                      ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: 8),
+                  GglButton(
+                    label: '清空',
+                    icon: Icons.delete_outline_rounded,
+                    size: WelkButtonSize.small,
+                    variant: WelkButtonVariant.secondary,
+                    compact: true,
+                    onPressed: _total == 0 ? null : _clearAll,
+                  ),
+                ],
               ),
             ),
           Expanded(
@@ -322,19 +359,19 @@ class _WrongTabPageState extends State<WrongTabPage> {
               onRefresh: _refreshIfAuth,
               child: ListView(
                 controller: _scrollController,
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
                 children: [
                   if (!user.isAuthenticated)
                     GglComicPanel(
                       padding: const EdgeInsets.symmetric(
-                        vertical: 40,
-                        horizontal: 24,
+                        vertical: 36,
+                        horizontal: 22,
                       ),
                       child: Column(
                         children: [
                           Container(
-                            width: 64,
-                            height: 64,
+                            width: 60,
+                            height: 60,
                             alignment: Alignment.center,
                             decoration: AppTheme.badgeCircleDecoration(
                               context,
@@ -342,30 +379,30 @@ class _WrongTabPageState extends State<WrongTabPage> {
                             ),
                             child: Icon(
                               Icons.menu_book_rounded,
-                              size: 32,
+                              size: 30,
                               color: AppTheme.onAccentColor(context),
                             ),
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 14),
                           Text(
                             '登录后解锁专属错题本',
                             style: TextStyle(
                               color: AppTheme.inkColor(context),
-                              fontSize: 18,
+                              fontSize: 17.5,
                               fontWeight: FontWeight.w800,
                             ),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 6),
                           Text(
-                            '每次闯关与解答的错题将自动收录，支持分年级筛选、错题重做、掌握消错及 A4 Word 导出分享。',
+                            '每次闯关与解答的错题将自动收录，支持错题重做、掌握消错及 A4 Word 导出。',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: AppTheme.mutedText(context),
-                              fontSize: 13.5,
-                              height: 1.55,
+                              fontSize: 13,
+                              height: 1.5,
                             ),
                           ),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 18),
                           GglButton(
                             label: '登录 / 注册',
                             size: WelkButtonSize.medium,
@@ -376,187 +413,77 @@ class _WrongTabPageState extends State<WrongTabPage> {
                     )
                   else if (_loading && _list.isEmpty) ...[
                     const GglCardSkeleton(lines: 3),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     const GglCardSkeleton(lines: 4),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     const GglCardSkeleton(lines: 4),
-                  ] else ...[
-                    // 紧凑防换行汇总卡片
+                  ] else if (_displayedList.isEmpty)
                     GglComicPanel(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 36,
+                        horizontal: 20,
+                      ),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Text(
-                                '待巩固',
-                                maxLines: 1,
-                                softWrap: false,
-                                style: TextStyle(
-                                  color: AppTheme.mutedText(context),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                '$_displayedTotal',
-                                maxLines: 1,
-                                softWrap: false,
-                                style: TextStyle(
-                                  color: colors.ink,
-                                  fontSize: 26,
-                                  fontWeight: FontWeight.w900,
-                                  height: 1.05,
-                                ),
-                              ),
-                              const SizedBox(width: 3),
-                              Text(
-                                '题',
-                                maxLines: 1,
-                                softWrap: false,
-                                style: TextStyle(
-                                  color: AppTheme.mutedText(context),
-                                  fontSize: 13,
-                                ),
-                              ),
-                              const Spacer(),
-                              if (_total > 0)
-                                GglButton(
-                                  label: '清空',
-                                  variant: WelkButtonVariant.secondary,
-                                  compact: true,
-                                  onPressed: _clearAll,
-                                ),
-                            ],
+                          Icon(
+                            Icons.check_circle_outline_rounded,
+                            size: 38,
+                            color: colors.successHover,
                           ),
-                          if (_realmTags.isNotEmpty) ...[
-                            const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 6,
-                              runSpacing: 6,
-                              children: [
-                                for (final tag in _realmTags)
-                                  GglStatusTag(
-                                    label: '${tag.realmName} ${tag.count}题',
-                                    variant: WelkBadgeVariant.info,
-                                  ),
-                              ],
-                            ),
-                          ],
                           const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: GglBlockButton(
-                                  label: '导出 Word',
-                                  icon: Icons.description_outlined,
-                                  size: WelkButtonSize.small,
-                                  variant: WelkButtonVariant.info,
-                                  onPressed: _displayedTotal == 0
-                                      ? null
-                                      : _openExportPreview,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: GglBlockButton(
-                                  label: '错题重做',
-                                  icon: Icons.refresh_rounded,
-                                  size: WelkButtonSize.small,
-                                  variant: WelkButtonVariant.primary,
-                                  onPressed:
-                                      _displayedTotal == 0 ? null : _startRedo,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
                           Text(
-                            '重做答对自动移出 · 支持挑选错题生成 A4 试卷分享微信',
-                            maxLines: 1,
-                            softWrap: false,
-                            overflow: TextOverflow.ellipsis,
+                            _selectedFilter == 'high'
+                                ? '暂无高频错题'
+                                : '当前暂无待巩固错题',
+                            style: TextStyle(
+                              color: colors.ink,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '继续保持！闯关答错的题目会自动收录到这里',
                             style: TextStyle(
                               color: AppTheme.mutedText(context),
-                              fontSize: 11.5,
+                              fontSize: 12.5,
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    if (_displayedList.isEmpty)
-                      GglComicPanel(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 42,
-                          horizontal: 20,
-                        ),
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.check_circle_outline_rounded,
-                              size: 40,
-                              color: colors.successHover,
+                    )
+                  else ...[
+                    for (final item in _displayedList)
+                      _WrongCard(
+                        item: item,
+                        onMaster: () => _markMastered(item.id),
+                      ),
+                    if (_loading)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Center(
+                          child: Text(
+                            '正在加载更多错题...',
+                            style: TextStyle(
+                              color: AppTheme.mutedText(context),
+                              fontSize: 12,
                             ),
-                            const SizedBox(height: 10),
-                            Text(
-                              _selectedFilter == 'high'
-                                  ? '暂无高频错题'
-                                  : '当前暂无待巩固错题',
-                              style: TextStyle(
-                                color: colors.ink,
-                                fontSize: 15.5,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '继续保持！闯关答错的题目会自动收录到这里',
-                              style: TextStyle(
-                                color: AppTheme.mutedText(context),
-                                fontSize: 12.5,
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
                       )
-                    else ...[
-                      for (final item in _displayedList)
-                        _WrongCard(
-                          item: item,
-                          onMaster: () => _markMastered(item.id),
-                        ),
-                      if (_loading)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Center(
-                            child: Text(
-                              '正在加载更多错题...',
-                              style: TextStyle(
-                                color: AppTheme.mutedText(context),
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        )
-                      else if (_list.length >= _total && _total > 0)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Center(
-                            child: Text(
-                              '已显示全部待巩固错题',
-                              style: TextStyle(
-                                color: AppTheme.mutedText(context),
-                                fontSize: 12,
-                              ),
+                    else if (_list.length >= _total && _total > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Center(
+                          child: Text(
+                            '已显示全部待巩固错题',
+                            style: TextStyle(
+                              color: AppTheme.mutedText(context),
+                              fontSize: 12,
                             ),
                           ),
                         ),
-                    ],
+                      ),
                   ],
                 ],
               ),
@@ -579,8 +506,8 @@ class _WrongCard extends StatelessWidget {
     final ink = AppTheme.inkColor(context);
 
     return GglComicPanel(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(11),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -602,7 +529,7 @@ class _WrongCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: AppTheme.mutedText(context),
-                    fontSize: 12,
+                    fontSize: 11.5,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -616,58 +543,65 @@ class _WrongCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           MathText(
             item.stem,
             style: TextStyle(
               color: ink,
-              fontSize: 15,
+              fontSize: 14.5,
               fontWeight: FontWeight.w600,
             ),
           ),
           if (item.diagram != null ||
               (item.imageUrl != null && item.imageUrl!.trim().isNotEmpty)) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             QuestionFigureCard(
               diagram: item.diagram,
               imageUrl: item.imageUrl,
               compact: true,
             ),
           ],
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(8),
             decoration: AppTheme.insetBoxDecoration(context),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const GglStatusTag(
-                  label: '参考答案',
-                  variant: WelkBadgeVariant.success,
-                ),
-                const SizedBox(height: 6),
-                MathText(
-                  item.formattedCorrectAnswer(),
-                  style: TextStyle(
-                    color: ink,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const GglStatusTag(
+                      label: '正解',
+                      variant: WelkBadgeVariant.success,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: MathText(
+                        item.formattedCorrectAnswer(),
+                        style: TextStyle(
+                          color: ink,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 if (item.analysis.trim().isNotEmpty) ...[
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 4),
                   MathText(
                     item.analysis,
                     style: TextStyle(
                       color: AppTheme.mutedText(context),
-                      fontSize: 13,
+                      fontSize: 12.5,
                     ),
                   ),
                 ],
                 if (item.lastAnswerImageUrl != null &&
                     item.lastAnswerImageUrl!.isNotEmpty) ...[
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   GestureDetector(
                     onTap: () => ImagePreviewPage.open(
                       context,
@@ -675,8 +609,8 @@ class _WrongCard extends StatelessWidget {
                       title: '手写作答预览',
                     ),
                     child: Container(
-                      width: 110,
-                      height: 80,
+                      width: 96,
+                      height: 68,
                       decoration: AppTheme.insetBoxDecoration(
                         context,
                         color: Colors.white,
@@ -693,7 +627,7 @@ class _WrongCard extends StatelessWidget {
               ],
             ),
           ),
-          const GglDivider(verticalPadding: 10),
+          const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -703,7 +637,7 @@ class _WrongCard extends StatelessWidget {
                 softWrap: false,
                 style: TextStyle(
                   color: AppTheme.mutedText(context),
-                  fontSize: 12,
+                  fontSize: 11.5,
                 ),
               ),
               GglButton(

@@ -54,14 +54,14 @@ class AdminIntegrationTests {
     void dashboardUsersBankLevelsAndAuditLogsShouldWorkEndToEnd() throws Exception {
         String token = loginAsAdmin();
 
-        // 1. Dashboard overview checks seeded 51 chapters, 204 gates, 612 questions
+        // 1. Dashboard overview checks seeded 51 chapters, 204 gates, 632 questions (612 prototype + 20 Studio diagram questions)
         mockMvc.perform(get("/api/admin/dashboard/overview")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.chapterCount").value(51))
                 .andExpect(jsonPath("$.data.gateCount").value(204))
-                .andExpect(jsonPath("$.data.questionCount").value(612))
-                .andExpect(jsonPath("$.data.staticQuestionCount").value(204))
+                .andExpect(jsonPath("$.data.questionCount").value(632))
+                .andExpect(jsonPath("$.data.staticQuestionCount").value(224))
                 .andExpect(jsonPath("$.data.dynamicQuestionCount").value(408));
 
         // 2. User list & detail & create

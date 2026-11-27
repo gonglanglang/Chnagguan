@@ -11,6 +11,7 @@ import com.guoguanla.module.banner.vo.BannerVO;
 import com.guoguanla.module.oss.AliyunOssService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -20,6 +21,7 @@ import java.awt.geom.Ellipse2D;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -159,7 +161,8 @@ public class HomeBannerService {
         if (clean.contains("..") || clean.contains("\\")) {
             throw new BizException(ErrorCode.BAD_REQUEST, "非法图片路径");
         }
-        if (!(clean.startsWith("home-banners/") || clean.startsWith("/downloads/home-banners/"))) {
+        if (!(clean.startsWith("home-banners/") || clean.startsWith("/downloads/home-banners/")
+                || clean.startsWith("ai-images/") || clean.startsWith("/downloads/ai-images/"))) {
             throw new BizException(ErrorCode.FORBIDDEN, "无权访问该资源");
         }
         return ossService.readObjectBytes(clean);
@@ -180,7 +183,8 @@ public class HomeBannerService {
             if (code.isEmpty()) code = "faculty-1";
             return combineOrigin(baseOrigin, "/api/app/banners/preset/" + code);
         }
-        if (trimmed.startsWith("home-banners/") || trimmed.startsWith("/downloads/home-banners/")) {
+        if (trimmed.startsWith("home-banners/") || trimmed.startsWith("/downloads/home-banners/")
+                || trimmed.startsWith("ai-images/") || trimmed.startsWith("/downloads/ai-images/")) {
             return combineOrigin(
                     baseOrigin,
                     "/api/app/banners/media?key=" + URLEncoder.encode(trimmed, StandardCharsets.UTF_8)
@@ -263,6 +267,40 @@ public class HomeBannerService {
     private byte[] generatePresetBannerBytes(String code) {
         int w = 960;
         int h = 400;
+        // 优先加载通过后台 AI 生图配置生成的精品视觉轮播图（居中裁剪铺满 960x400 并输出无损 PNG）
+        String assetName = switch (code) {
+            case "faculty-2" -> "faculty-2.jpg";
+            case "faculty-3" -> "faculty-3.jpg";
+            default -> "faculty-1.jpg";
+        };
+        ClassPathResource art = new ClassPathResource("static/banners/" + assetName);
+        if (art.exists()) {
+            try (InputStream in = art.getInputStream(); ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                BufferedImage src = ImageIO.read(in);
+                if (src != null && src.getWidth() > 0 && src.getHeight() > 0) {
+                    BufferedImage dst = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+                    Graphics2D g2 = dst.createGraphics();
+                    try {
+                        g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+                        g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+                        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                        double scale = Math.max((double) w / src.getWidth(), (double) h / src.getHeight());
+                        int drawW = (int) Math.round(src.getWidth() * scale);
+                        int drawH = (int) Math.round(src.getHeight() * scale);
+                        int dx = (w - drawW) / 2;
+                        int dy = (h - drawH) / 2;
+                        g2.drawImage(src, dx, dy, drawW, drawH, null);
+                    } finally {
+                        g2.dispose();
+                    }
+                    ImageIO.write(dst, "png", baos);
+                    return baos.toByteArray();
+                }
+            } catch (Exception e) {
+                log.warn("Failed to load bundled AI banner art {}: {}", assetName, e.getMessage());
+            }
+        }
+
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
         Graphics2D g = img.createGraphics();
         try {

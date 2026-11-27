@@ -93,7 +93,7 @@ class Task20261126002Tests {
         for (JsonNode s : snaps) {
             int idx = s.path("itemIndex").asInt();
             if ("ESSAY".equals(s.path("questionFormat").asText())) {
-                ans.add(Map.of("itemIndex", idx, "answerText", "解题过程", "selfCorrect", true));
+                ans.add(Map.of("itemIndex", idx, "answerText", s.path("referenceAnswer").asText("解题过程")));
             } else {
                 ans.add(Map.of("itemIndex", idx, "selectedIndex", s.path("answerIndex").asInt(0)));
             }

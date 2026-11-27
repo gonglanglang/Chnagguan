@@ -1435,7 +1435,9 @@ onBeforeUnmount(() => {
                 v-else-if="phonePreviewStage === 'reviewed'"
                 class="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-800"
               >
-                <div class="font-semibold">作答已提交至云端，等待老师批改点评</div>
+                <div class="font-semibold">
+                  作答已提交至 AI 实时批改，即时返回评分与点评
+                </div>
                 <div class="rounded bg-white/80 p-2.5 text-slate-700">
                   <span class="font-semibold text-green-700">参考答案（后台可见）：</span>
                   <MathFormulaText :text="phoneEssayAnswer" inline />

@@ -456,6 +456,16 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                 Image.network(
                   poster,
                   fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => Image.asset(
+                    'assets/images/video_cover_default.jpg',
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                  ),
+                )
+              else
+                Image.asset(
+                  'assets/images/video_cover_default.jpg',
+                  fit: BoxFit.cover,
                   errorBuilder: (_, _, _) => const SizedBox.shrink(),
                 ),
               Container(

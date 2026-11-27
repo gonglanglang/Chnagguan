@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.guoguanla.module.progress.entity.UserEssayAnswer;
 import com.guoguanla.module.progress.mapper.UserEssayAnswerMapper;
+import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -15,9 +16,13 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.junit.jupiter.api.Assertions.*;
@@ -274,191 +279,197 @@ class FeatureRegressionTests {
         String imgKey = objectMapper.readTree(uploadRes.getResponse().getContentAsString())
                 .path("data").path("objectKey").asText();
 
-        mockMvc.perform(post("/api/app/quiz/check-item")
-                        .header("Authorization", "Bearer " + studentToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "sessionNo", sessionNo,
-                                "itemIndex", essayIdx,
-                                "answerText", "答案是 -3",
-                                "answerImageKey", imgKey
-                        ))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.questionFormat").value("ESSAY"))
-                .andExpect(jsonPath("$.data.pendingReview").value(true))
-                .andExpect(jsonPath("$.data.answerImageUrl").isNotEmpty());
-
-        submitAnswers.add(Map.of(
-                "itemIndex", essayIdx,
-                "answerText", "答案是 -3",
-                "answerImageKey", imgKey
-        ));
-
-        mockMvc.perform(post("/api/app/quiz/submit")
-                        .header("Authorization", "Bearer " + studentToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "sessionNo", sessionNo,
-                                "answers", submitAnswers
-                        ))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.pendingReviewCount").value(1));
-
-        // While essay is pending teacher review, it must NOT be placed into wrong-questions yet
-        MvcResult pendingWrongRes = mockMvc.perform(get("/api/app/wrong-questions?pageNum=1&pageSize=10")
-                        .header("Authorization", "Bearer " + studentToken))
-                .andExpect(status().isOk())
-                .andReturn();
-        for (JsonNode w : objectMapper.readTree(pendingWrongRes.getResponse().getContentAsString()).path("data").path("records")) {
-            assertNotEquals("ESSAY", w.path("questionFormat").asText(), "Pending essay should not enter wrong book before teacher review");
-        }
-
-        // Student essay-answers endpoint returns saved drawing record
-        MvcResult myEssayRes = mockMvc.perform(get("/api/app/user/essay-answers?pageNum=1&pageSize=10")
-                        .header("Authorization", "Bearer " + studentToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.records.length()").value(1))
-                .andExpect(jsonPath("$.data.records[0].answerText").value("答案是 -3"))
-                .andReturn();
-        long essayId = objectMapper.readTree(myEssayRes.getResponse().getContentAsString())
-                .path("data").path("records").get(0).path("id").asLong();
-
-        // Admin inspects session detail + rejects (status=2) -> enters wrong-questions; then approves (status=1) -> mastered
-        mockMvc.perform(get("/api/admin/users/" + studentId + "/quiz-records/" + sessionNo)
-                        .header("Authorization", "Bearer " + adminToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(items.size()));
-
-        mockMvc.perform(put("/api/admin/users/essay-answers/" + essayId + "/review")
-                        .header("Authorization", "Bearer " + adminToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "teacherStatus", 2,
-                                "teacherComment", "需补充过程"
-                        ))))
-                .andExpect(status().isOk());
-
-        MvcResult wrongRes = mockMvc.perform(get("/api/app/wrong-questions?pageNum=1&pageSize=10")
-                        .header("Authorization", "Bearer " + studentToken))
-                .andExpect(status().isOk())
-                .andReturn();
-        JsonNode wrongRecords = objectMapper.readTree(wrongRes.getResponse().getContentAsString())
-                .path("data").path("records");
-        JsonNode essayWrong = null;
-        for (JsonNode w : wrongRecords) {
-            if ("ESSAY".equals(w.path("questionFormat").asText())) {
-                essayWrong = w;
-                break;
+        // 5.1 Configure local mock AI LLM server for real-time AI essay verification (replacing legacy teacher review)
+        AtomicReference<String> mockAiJson = new AtomicReference<>(
+                "{\"correct\":false,\"score\":35,\"comment\":\"负号运算有误，请重算 -8+5\",\"mistakePoint\":\"符号计算错误\"}"
+        );
+        HttpServer mockAi = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        mockAi.createContext("/v1/chat/completions", exchange -> {
+            String escaped = objectMapper.writeValueAsString(mockAiJson.get());
+            byte[] resp = ("{\"model\":\"mock-math-vision\",\"choices\":[{\"message\":{\"content\":" + escaped + "}}]}")
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, resp.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(resp);
             }
-        }
-        assertNotNull(essayWrong, "Rejected ESSAY should enter wrong questions");
-        assertFalse(essayWrong.path("lastAnswerImageUrl").asText("").isBlank());
-        assertEquals("解：原式 $= -8 + 5 = -3$", essayWrong.path("referenceAnswer").asText(""));
+        });
+        mockAi.start();
+        try {
+            mockMvc.perform(put("/api/admin/ai/config")
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of(
+                                    "enabled", true,
+                                    "baseUrl", "http://127.0.0.1:" + mockAi.getAddress().getPort() + "/v1",
+                                    "apiKey", "mock_ai_test_key_123456",
+                                    "model", "mock-math-vision"
+                            ))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(200));
 
-        // Admin inspects essay detail + image proxy + uploads PC annotation image + approves
-        mockMvc.perform(get("/api/admin/users/essay-answers/" + essayId)
-                        .header("Authorization", "Bearer " + adminToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.studentNickname").value("测试同学"));
+            mockMvc.perform(post("/api/app/quiz/check-item")
+                            .header("Authorization", "Bearer " + studentToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of(
+                                    "sessionNo", sessionNo,
+                                    "itemIndex", essayIdx,
+                                    "answerText", "答案是 3",
+                                    "answerImageKey", imgKey
+                            ))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.questionFormat").value("ESSAY"))
+                    .andExpect(jsonPath("$.data.correct").value(false))
+                    .andExpect(jsonPath("$.data.aiScore").value(35))
+                    .andExpect(jsonPath("$.data.aiComment").value("负号运算有误，请重算 -8+5（错因：符号计算错误）"))
+                    .andExpect(jsonPath("$.data.aiModel").value("mock-math-vision"))
+                    .andExpect(jsonPath("$.data.answerImageUrl").isNotEmpty());
 
-        mockMvc.perform(get("/api/admin/users/essay-answers/" + essayId + "/image")
-                        .header("Authorization", "Bearer " + adminToken))
-                .andExpect(status().isOk())
-                .andExpect(content().contentTypeCompatibleWith(MediaType.IMAGE_PNG));
+            submitAnswers.add(Map.of(
+                    "itemIndex", essayIdx,
+                    "answerText", "答案是 3",
+                    "answerImageKey", imgKey
+            ));
 
-        MockMultipartFile reviewPng = new MockMultipartFile("file", "review.png", "image/png", MINIMAL_PNG);
-        MvcResult reviewUploadRes = mockMvc.perform(multipart("/api/admin/users/essay-answers/" + essayId + "/review-image")
-                        .file(reviewPng)
-                        .header("Authorization", "Bearer " + adminToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.objectKey").isNotEmpty())
-                .andReturn();
-        String reviewImgKey = objectMapper.readTree(reviewUploadRes.getResponse().getContentAsString())
-                .path("data").path("objectKey").asText();
+            mockMvc.perform(post("/api/app/quiz/submit")
+                            .header("Authorization", "Bearer " + studentToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of(
+                                    "sessionNo", sessionNo,
+                                    "answers", submitAnswers
+                            ))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(200));
 
-        mockMvc.perform(put("/api/admin/users/essay-answers/" + essayId + "/review")
-                        .header("Authorization", "Bearer " + adminToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "teacherStatus", 1,
-                                "teacherComment", "步骤清晰，非常棒",
-                                "teacherImageKey", reviewImgKey
-                        ))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200));
-
-        mockMvc.perform(get("/api/app/user/essay-answers?pageNum=1&pageSize=10")
-                        .header("Authorization", "Bearer " + studentToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.records[0].teacherStatus").value(1))
-                .andExpect(jsonPath("$.data.records[0].teacherComment").value("步骤清晰，非常棒"))
-                .andExpect(jsonPath("$.data.records[0].teacherImageUrl").isNotEmpty());
-
-        // 6. Re-submit essay in the same realm + chapter + gate -> must overwrite & reset to pending review (still only 1 row)
-        MvcResult startRes2 = mockMvc.perform(post("/api/app/quiz/start")
-                        .header("Authorization", "Bearer " + studentToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("gateId", gate1Id))))
-                .andExpect(status().isOk())
-                .andReturn();
-        JsonNode startData2 = objectMapper.readTree(startRes2.getResponse().getContentAsString()).path("data");
-        String sessionNo2 = startData2.path("sessionNo").asText();
-        Integer essayIdx2 = null;
-        for (JsonNode it : startData2.path("items")) {
-            if ("ESSAY".equals(it.path("questionFormat").asText())) {
-                essayIdx2 = it.path("itemIndex").asInt();
-                break;
+            // AI-rejected ESSAY automatically enters wrong-questions immediately (no teacher waiting)
+            MvcResult wrongRes = mockMvc.perform(get("/api/app/wrong-questions?pageNum=1&pageSize=10")
+                            .header("Authorization", "Bearer " + studentToken))
+                    .andExpect(status().isOk())
+                    .andReturn();
+            JsonNode wrongRecords = objectMapper.readTree(wrongRes.getResponse().getContentAsString())
+                    .path("data").path("records");
+            JsonNode essayWrong = null;
+            for (JsonNode w : wrongRecords) {
+                if ("ESSAY".equals(w.path("questionFormat").asText())) {
+                    essayWrong = w;
+                    break;
+                }
             }
+            assertNotNull(essayWrong, "AI-rejected ESSAY should enter wrong questions immediately");
+            assertFalse(essayWrong.path("lastAnswerImageUrl").asText("").isBlank());
+            assertEquals("解：原式 $= -8 + 5 = -3$", essayWrong.path("referenceAnswer").asText(""));
+
+            // Student essay-answers endpoint returns AI-verified drawing record
+            MvcResult myEssayRes = mockMvc.perform(get("/api/app/user/essay-answers?pageNum=1&pageSize=10")
+                            .header("Authorization", "Bearer " + studentToken))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.records.length()").value(1))
+                    .andExpect(jsonPath("$.data.records[0].answerText").value("答案是 3"))
+                    .andExpect(jsonPath("$.data.records[0].aiStatus").value(2))
+                    .andExpect(jsonPath("$.data.records[0].aiScore").value(35))
+                    .andReturn();
+            long essayId = objectMapper.readTree(myEssayRes.getResponse().getContentAsString())
+                    .path("data").path("records").get(0).path("id").asLong();
+
+            // Legacy teacher-review endpoints must no longer exist
+            int legacyReviewStatus = mockMvc.perform(put("/api/admin/users/essay-answers/" + essayId + "/review")
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"teacherStatus\":1}"))
+                    .andReturn().getResponse().getStatus();
+            assertTrue(legacyReviewStatus == 404 || legacyReviewStatus == 405,
+                    "Legacy teacher review endpoint should be removed, got HTTP " + legacyReviewStatus);
+
+            // Admin can still view quiz record detail & read-only AI essay records
+            mockMvc.perform(get("/api/admin/users/" + studentId + "/quiz-records/" + sessionNo)
+                            .header("Authorization", "Bearer " + adminToken))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.length()").value(items.size()));
+
+            mockMvc.perform(get("/api/admin/users/" + studentId + "/essay-answers?pageNum=1&pageSize=10")
+                            .header("Authorization", "Bearer " + adminToken))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.records[0].aiStatus").value(2))
+                    .andExpect(jsonPath("$.data.records[0].aiScore").value(35));
+
+            // 6. Re-submit essay in the same realm + chapter + gate -> AI verifies as passed & overwrites latest row (still 1 row)
+            mockAiJson.set("{\"correct\":true,\"score\":98,\"comment\":\"步骤清晰，计算准确！\",\"mistakePoint\":\"\"}");
+            MvcResult startRes2 = mockMvc.perform(post("/api/app/quiz/start")
+                            .header("Authorization", "Bearer " + studentToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of("gateId", gate1Id))))
+                    .andExpect(status().isOk())
+                    .andReturn();
+            JsonNode startData2 = objectMapper.readTree(startRes2.getResponse().getContentAsString()).path("data");
+            String sessionNo2 = startData2.path("sessionNo").asText();
+            Integer essayIdx2 = null;
+            for (JsonNode it : startData2.path("items")) {
+                if ("ESSAY".equals(it.path("questionFormat").asText())) {
+                    essayIdx2 = it.path("itemIndex").asInt();
+                    break;
+                }
+            }
+            assertNotNull(essayIdx2);
+            mockMvc.perform(post("/api/app/quiz/check-item")
+                            .header("Authorization", "Bearer " + studentToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of(
+                                    "sessionNo", sessionNo2,
+                                    "itemIndex", essayIdx2,
+                                    "answerText", "重交新步骤：-8 + 5 = -3",
+                                    "answerImageKey", imgKey
+                            ))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.correct").value(true))
+                    .andExpect(jsonPath("$.data.aiScore").value(98))
+                    .andExpect(jsonPath("$.data.aiComment").value("步骤清晰，计算准确！"));
+
+            mockMvc.perform(get("/api/app/user/essay-answers?pageNum=1&pageSize=10")
+                            .header("Authorization", "Bearer " + studentToken))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.total").value(1))
+                    .andExpect(jsonPath("$.data.records[0].id").value(essayId))
+                    .andExpect(jsonPath("$.data.records[0].answerText").value("重交新步骤：-8 + 5 = -3"))
+                    .andExpect(jsonPath("$.data.records[0].aiStatus").value(1))
+                    .andExpect(jsonPath("$.data.records[0].aiScore").value(98))
+                    .andExpect(jsonPath("$.data.records[0].aiComment").value("步骤清晰，计算准确！"));
+
+            // 6.1 Permanent clear of my essay answers (only removes current user's DB rows)
+            UserEssayAnswer otherUserEssay = new UserEssayAnswer();
+            otherUserEssay.setSessionNo("QZ_OTHER_ESSAY_KEEP");
+            otherUserEssay.setItemIndex(0);
+            otherUserEssay.setUserId(999999L);
+            otherUserEssay.setGradeCode("g7");
+            otherUserEssay.setRealmCode("lianqi");
+            otherUserEssay.setStem("其他学生保留记录");
+            otherUserEssay.setAiStatus(1);
+            otherUserEssay.setAiScore(90);
+            otherUserEssay.setAiComment("AI验证通过");
+            otherUserEssay.setAiModel("mock-math-vision");
+            essayAnswerMapper.insert(otherUserEssay);
+
+            mockMvc.perform(delete("/api/app/user/essay-answers/clear")
+                            .header("Authorization", "Bearer " + studentToken))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(200));
+
+            assertEquals(0L, essayAnswerMapper.selectCount(
+                    new LambdaQueryWrapper<UserEssayAnswer>().eq(UserEssayAnswer::getUserId, studentId)
+            ));
+            assertEquals(1L, essayAnswerMapper.selectCount(
+                    new LambdaQueryWrapper<UserEssayAnswer>().eq(UserEssayAnswer::getUserId, 999999L)
+            ));
+            mockMvc.perform(get("/api/app/user/essay-answers?pageNum=1&pageSize=10")
+                            .header("Authorization", "Bearer " + studentToken))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.total").value(0));
+        } finally {
+            mockAi.stop(0);
+            mockMvc.perform(put("/api/admin/ai/config")
+                    .header("Authorization", "Bearer " + adminToken)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"enabled\":true,\"baseUrl\":\"https://api.longcat.chat/openai\",\"clearApiKey\":true,\"model\":\"LongCat-2.5\"}"));
         }
-        assertNotNull(essayIdx2);
-        mockMvc.perform(post("/api/app/quiz/check-item")
-                        .header("Authorization", "Bearer " + studentToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "sessionNo", sessionNo2,
-                                "itemIndex", essayIdx2,
-                                "answerText", "重交新步骤：-3",
-                                "answerImageKey", imgKey
-                        ))))
-                .andExpect(status().isOk());
-
-        mockMvc.perform(get("/api/app/user/essay-answers?pageNum=1&pageSize=10")
-                        .header("Authorization", "Bearer " + studentToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.total").value(1))
-                .andExpect(jsonPath("$.data.records[0].id").value(essayId))
-                .andExpect(jsonPath("$.data.records[0].answerText").value("重交新步骤：-3"))
-                .andExpect(jsonPath("$.data.records[0].teacherStatus").value(0))
-                .andExpect(jsonPath("$.data.records[0].teacherComment").value(""));
-
-        // 6.1 Permanent clear of my essay answers (only removes current user's DB rows)
-        UserEssayAnswer otherUserEssay = new UserEssayAnswer();
-        otherUserEssay.setSessionNo("QZ_OTHER_ESSAY_KEEP");
-        otherUserEssay.setItemIndex(0);
-        otherUserEssay.setUserId(999999L);
-        otherUserEssay.setGradeCode("g7");
-        otherUserEssay.setRealmCode("lianqi");
-        otherUserEssay.setStem("其他学生保留记录");
-        otherUserEssay.setTeacherStatus(0);
-        otherUserEssay.setTeacherComment("");
-        essayAnswerMapper.insert(otherUserEssay);
-
-        mockMvc.perform(delete("/api/app/user/essay-answers/clear")
-                        .header("Authorization", "Bearer " + studentToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200));
-
-        assertEquals(0L, essayAnswerMapper.selectCount(
-                new LambdaQueryWrapper<UserEssayAnswer>().eq(UserEssayAnswer::getUserId, studentId)
-        ));
-        assertEquals(1L, essayAnswerMapper.selectCount(
-                new LambdaQueryWrapper<UserEssayAnswer>().eq(UserEssayAnswer::getUserId, 999999L)
-        ));
-        mockMvc.perform(get("/api/app/user/essay-answers?pageNum=1&pageSize=10")
-                        .header("Authorization", "Bearer " + studentToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.total").value(0));
 
         // 7. Admin Video Series & Multi-Lesson flow + App Cultivate video APIs
         MockMultipartFile coverFile = new MockMultipartFile("file", "cover.png", "image/png", MINIMAL_PNG);

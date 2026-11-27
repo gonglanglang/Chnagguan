@@ -491,14 +491,29 @@ class _CoursePlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: AppTheme.accentColor(context).withValues(alpha: 0.22),
-      alignment: Alignment.center,
-      child: Icon(
-        Icons.play_circle_outline_rounded,
-        size: 32,
-        color: AppTheme.inkColor(context),
-      ),
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Image.asset(
+          'assets/images/video_cover_default.jpg',
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => Container(
+            color: AppTheme.accentColor(context).withValues(alpha: 0.22),
+          ),
+        ),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.14),
+          ),
+          child: const Center(
+            child: Icon(
+              Icons.play_circle_filled_rounded,
+              size: 34,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

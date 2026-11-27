@@ -276,7 +276,13 @@ class _QuizPageState extends State<QuizPage> {
         _feedbackMap[result.itemIndex] = result.feedback;
       });
       _syncEssayController();
-      GglFeedback.success(context, '作答已上传云端，等待老师批改');
+      final scoreSuffix =
+          result.feedback.aiScore != null ? '（${result.feedback.aiScore}分）' : '';
+      if (result.feedback.correct) {
+        GglFeedback.success(context, 'AI 批改通过$scoreSuffix');
+      } else {
+        GglFeedback.warning(context, 'AI 批改：存在偏差$scoreSuffix，请查看点评与解析');
+      }
     }
   }
 
@@ -300,7 +306,6 @@ class _QuizPageState extends State<QuizPage> {
           itemIndex: item.itemIndex,
           answerText: _essayTextMap[item.itemIndex] ?? fb?.answerText ?? '',
           answerImageKey: _essayImageKeyMap[item.itemIndex] ?? '',
-          selfCorrect: fb?.selfCorrect,
         );
       }
       return AnswerSubmitPayload(
@@ -545,15 +550,24 @@ class _QuizPageState extends State<QuizPage> {
     }
   }
 
-  String _feedbackTitle(CheckItemResult fb) {
-    if (fb.pendingReview) return '已提交等待老师批改';
+  String _feedbackTitle(ClientQuestionItem item, CheckItemResult fb) {
+    if (item.isEssay) {
+      final scoreText = fb.aiScore != null ? ' · ${fb.aiScore}分' : '';
+      return fb.correct ? 'AI 批改通过$scoreText' : 'AI 批改：存在偏差$scoreText';
+    }
     return fb.correct ? '回答正确！' : '回答错误';
   }
 
-  String _feedbackFoot(CheckItemResult fb) {
-    if (fb.pendingReview) return '解答过程已提交云端，老师批改后将同步结果';
+  String _feedbackFoot(ClientQuestionItem item, CheckItemResult fb) {
     if (widget.mode == QuizMode.wrongRedo) {
       return fb.correct ? '重做答对，交卷后自动移出错题本' : '本题将继续保留在错题本中';
+    }
+    if (item.isEssay) {
+      final modelHint =
+          fb.aiModel.trim().isNotEmpty ? ' · ${fb.aiModel.trim()}' : '';
+      return fb.correct
+          ? 'AI 已实时验证解题过程正确$modelHint'
+          : 'AI 判题未通过，本题已自动收入错题本$modelHint';
     }
     return fb.correct ? '思路清晰，继续下一题吧！' : '本题已自动收入错题本';
   }
@@ -934,7 +948,7 @@ class _QuizPageState extends State<QuizPage> {
           ),
           const SizedBox(height: 4),
           Text(
-            '支持横屏无限画板手写演算并直传云端等待老师批改',
+            '支持横屏无限画板手写演算或文字输入，提交后由 AI 实时批改判题',
             style: TextStyle(color: AppTheme.mutedText(context), fontSize: 12.5),
           ),
           const SizedBox(height: 12),
@@ -960,8 +974,8 @@ class _QuizPageState extends State<QuizPage> {
           ],
           GglBlockButton(
             label: (imgUrl != null && imgUrl.isNotEmpty)
-                ? '重新打开手写画板'
-                : '前往横屏手写画板',
+                ? '重新手写并让 AI 批改'
+                : '前往横屏手写画板（AI 实时批改）',
             icon: Icons.brush_rounded,
             variant: WelkButtonVariant.info,
             onPressed: _openLandscapeDraw,
@@ -970,14 +984,14 @@ class _QuizPageState extends State<QuizPage> {
             const SizedBox(height: 14),
             GglTextArea(
               controller: _essayController,
-              hintText: '也可以在此补充文字解题步骤...',
+              hintText: '也可以在此直接输入解题步骤与最终答案，交给 AI 判题...',
               minLines: 4,
               maxLines: 5,
               onChanged: (v) => _essayTextMap[item.itemIndex] = v,
             ),
             const SizedBox(height: 10),
             GglBlockButton(
-              label: _checking ? '正在提交...' : '提交文字解答并查看参考解析',
+              label: _checking ? 'AI 正在批改...' : '提交文字解答给 AI 判题',
               variant: WelkButtonVariant.secondary,
               loading: _checking,
               onPressed: _handleCheckEssayText,
@@ -994,11 +1008,7 @@ class _QuizPageState extends State<QuizPage> {
     ClientQuestionItem item,
     CheckItemResult fb,
   ) {
-    final accentColor = fb.pendingReview
-        ? colors.info
-        : fb.correct
-            ? colors.success
-            : colors.error;
+    final accentColor = fb.correct ? colors.success : colors.error;
 
     return GglComicPanel(
       color: accentColor.withValues(alpha: colors.isDark ? 0.16 : 0.24),
@@ -1008,18 +1018,14 @@ class _QuizPageState extends State<QuizPage> {
           Row(
             children: [
               Icon(
-                fb.pendingReview
-                    ? Icons.hourglass_top_rounded
-                    : fb.correct
-                        ? Icons.check_circle_rounded
-                        : Icons.error_rounded,
+                fb.correct ? Icons.check_circle_rounded : Icons.error_rounded,
                 color: colors.ink,
                 size: 20,
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  _feedbackTitle(fb),
+                  _feedbackTitle(item, fb),
                   style: TextStyle(
                     color: colors.ink,
                     fontSize: 15.5,
@@ -1027,7 +1033,14 @@ class _QuizPageState extends State<QuizPage> {
                   ),
                 ),
               ),
-              if (!item.isEssay && fb.correctIndex >= 0)
+              if (item.isEssay)
+                GglStatusTag(
+                  label: 'AI 批改',
+                  variant: fb.correct
+                      ? WelkBadgeVariant.success
+                      : WelkBadgeVariant.error,
+                )
+              else if (fb.correctIndex >= 0)
                 GglStatusTag(
                   label:
                       '正确答案 ${fb.correctIndex < _letters.length ? _letters[fb.correctIndex] : fb.correctIndex + 1}',
@@ -1037,6 +1050,38 @@ class _QuizPageState extends State<QuizPage> {
                 ),
             ],
           ),
+          if (item.isEssay && fb.aiComment.trim().isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(11),
+              decoration: AppTheme.insetBoxDecoration(
+                context,
+                color: AppTheme.surfaceColor(context),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'AI 批改点评',
+                    style: TextStyle(
+                      color: colors.ink,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  MathText(
+                    fb.aiComment.trim(),
+                    style: TextStyle(
+                      color: AppTheme.inkColor(context),
+                      fontSize: 13.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           if (fb.referenceAnswer != null &&
               fb.referenceAnswer!.trim().isNotEmpty) ...[
             const SizedBox(height: 10),
@@ -1068,7 +1113,7 @@ class _QuizPageState extends State<QuizPage> {
           ],
           const SizedBox(height: 10),
           Text(
-            _feedbackFoot(fb),
+            _feedbackFoot(item, fb),
             style: TextStyle(
               color: AppTheme.mutedText(context),
               fontSize: 12.5,
@@ -1125,13 +1170,6 @@ class _QuizPageState extends State<QuizPage> {
                   fontSize: 13.5,
                 ),
               ),
-              if ((res.pendingReviewCount ?? 0) > 0) ...[
-                const SizedBox(height: 8),
-                GglStatusTag(
-                  label: '另有 ${res.pendingReviewCount} 道解答题待老师批改',
-                  variant: WelkBadgeVariant.info,
-                ),
-              ],
               const SizedBox(height: 16),
               const GglDivider(verticalPadding: 0),
               const SizedBox(height: 14),
