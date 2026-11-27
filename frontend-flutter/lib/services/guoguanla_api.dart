@@ -93,6 +93,39 @@ class GuoguanlaApi {
     );
   }
 
+  Future<void> sendOnlineHeartbeat({String? page}) {
+    return client.request<void>(
+      path: '/app/online/heartbeat',
+      method: 'POST',
+      timeout: const Duration(seconds: 8),
+      data: {
+        'platform': client.clientPlatform,
+        if (page != null && page.isNotEmpty) 'page': page,
+      },
+      parser: (_) {},
+    );
+  }
+
+  // ==================== Home Banners ====================
+
+  Future<List<HomeBannerItem>> getHomeBanners() {
+    return client.request<List<HomeBannerItem>>(
+      path: '/app/banners',
+      method: 'GET',
+      skipAuth: true,
+      parser: (raw) => _asMapList(raw).map(HomeBannerItem.fromJson).toList(),
+    );
+  }
+
+  Future<HomeBannerDetail> getHomeBannerDetail(int id) {
+    return client.request<HomeBannerDetail>(
+      path: '/app/banners/$id',
+      method: 'GET',
+      skipAuth: true,
+      parser: (raw) => HomeBannerDetail.fromJson(_asMap(raw)),
+    );
+  }
+
   // ==================== Home / Bank / Realms ====================
 
   Future<AppDefaultTheme> getDefaultTheme() {
@@ -183,6 +216,15 @@ class GuoguanlaApi {
         'phone': ?phone,
         'email': ?email,
       },
+      parser: (raw) => AppUserProfile.fromJson(_asMap(raw)),
+    );
+  }
+
+  Future<AppUserProfile> updateUserGrade(String gradeCode) {
+    return client.request<AppUserProfile>(
+      path: '/app/user/grade',
+      method: 'PUT',
+      data: {'gradeCode': gradeCode},
       parser: (raw) => AppUserProfile.fromJson(_asMap(raw)),
     );
   }
@@ -400,6 +442,34 @@ class GuoguanlaApi {
       path: '/app/wrong-questions/clear',
       method: 'DELETE',
       parser: (_) {},
+    );
+  }
+
+  Future<({Uint8List bytes, String fileName})> exportWrongDocx({
+    List<int>? wrongIds,
+    String? realmCode,
+    bool highFrequencyOnly = false,
+    String? title,
+    String answerMode = 'END',
+    bool includeDiagrams = true,
+    bool includeWorkspace = true,
+  }) async {
+    final res = await client.downloadBytes(
+      path: '/app/wrong-questions/export-docx',
+      method: 'POST',
+      data: {
+        if (wrongIds != null && wrongIds.isNotEmpty) 'wrongIds': wrongIds,
+        if (realmCode != null && realmCode.isNotEmpty) 'realmCode': realmCode,
+        'highFrequencyOnly': highFrequencyOnly,
+        if (title != null && title.trim().isNotEmpty) 'title': title.trim(),
+        'answerMode': answerMode,
+        'includeDiagrams': includeDiagrams,
+        'includeWorkspace': includeWorkspace,
+      },
+    );
+    return (
+      bytes: res.bytes,
+      fileName: res.fileName ?? '过关啦_数学错题巩固卷.docx',
     );
   }
 

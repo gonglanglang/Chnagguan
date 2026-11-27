@@ -20,6 +20,7 @@ import '../../widgets/math_text.dart';
 import '../../widgets/question_figure_card.dart';
 import '../login/login_page.dart';
 import '../quiz/quiz_page.dart';
+import 'wrong_export_preview_page.dart';
 
 class WrongTabPage extends StatefulWidget {
   const WrongTabPage({super.key, required this.refreshSignal});
@@ -236,284 +237,312 @@ class _WrongTabPageState extends State<WrongTabPage> {
     }
   }
 
+  String _currentFilterLabel(UserProvider user) {
+    if (_selectedFilter == 'all') return '全部';
+    if (_selectedFilter == 'high') return '高频';
+    for (final r in user.realms) {
+      if (r.realmCode == _selectedFilter) return r.realmName;
+    }
+    return '全部';
+  }
+
+  Future<void> _openExportPreview() async {
+    if (_displayedTotal == 0) {
+      GglFeedback.warning(context, '当前筛选下暂无可导出的错题');
+      return;
+    }
+    final user = context.read<UserProvider>();
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => WrongExportPreviewPage(
+          initialFilter: _selectedFilter,
+          filterLabel: _currentFilterLabel(user),
+          initialItems: _displayedList,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryContent(BuildContext context, WelkColors colors) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '待巩固',
+                    style: TextStyle(
+                      color: AppTheme.mutedText(context),
+                      fontSize: 12.5,
+                    ),
+                  ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        '$_displayedTotal',
+                        style: TextStyle(
+                          color: colors.ink,
+                          fontSize: 34,
+                          fontWeight: FontWeight.w800,
+                          height: 1.1,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '题',
+                        style: TextStyle(
+                          color: AppTheme.mutedText(context),
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            GglButton(
+              label: '导出 Word',
+              icon: Icons.description_outlined,
+              variant: WelkButtonVariant.info,
+              onPressed: _displayedTotal == 0 ? null : _openExportPreview,
+            ),
+            const SizedBox(width: 8),
+            GglButton(
+              label: '错题重做',
+              variant: WelkButtonVariant.primary,
+              onPressed: _displayedTotal == 0 ? null : _startRedo,
+            ),
+          ],
+        ),
+        if (_realmTags.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final tag in _realmTags)
+                GglStatusTag(
+                  label: '${tag.realmName} ${tag.count} 题',
+                  variant: WelkBadgeVariant.info,
+                ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '重做答对自动移出错题本，支持 A4 排版导出 Word 分享微信',
+                style: TextStyle(
+                  color: AppTheme.mutedText(context),
+                  fontSize: 12,
+                ),
+              ),
+            ),
+            if (_total > 0) ...[
+              const SizedBox(width: 8),
+              GglButton(
+                label: '清空',
+                variant: WelkButtonVariant.secondary,
+                compact: true,
+                onPressed: _clearAll,
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = WelkTheme.of(context).resolveColors(context);
     final user = context.watch<UserProvider>();
+    final tabOptions = <GglTabOption>[
+      const GglTabOption(value: 'all', label: '全部'),
+      const GglTabOption(value: 'high', label: '高频'),
+      for (final r in user.realms)
+        GglTabOption(value: r.realmCode, label: r.realmName),
+    ];
 
     return Scaffold(
       backgroundColor: AppTheme.pageBackground(context),
-      appBar: const GglAppBar(
+      appBar: GglAppBar(
         title: '错题本',
         centerTitle: false,
+        actions: [
+          if (user.isAuthenticated && _displayedTotal > 0)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: GglButton(
+                label: 'A4导出',
+                icon: Icons.description_outlined,
+                variant: WelkButtonVariant.info,
+                compact: true,
+                onPressed: () => unawaited(_openExportPreview()),
+              ),
+            ),
+        ],
       ),
-      body: Column(
-        children: [
-          if (user.isAuthenticated)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              decoration: AppTheme.barDecoration(context, bottomBorder: true),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
+      body: RefreshIndicator(
+        onRefresh: _refreshIfAuth,
+        child: ListView(
+          controller: _scrollController,
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+          children: [
+            if (!user.isAuthenticated)
+              GglComicPanel(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 40,
+                  horizontal: 24,
+                ),
+                child: Column(
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: GglPillChip(
-                        label: '全部',
-                        selected: _selectedFilter == 'all',
-                        onTap: () => _selectFilter('all'),
+                    Container(
+                      width: 64,
+                      height: 64,
+                      alignment: Alignment.center,
+                      decoration: AppTheme.badgeCircleDecoration(
+                        context,
+                        color: AppTheme.accentColor(context),
+                      ),
+                      child: Icon(
+                        Icons.menu_book_rounded,
+                        size: 32,
+                        color: AppTheme.onAccentColor(context),
                       ),
                     ),
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: GglPillChip(
-                        label: '高频',
-                        selected: _selectedFilter == 'high',
-                        selectedColor: colors.error,
-                        onTap: () => _selectFilter('high'),
+                    const SizedBox(height: 16),
+                    Text(
+                      '登录后解锁专属错题本',
+                      style: TextStyle(
+                        color: AppTheme.inkColor(context),
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
-                    for (final r in user.realms)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: GglPillChip(
-                          label: r.realmName,
-                          selected: _selectedFilter == r.realmCode,
-                          onTap: () => _selectFilter(r.realmCode),
-                        ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '每次闯关与解答的错题将自动收录，支持分年级筛选、错题重做、掌握消错及 A4 Word 导出分享。',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: AppTheme.mutedText(context),
+                        fontSize: 13.5,
+                        height: 1.55,
                       ),
+                    ),
+                    const SizedBox(height: 20),
+                    GglButton(
+                      label: '登录 / 注册',
+                      size: WelkButtonSize.medium,
+                      onPressed: _goLogin,
+                    ),
                   ],
                 ),
-              ),
-            ),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: _refreshIfAuth,
-              child: ListView(
-                controller: _scrollController,
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
-                children: [
-                  if (!user.isAuthenticated)
-                    GglComicPanel(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 40,
-                        horizontal: 24,
-                      ),
-                      child: Column(
-                        children: [
-                          Container(
-                            width: 64,
-                            height: 64,
-                            alignment: Alignment.center,
-                            decoration: AppTheme.badgeCircleDecoration(
-                              context,
-                              color: AppTheme.accentColor(context),
-                            ),
-                            child: Icon(
-                              Icons.menu_book_rounded,
-                              size: 32,
-                              color: AppTheme.onAccentColor(context),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            '登录后解锁专属错题本',
-                            style: TextStyle(
-                              color: AppTheme.inkColor(context),
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '每次闯关与解答的错题将自动收录，支持分年级筛选、错题重做与掌握消错。',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: AppTheme.mutedText(context),
-                              fontSize: 13.5,
-                              height: 1.55,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          GglButton(
-                            label: '登录 / 注册',
-                            size: WelkButtonSize.medium,
-                            onPressed: _goLogin,
-                          ),
-                        ],
-                      ),
-                    )
-                  else if (_loading && _list.isEmpty) ...[
-                    const GglCardSkeleton(lines: 3),
-                    const SizedBox(height: 12),
-                    const GglCardSkeleton(lines: 4),
-                    const SizedBox(height: 12),
-                    const GglCardSkeleton(lines: 4),
-                  ] else ...[
-                    // Summary comic panel
-                    GglComicPanel(
-                      child: Column(
+              )
+            else ...[
+              // 使用 UI 库官方 Tabs 组件（WelkTabs / FTabs / WiredTabBar）承载顶部筛选与汇总面板
+              GglTabs(
+                semanticLabel: '错题筛选标签',
+                items: tabOptions,
+                value: _selectedFilter,
+                onChanged: _selectFilter,
+                panelChild: _loading && _list.isEmpty
+                    ? const Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      '待巩固',
-                                      style: TextStyle(
-                                        color: AppTheme.mutedText(context),
-                                        fontSize: 12.5,
-                                      ),
-                                    ),
-                                    Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.baseline,
-                                      textBaseline: TextBaseline.alphabetic,
-                                      children: [
-                                        Text(
-                                          '$_displayedTotal',
-                                          style: TextStyle(
-                                            color: colors.ink,
-                                            fontSize: 34,
-                                            fontWeight: FontWeight.w800,
-                                            height: 1.1,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          '题',
-                                          style: TextStyle(
-                                            color: AppTheme.mutedText(context),
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              GglButton(
-                                label: '清空',
-                                variant: WelkButtonVariant.secondary,
-                                onPressed: _total == 0 ? null : _clearAll,
-                              ),
-                              const SizedBox(width: 8),
-                              GglButton(
-                                label: '错题重做',
-                                variant: WelkButtonVariant.primary,
-                                onPressed:
-                                    _displayedTotal == 0 ? null : _startRedo,
-                              ),
-                            ],
-                          ),
-                          if (_realmTags.isNotEmpty) ...[
-                            const SizedBox(height: 12),
-                            Wrap(
-                              spacing: 6,
-                              runSpacing: 6,
-                              children: [
-                                for (final tag in _realmTags)
-                                  GglStatusTag(
-                                    label: '${tag.realmName} ${tag.count} 题',
-                                    variant: WelkBadgeVariant.info,
-                                  ),
-                              ],
-                            ),
-                          ],
-                          const SizedBox(height: 10),
-                          Text(
-                            '重做答对将自动移出错题本，答错则累加错误次数',
-                            style: TextStyle(
-                              color: AppTheme.mutedText(context),
-                              fontSize: 12,
-                            ),
-                          ),
+                          GglSkeletonBox(width: 120, height: 22),
+                          SizedBox(height: 10),
+                          GglSkeletonBox(width: double.infinity, height: 14),
                         ],
+                      )
+                    : _buildSummaryContent(context, colors),
+              ),
+              const SizedBox(height: 14),
+
+              if (_loading && _list.isEmpty) ...[
+                const GglCardSkeleton(lines: 4),
+                const SizedBox(height: 12),
+                const GglCardSkeleton(lines: 4),
+              ] else if (_displayedList.isEmpty)
+                GglComicPanel(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 42,
+                    horizontal: 20,
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.check_circle_outline_rounded,
+                        size: 40,
+                        color: colors.successHover,
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        _selectedFilter == 'high'
+                            ? '暂无高频错题'
+                            : '当前暂无待巩固错题',
+                        style: TextStyle(
+                          color: colors.ink,
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '继续保持！闯关答错的题目会自动收录到这里',
+                        style: TextStyle(
+                          color: AppTheme.mutedText(context),
+                          fontSize: 12.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else ...[
+                for (final item in _displayedList)
+                  _WrongCard(
+                    item: item,
+                    onMaster: () => _markMastered(item.id),
+                  ),
+                if (_loading)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Center(
+                      child: Text(
+                        '正在加载更多错题...',
+                        style: TextStyle(
+                          color: AppTheme.mutedText(context),
+                          fontSize: 12,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 14),
-
-                    if (_displayedList.isEmpty)
-                      GglComicPanel(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 42,
-                          horizontal: 20,
+                  )
+                else if (_list.length >= _total && _total > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Center(
+                      child: Text(
+                        '已显示全部待巩固错题',
+                        style: TextStyle(
+                          color: AppTheme.mutedText(context),
+                          fontSize: 12,
                         ),
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.check_circle_outline_rounded,
-                              size: 40,
-                              color: colors.successHover,
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              _selectedFilter == 'high'
-                                  ? '暂无高频错题'
-                                  : '当前暂无待巩固错题',
-                              style: TextStyle(
-                                color: colors.ink,
-                                fontSize: 15.5,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '继续保持！闯关答错的题目会自动收录到这里',
-                              style: TextStyle(
-                                color: AppTheme.mutedText(context),
-                                fontSize: 12.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else ...[
-                      for (final item in _displayedList)
-                        _WrongCard(
-                          item: item,
-                          onMaster: () => _markMastered(item.id),
-                        ),
-                      if (_loading)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Center(
-                            child: Text(
-                              '正在加载更多错题...',
-                              style: TextStyle(
-                                color: AppTheme.mutedText(context),
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        )
-                      else if (_list.length >= _total && _total > 0)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Center(
-                            child: Text(
-                              '已显示全部待巩固错题',
-                              style: TextStyle(
-                                color: AppTheme.mutedText(context),
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ],
+          ],
+        ),
       ),
     );
   }

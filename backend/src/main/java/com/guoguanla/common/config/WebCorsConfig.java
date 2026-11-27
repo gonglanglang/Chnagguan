@@ -20,6 +20,7 @@ public class WebCorsConfig implements WebMvcConfigurer {
                 .allowedOriginPatterns("http://localhost:*", "http://127.0.0.1:*", "http://47.107.94.90", "http://47.107.94.90:*")
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
+                .exposedHeaders("Content-Disposition", "X-Export-Question-Count")
                 .allowCredentials(true)
                 .maxAge(3600);
     }

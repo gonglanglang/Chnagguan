@@ -22,4 +22,10 @@ public class AdminDashboardController {
     public Result<DashboardOverviewVO> overview() {
         return Result.ok(dashboardService.overview());
     }
+
+    @Operation(summary = "实时获取当前在线学生统计与列表")
+    @GetMapping("/online-students")
+    public Result<DashboardOverviewVO.OnlineSummaryVO> onlineStudents() {
+        return Result.ok(dashboardService.onlineStudents());
+    }
 }

@@ -26,9 +26,40 @@ export interface RealmConfig {
   studentCount: number;
 }
 
+export interface OnlineGradeCountItem {
+  gradeCode: string;
+  gradeName: string;
+  count: number;
+}
+
+export interface OnlineStudentItem {
+  userId: number;
+  username: string;
+  nickname: string;
+  gradeCode: string;
+  gradeName: string;
+  realmName: string;
+  platform: string;
+  lastAction: string;
+  lastSeenAt: string;
+  secondsAgo: number;
+}
+
+export interface OnlineStudentSummary {
+  onlineStudentCount: number;
+  onlineWindowMinutes: number;
+  serverTime: string;
+  gradeDistribution: OnlineGradeCountItem[];
+  students: OnlineStudentItem[];
+}
+
 export interface DashboardOverview {
   userCount: number;
   activeUserCount: number;
+  onlineStudentCount: number;
+  onlineWindowMinutes: number;
+  onlineByGrade?: OnlineGradeCountItem[];
+  onlineStudents?: OnlineStudentItem[];
   chapterCount: number;
   gateCount: number;
   questionCount: number;
@@ -50,6 +81,30 @@ export interface DashboardOverview {
     gradeCode: string;
     wrongCount: number;
   }>;
+}
+
+export interface HomeBannerItem {
+  id: number;
+  title: string;
+  subtitle: string;
+  imageKey: string;
+  imageUrl: string;
+  sortOrder: number;
+  enabled: number;
+  hasDetailContent: boolean;
+  updatedAt: string;
+}
+
+export interface HomeBannerDetail extends HomeBannerItem {
+  contentHtml: string;
+  createdAt: string;
+}
+
+export interface BannerUploadResult {
+  objectKey: string;
+  previewUrl: string;
+  mediaUrl: string;
+  storageType: string;
 }
 
 export interface StudentUser {
@@ -336,6 +391,52 @@ export interface AiTestResult {
 // 1. 数据概览
 export const getDashboardOverview = () =>
   http.get<ApiResult<DashboardOverview>, any>("/dashboard/overview");
+
+export const getOnlineStudents = () =>
+  http.get<ApiResult<OnlineStudentSummary>, any>("/dashboard/online-students");
+
+// 1.5 首页师资力量轮播图
+export const getAdminBanners = () =>
+  http.get<ApiResult<HomeBannerItem[]>, any>("/banners");
+
+export const getAdminBannerDetail = (id: number) =>
+  http.get<ApiResult<HomeBannerDetail>, any>(`/banners/${id}`);
+
+export const createAdminBanner = (data: {
+  title: string;
+  subtitle?: string;
+  imageKey: string;
+  contentHtml?: string;
+  sortOrder?: number;
+  enabled?: number;
+}) => http.post<ApiResult<number>, any>("/banners", { data });
+
+export const updateAdminBanner = (
+  id: number,
+  data: {
+    title: string;
+    subtitle?: string;
+    imageKey: string;
+    contentHtml?: string;
+    sortOrder?: number;
+    enabled?: number;
+  }
+) => http.request<ApiResult<void>>("put", `/banners/${id}`, { data });
+
+export const toggleAdminBannerStatus = (id: number, enabled: number) =>
+  http.request<ApiResult<void>>("patch", `/banners/${id}/status`, {
+    data: { enabled }
+  });
+
+export const deleteAdminBanner = (id: number) =>
+  http.request<ApiResult<void>>("delete", `/banners/${id}`);
+
+export const uploadAdminBannerImage = (formData: FormData) =>
+  http.post<ApiResult<BannerUploadResult>, any>("/banners/upload-image", {
+    data: formData,
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 120000
+  });
 
 // 2. 学习阶段与基础配置
 export const getRealms = () =>

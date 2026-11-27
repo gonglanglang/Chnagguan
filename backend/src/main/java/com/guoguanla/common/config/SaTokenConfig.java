@@ -6,11 +6,15 @@ import cn.dev33.satoken.router.SaRouter;
 import cn.dev33.satoken.stp.StpInterface;
 import com.guoguanla.common.security.StpAdminUtil;
 import com.guoguanla.common.security.StpAppUtil;
+import com.guoguanla.module.dashboard.StudentOnlineTrackerService;
 import com.guoguanla.module.system.entity.SysAdmin;
 import com.guoguanla.module.system.mapper.SysAdminMapper;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -21,6 +25,7 @@ import java.util.List;
 public class SaTokenConfig implements WebMvcConfigurer {
 
     private final SysAdminMapper sysAdminMapper;
+    private final StudentOnlineTrackerService onlineTracker;
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
@@ -33,6 +38,27 @@ public class SaTokenConfig implements WebMvcConfigurer {
                             .check(r -> StpAppUtil.checkLogin());
                 }))
                 .addPathPatterns("/api/**");
+
+        // 自动追踪已登录学生在线活跃度（不含退出接口）
+        registry.addInterceptor(new HandlerInterceptor() {
+                    @Override
+                    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+                        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+                            return true;
+                        }
+                        String uri = request.getRequestURI();
+                        if (uri != null && uri.endsWith("/auth/logout")) {
+                            return true;
+                        }
+                        Long userId = StpAppUtil.getLoginIdOrNull();
+                        if (userId != null) {
+                            String platform = request.getHeader("X-Client-Platform");
+                            onlineTracker.touchUser(userId, uri, platform);
+                        }
+                        return true;
+                    }
+                })
+                .addPathPatterns("/api/app/**");
     }
 
     @Bean

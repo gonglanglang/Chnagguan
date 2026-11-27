@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:forui/forui.dart';
 import 'package:skribble/skribble.dart';
@@ -1379,6 +1381,192 @@ class _GglAccordionState extends State<GglAccordion> {
       initiallyExpanded: widget.initiallyExpanded,
       title: Text(widget.title),
       child: widget.child,
+    );
+  }
+}
+
+/// 标签页选项数据模型，配合 [GglTabs] 使用。
+class GglTabOption {
+  const GglTabOption({
+    required this.value,
+    required this.label,
+    this.disabled = false,
+  });
+
+  final String value;
+  final String label;
+  final bool disabled;
+}
+
+/// 皮肤自适应标签页组件（全部委托给对应 UI 库官方 Tabs 组件）：
+/// - `forui` -> [FTabs]（支持横向滚动与受控切换）；
+/// - `skribble` -> [WiredTabBar]（横向滚动承载，避免多标签挤压换行）；
+/// - `welkui` -> [WelkTabs]（自带漫画描边标签与内容面板，可直接承载 [panelChild]）。
+class GglTabs extends StatelessWidget {
+  const GglTabs({
+    super.key,
+    required this.semanticLabel,
+    required this.items,
+    required this.value,
+    required this.onChanged,
+    this.panelChild,
+    this.scrollable = true,
+  });
+
+  final String semanticLabel;
+  final List<GglTabOption> items;
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  /// 可选的标签内容面板。传入时：
+  /// - WelkUI 直接放入 [WelkTabItem.content]；
+  /// - Forui 放入 [FTabEntry.child]（带 [FCard] 卡片包裹）；
+  /// - Skribble 渲染在 [WiredTabBar] 下方的手绘线稿面板内。
+  final Widget? panelChild;
+  final bool scrollable;
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) return const SizedBox.shrink();
+    final activeIdx = math.max(0, items.indexWhere((e) => e.value == value));
+    final activeValue = items[activeIdx].value;
+
+    if (AppTheme.isForui(context)) {
+      final fColors = FTheme.of(context).colors;
+      final Widget? foruiPanel = panelChild == null
+          ? null
+          : FCard(
+              style: FCardStyleDelta.delta(
+                decoration: DecorationDelta.value(
+                  BoxDecoration(
+                    color: fColors.card,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: fColors.border, width: 1),
+                    boxShadow: fColors.brightness == Brightness.light
+                        ? const [
+                            BoxShadow(
+                              color: Color(0x0A000000),
+                              blurRadius: 6,
+                              offset: Offset(0, 1),
+                            ),
+                          ]
+                        : const [],
+                  ),
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: panelChild!,
+              ),
+            );
+
+      return Semantics(
+        label: semanticLabel,
+        child: FTabs(
+          scrollable: scrollable,
+          control: FTabControl.lifted(
+            index: activeIdx,
+            onChange: (idx) {
+              if (idx >= 0 && idx < items.length && !items[idx].disabled) {
+                onChanged(items[idx].value);
+              }
+            },
+          ),
+          style: FTabsStyleDelta.delta(
+            spacing: panelChild == null ? 0 : 12,
+          ),
+          children: [
+            for (final item in items)
+              FTabEntry(
+                label: Text(
+                  item.label,
+                  maxLines: 1,
+                  softWrap: false,
+                  style: const TextStyle(
+                    fontFamilyFallback: AppTheme.cjkFontFallback,
+                  ),
+                ),
+                child: foruiPanel ?? const SizedBox.shrink(),
+              ),
+          ],
+        ),
+      );
+    }
+
+    if (AppTheme.isSkribble(context)) {
+      final wired = WiredTheme.of(context);
+      final tabLabels = items.map((e) => e.label).toList();
+      final tabBar = LayoutBuilder(
+        builder: (ctx, constraints) {
+          final minWidth = math.max(
+            constraints.maxWidth.isFinite ? constraints.maxWidth : 0.0,
+            items.length * 68.0,
+          );
+          final bar = WiredTabBar(
+            tabs: tabLabels,
+            selectedIndex: activeIdx,
+            height: 44,
+            semanticLabel: semanticLabel,
+            onTap: (idx) {
+              if (idx >= 0 && idx < items.length && !items[idx].disabled) {
+                onChanged(items[idx].value);
+              }
+            },
+          );
+          if (!scrollable) return bar;
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(width: minWidth, child: bar),
+          );
+        },
+      );
+
+      if (panelChild == null) return tabBar;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          tabBar,
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: RoughBoxDecoration(
+              drawConfig: wired.drawConfig,
+              shape: RoughBoxShape.roundedRectangle,
+              borderRadius: BorderRadius.circular(12),
+              borderStyle: RoughDrawingStyle(
+                width: wired.strokeWidth,
+                color: wired.borderColor,
+              ),
+              fillStyle: RoughDrawingStyle(color: wired.fillColor),
+              filler: SolidFiller(FillerConfig.build()),
+            ),
+            child: panelChild!,
+          ),
+        ],
+      );
+    }
+
+    return WelkTabs(
+      label: semanticLabel,
+      value: activeValue,
+      variant: WelkTabsVariant.withBg,
+      onValueChange: onChanged,
+      items: [
+        for (final item in items)
+          WelkTabItem(
+            value: item.value,
+            disabled: item.disabled,
+            label: Text(
+              item.label,
+              maxLines: 1,
+              softWrap: false,
+              style: const TextStyle(
+                fontFamilyFallback: AppTheme.cjkFontFallback,
+              ),
+            ),
+            content: panelChild ?? const SizedBox.shrink(),
+          ),
+      ],
     );
   }
 }

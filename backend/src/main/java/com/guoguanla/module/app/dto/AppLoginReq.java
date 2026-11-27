@@ -54,4 +54,10 @@ public class AppLoginReq {
         private String phone;
         private String email;
     }
+
+    @Data
+    public static class GradeUpdateReq {
+        @NotBlank(message = "请选择要切换的年级阶段")
+        private String gradeCode;
+    }
 }

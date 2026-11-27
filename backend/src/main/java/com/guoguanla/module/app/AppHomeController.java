@@ -29,10 +29,16 @@ public class AppHomeController {
     private final AppBankService bankService;
     private final AppQuizService quizService;
 
-    @Operation(summary = "首页概览（学习阶段列表、公告、默认主题与当前学生状态）")
+    @Operation(summary = "首页概览（学习阶段列表、师资轮播图、公告、默认主题与当前学生状态）")
     @GetMapping("/home/summary")
-    public Result<AppUserProfileVO.HomeSummaryVO> homeSummary(@RequestParam(required = false) String guestPassedIds) {
-        return Result.ok(bankService.homeSummary(parseIds(guestPassedIds)));
+    public Result<AppUserProfileVO.HomeSummaryVO> homeSummary(
+            @RequestParam(required = false) String guestPassedIds,
+            HttpServletRequest request
+    ) {
+        return Result.ok(bankService.homeSummary(
+                parseIds(guestPassedIds),
+                ServletUrlHelper.resolveBaseOrigin(request)
+        ));
     }
 
     @Operation(summary = "获取后台配置的学生端默认主题（公开接口，用于启动自动同步）")
@@ -93,6 +99,15 @@ public class AppHomeController {
             HttpServletRequest request
     ) {
         return Result.ok(bankService.updateProfile(req, ServletUrlHelper.resolveBaseOrigin(request)));
+    }
+
+    @Operation(summary = "切换或晋级学生当前学习年级阶段")
+    @PutMapping("/user/grade")
+    public Result<AppUserProfileVO> updateGrade(
+            @Valid @RequestBody AppLoginReq.GradeUpdateReq req,
+            HttpServletRequest request
+    ) {
+        return Result.ok(bankService.updateUserGrade(req.getGradeCode(), ServletUrlHelper.resolveBaseOrigin(request)));
     }
 
     @Operation(summary = "上传学生头像")

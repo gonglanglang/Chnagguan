@@ -297,6 +297,23 @@ CREATE TABLE IF NOT EXISTS edu_video_lesson (
   KEY idx_video_lesson_series (series_id, enabled, sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='数学教学视频课时表';
 
+-- 10.4 首页师资力量轮播图表
+CREATE TABLE IF NOT EXISTS edu_home_banner (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  title VARCHAR(128) NOT NULL COMMENT '轮播图标题',
+  subtitle VARCHAR(255) NOT NULL DEFAULT '' COMMENT '轮播副标题/师资标签',
+  image_key VARCHAR(512) NOT NULL DEFAULT '' COMMENT '轮播封面图OSS对象键或预设标识',
+  content_html MEDIUMTEXT DEFAULT NULL COMMENT '绑定的富文本详情内容（HTML）',
+  sort_order INT NOT NULL DEFAULT 0 COMMENT '排序权重（升序）',
+  enabled TINYINT NOT NULL DEFAULT 1 COMMENT '1上架 0下架',
+  created_by BIGINT UNSIGNED DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted TINYINT NOT NULL DEFAULT 0,
+  PRIMARY KEY (id),
+  KEY idx_banner_enabled_sort (enabled, deleted, sort_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='首页师资力量轮播图表';
+
 -- 11. 系统全局配置表
 CREATE TABLE IF NOT EXISTS sys_config (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

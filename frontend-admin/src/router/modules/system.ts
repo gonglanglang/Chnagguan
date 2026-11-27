@@ -4,7 +4,7 @@ export default {
   meta: {
     icon: "ep/setting",
     title: "阶段与系统设置",
-    rank: 4
+    rank: 5
   },
   children: [
     {

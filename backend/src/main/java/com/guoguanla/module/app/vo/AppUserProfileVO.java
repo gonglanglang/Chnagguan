@@ -1,6 +1,7 @@
 package com.guoguanla.module.app.vo;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.guoguanla.module.banner.vo.BannerVO;
 import com.guoguanla.module.system.vo.AppDefaultThemeVO;
 import lombok.Builder;
 import lombok.Data;
@@ -70,6 +71,7 @@ public class AppUserProfileVO {
         private String appNotice;
         private AppDefaultThemeVO defaultTheme;
         private AppUserProfileVO profile;
+        private List<BannerVO.BannerItemVO> banners;
         private List<GradeItemVO> grades;
         private List<RealmItemVO> realms;
     }

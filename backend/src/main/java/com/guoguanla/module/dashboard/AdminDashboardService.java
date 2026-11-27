@@ -40,8 +40,14 @@ public class AdminDashboardService {
     private final UserQuizRecordMapper quizRecordMapper;
     private final UserWrongQuestionMapper wrongMapper;
     private final RealmHelperService realmHelper;
+    private final StudentOnlineTrackerService onlineTracker;
+
+    public DashboardOverviewVO.OnlineSummaryVO onlineStudents() {
+        return onlineTracker.getOnlineSnapshot();
+    }
 
     public DashboardOverviewVO overview() {
+        DashboardOverviewVO.OnlineSummaryVO onlineSnap = onlineTracker.getOnlineSnapshot();
         long userCount = appUserMapper.selectCount(null);
         LocalDateTime todayStart = LocalDate.now().atStartOfDay();
         long activeUserCount = appUserMapper.selectCount(
@@ -135,6 +141,10 @@ public class AdminDashboardService {
         return DashboardOverviewVO.builder()
                 .userCount(userCount)
                 .activeUserCount(activeUserCount)
+                .onlineStudentCount(onlineSnap.getOnlineStudentCount())
+                .onlineWindowMinutes(onlineSnap.getOnlineWindowMinutes())
+                .onlineByGrade(onlineSnap.getGradeDistribution())
+                .onlineStudents(onlineSnap.getStudents())
                 .chapterCount(chapterCount)
                 .gateCount(gateCount)
                 .questionCount(questionCount)

@@ -188,6 +188,15 @@ enum GlobalCacheKey {
       preserveOnAppUpdate: true,
       preserveOnCacheClear: false,
     ),
+  ),
+  guestSelectedGradeCode(
+    GlobalCacheEntryMeta(
+      storageKey: 'ggl_guest_selected_grade',
+      description: '游客模式首页顶栏选中的当前学习年级阶段代码（g7~h3）',
+      category: GlobalCacheCategory.learning,
+      preserveOnAppUpdate: true,
+      preserveOnCacheClear: true,
+    ),
   );
 
   const GlobalCacheKey(this.meta);
@@ -370,6 +379,21 @@ class GlobalCache {
   Future<void> clearGuestPassedIds() =>
       _prefs.remove(GlobalCacheKey.guestPassedIds.storageKey);
 
+  String? get guestSelectedGradeCode {
+    final raw =
+        _prefs.getString(GlobalCacheKey.guestSelectedGradeCode.storageKey);
+    return (raw != null && raw.trim().isNotEmpty) ? raw.trim() : null;
+  }
+
+  Future<void> setGuestSelectedGradeCode(String? gradeCode) async {
+    final key = GlobalCacheKey.guestSelectedGradeCode.storageKey;
+    if (gradeCode == null || gradeCode.trim().isEmpty) {
+      await _prefs.remove(key);
+    } else {
+      await _prefs.setString(key, gradeCode.trim());
+    }
+  }
+
   /// 获取全部视频系列上次观看小节映射 (`seriesId -> lessonId`)
   Map<int, int> get lastWatchedVideoLessons {
     final raw =
@@ -547,6 +571,7 @@ class GlobalCache {
       'hasSmartBoardDraft': smartBoardDraft != null,
       'smartBoardRecordCount': smartBoardRecords.length,
       'smartBoardPrefs': smartBoardPrefs,
+      'guestSelectedGradeCode': guestSelectedGradeCode,
     };
   }
 

@@ -9,6 +9,7 @@ import 'package:welkui_flutter/welkui_flutter.dart';
 import '../app/app_theme.dart';
 import '../providers/update_provider.dart';
 import '../providers/user_provider.dart';
+import '../services/guoguanla_api.dart';
 import 'cultivate/cultivate_tab_page.dart';
 import 'home/home_tab_page.dart';
 import 'mine/mine_tab_page.dart';
@@ -21,8 +22,20 @@ class MainShellPage extends StatefulWidget {
   State<MainShellPage> createState() => _MainShellPageState();
 }
 
-class _MainShellPageState extends State<MainShellPage> {
+class _MainShellPageState extends State<MainShellPage>
+    with WidgetsBindingObserver {
+  static const List<String> _tabNames = <String>[
+    'home',
+    'classroom',
+    'wrong',
+    'mine',
+  ];
+
   int _currentIndex = 0;
+  Timer? _heartbeatTimer;
+  bool _appResumed = true;
+  bool _lastAuthState = false;
+  UserProvider? _userProvider;
 
   final List<ValueNotifier<int>> _tabSignals = List<ValueNotifier<int>>.generate(
     4,
@@ -32,21 +45,71 @@ class _MainShellPageState extends State<MainShellPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       final user = context.read<UserProvider>();
+      _userProvider = user;
+      _lastAuthState = user.isAuthenticated;
+      user.addListener(_onUserStateChanged);
       if (user.isAuthenticated) {
         unawaited(user.refreshWrongCount());
+        unawaited(_sendOnlineHeartbeat());
       }
+      _startHeartbeatLoop();
       unawaited(context.read<UpdateProvider>().checkForUpdate(silent: true));
     });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _heartbeatTimer?.cancel();
+    _userProvider?.removeListener(_onUserStateChanged);
     for (final notifier in _tabSignals) {
       notifier.dispose();
     }
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appResumed = state == AppLifecycleState.resumed;
+    if (_appResumed && mounted) {
+      unawaited(_sendOnlineHeartbeat());
+    }
+  }
+
+  void _onUserStateChanged() {
+    if (!mounted) return;
+    final nowAuth = _userProvider?.isAuthenticated ?? false;
+    if (nowAuth && !_lastAuthState) {
+      unawaited(_sendOnlineHeartbeat());
+    }
+    _lastAuthState = nowAuth;
+  }
+
+  void _startHeartbeatLoop() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted && _appResumed) {
+        unawaited(_sendOnlineHeartbeat());
+      }
+    });
+  }
+
+  Future<void> _sendOnlineHeartbeat() async {
+    if (!mounted) return;
+    final user = context.read<UserProvider>();
+    if (!user.isAuthenticated) return;
+    try {
+      final page = _currentIndex >= 0 && _currentIndex < _tabNames.length
+          ? _tabNames[_currentIndex]
+          : 'home';
+      await context.read<GuoguanlaApi>().sendOnlineHeartbeat(page: page);
+    } catch (_) {
+      // 忽略静默心跳网络异常，不影响主界面交互
+    }
   }
 
   void _onTabTap(int index) {
@@ -129,10 +192,10 @@ class _MainShellPageState extends State<MainShellPage> {
         children: [
           FBottomNavigationBarItem(
             icon: Icon(
-              _currentIndex == 0 ? Icons.flag_rounded : Icons.flag_outlined,
+              _currentIndex == 0 ? Icons.home_rounded : Icons.home_outlined,
             ),
             label: const Text(
-              '闯关',
+              '首页',
               maxLines: 1,
               softWrap: false,
               overflow: TextOverflow.ellipsis,
@@ -186,8 +249,8 @@ class _MainShellPageState extends State<MainShellPage> {
             onTap: _onTabTap,
             items: [
               const WiredBottomNavItem(
-                icon: Icons.flag_rounded,
-                label: '闯关',
+                icon: Icons.home_rounded,
+                label: '首页',
               ),
               const WiredBottomNavItem(
                 icon: Icons.play_circle_rounded,
@@ -220,9 +283,9 @@ class _MainShellPageState extends State<MainShellPage> {
         ),
         items: [
           const WelkBottomNavItem(
-            icon: Icon(Icons.flag_outlined),
-            activeIcon: Icon(Icons.flag_rounded),
-            label: '闯关',
+            icon: Icon(Icons.home_outlined),
+            activeIcon: Icon(Icons.home_rounded),
+            label: '首页',
           ),
           const WelkBottomNavItem(
             icon: Icon(Icons.play_circle_outline_rounded),

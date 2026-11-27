@@ -5,7 +5,9 @@ import 'package:guoguanla_app/core/utils/format_utils.dart';
 import 'package:guoguanla_app/core/utils/math_parser.dart';
 import 'package:guoguanla_app/core/utils/update_utils.dart';
 import 'package:guoguanla_app/models/models.dart';
+import 'package:guoguanla_app/pages/wrong/wrong_export_preview_page.dart';
 import 'package:guoguanla_app/providers/theme_provider.dart';
+import 'package:guoguanla_app/services/docx_share_service.dart';
 import 'package:guoguanla_app/widgets/smart_board/board_handwriting_validator.dart';
 import 'package:guoguanla_app/widgets/smart_board/board_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -649,6 +651,116 @@ void main() {
 
       final defaultNames = RealmItem.defaults.map((r) => r.realmName).toList();
       expect(defaultNames, ['初一', '初二', '初三', '高一', '高二', '高三']);
+    });
+  });
+
+  group('TASK-20261127-001 Banners, Guest Grade Cache & A4 Pagination', () {
+    test('GlobalCache registers and preserves guestSelectedGradeCode across cache clear',
+        () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final cache = await GlobalCache.init();
+
+      expect(
+        GlobalCache.registry.contains(GlobalCacheKey.guestSelectedGradeCode),
+        isTrue,
+      );
+      expect(cache.guestSelectedGradeCode, isNull);
+
+      await cache.setGuestSelectedGradeCode('g9');
+      expect(cache.guestSelectedGradeCode, 'g9');
+      expect(cache.snapshot()['guestSelectedGradeCode'], 'g9');
+
+      await cache.clearTemporaryCache();
+      expect(cache.guestSelectedGradeCode, 'g9');
+    });
+
+    test('HomeSummary parses banners and HomeBannerDetail parses rich HTML', () {
+      final summary = HomeSummary.fromJson({
+        'guestModeEnabled': true,
+        'appNotice': '测试公告',
+        'banners': [
+          {
+            'id': 1,
+            'title': '名师数学教研团队',
+            'subtitle': '初高中同步教研',
+            'imageKey': 'preset://faculty-1',
+            'imageUrl': '/api/app/banners/preset/faculty-1',
+            'sortOrder': 1,
+            'enabled': 1,
+            'hasDetailContent': true,
+          },
+        ],
+        'grades': const [],
+        'realms': const [],
+      });
+      expect(summary.banners, hasLength(1));
+      expect(summary.banners.first.title, '名师数学教研团队');
+      expect(summary.banners.first.imageUrl, '/api/app/banners/preset/faculty-1');
+
+      final detail = HomeBannerDetail.fromJson({
+        'id': 1,
+        'title': '名师数学教研团队',
+        'subtitle': '初高中同步教研',
+        'imageKey': 'preset://faculty-1',
+        'imageUrl': '/api/app/banners/preset/faculty-1',
+        'contentHtml': '<h2>教研简介</h2><p>深耕人教版数学十余年。</p>',
+      });
+      expect(detail.contentHtml, contains('教研简介'));
+    });
+
+    test('buildWrongA4Pages groups choices/essays and creates dedicated END answer pages',
+        () {
+      final sampleItems = List<WrongQuestionItem>.generate(
+        8,
+        (i) => WrongQuestionItem(
+          id: i + 1,
+          gradeCode: 'g8',
+          realmCode: 'zhuji',
+          realmName: '初二',
+          chapterName: '第11章 三角形',
+          gateName: '基础关',
+          questionFormat: i < 6 ? 'SINGLE_CHOICE' : 'ESSAY',
+          stem: '第 ${i + 1} 题：已知三角形两边长分别为 3 和 5，求第三边的取值范围。',
+          options: i < 6 ? const ['2<x<8', 'x>2', 'x<8', 'x=4'] : const [],
+          answerIndex: 0,
+          referenceAnswer: i < 6 ? null : '2 < x < 8',
+          analysis: '根据三角形三边关系：两边之和大于第三边，两边之差小于第三边。',
+          wrongCount: i.isEven ? 2 : 1,
+          lastWrongAt: '2026-11-27T10:00:00',
+        ),
+      );
+
+      final endPages = buildWrongA4Pages(
+        items: sampleItems,
+        answerMode: 'END',
+        includeDiagrams: true,
+        includeWorkspace: true,
+      );
+      expect(endPages.length, greaterThanOrEqualTo(2));
+      expect(endPages.first.isCoverPage, isTrue);
+      expect(endPages.any((p) => p.isAnswerPage), isTrue);
+
+      final questionBlocks = endPages
+          .where((p) => !p.isAnswerPage)
+          .expand((p) => p.blocks)
+          .whereType<A4QuestionBlock>()
+          .toList();
+      expect(questionBlocks, hasLength(8));
+      expect(questionBlocks.take(6).every((b) => !b.isEssay), isTrue);
+      expect(questionBlocks.skip(6).every((b) => b.isEssay), isTrue);
+
+      final nonePages = buildWrongA4Pages(
+        items: sampleItems,
+        answerMode: 'NONE',
+        includeDiagrams: false,
+        includeWorkspace: false,
+      );
+      expect(nonePages.any((p) => p.isAnswerPage), isFalse);
+
+      expect(
+        DocxShareService.sanitizeFileName('初二/错题:卷*1'),
+        '初二_错题_卷_1.docx',
+      );
     });
   });
 }

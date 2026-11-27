@@ -1,6 +1,7 @@
-import 'dart:typed_data';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../app/app_config.dart';
 
@@ -41,6 +42,26 @@ class ApiClient {
 
   String get baseUrl => _dio.options.baseUrl;
 
+  String get baseOrigin {
+    final uri = Uri.tryParse(baseUrl);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) return '';
+    return uri.hasPort
+        ? '${uri.scheme}://${uri.host}:${uri.port}'
+        : '${uri.scheme}://${uri.host}';
+  }
+
+  String get clientPlatform {
+    if (kIsWeb) return 'web';
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.android => 'android',
+      TargetPlatform.iOS => 'ios',
+      TargetPlatform.windows => 'windows',
+      TargetPlatform.macOS => 'macos',
+      TargetPlatform.linux => 'linux',
+      TargetPlatform.fuchsia => 'fuchsia',
+    };
+  }
+
   void updateBaseUrl(String newBaseUrl) {
     var trimmed = newBaseUrl.trim();
     while (trimmed.endsWith('/')) {
@@ -61,7 +82,9 @@ class ApiClient {
     required T Function(dynamic raw) parser,
   }) async {
     final revision = revisionGetter();
-    final headers = <String, dynamic>{};
+    final headers = <String, dynamic>{
+      'X-Client-Platform': clientPlatform,
+    };
     if (!skipAuth) {
       final token = tokenGetter();
       if (token.isNotEmpty) {
@@ -140,6 +163,86 @@ class ApiClient {
       throw _mapDioError(e);
     } catch (e) {
       throw ApiException('文件上传失败：$e');
+    }
+  }
+
+  Future<({Uint8List bytes, String? fileName})> downloadBytes({
+    required String path,
+    String method = 'POST',
+    Object? data,
+    Duration? timeout,
+  }) async {
+    final revision = revisionGetter();
+    final headers = <String, dynamic>{
+      'X-Client-Platform': clientPlatform,
+    };
+    final token = tokenGetter();
+    if (token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    try {
+      final response = await _dio.request<List<int>>(
+        path.startsWith('/') ? path : '/$path',
+        data: data,
+        options: Options(
+          method: method,
+          headers: headers,
+          responseType: ResponseType.bytes,
+          receiveTimeout: timeout ?? const Duration(seconds: 60),
+          sendTimeout: timeout ?? const Duration(seconds: 30),
+        ),
+      );
+      final statusCode = response.statusCode ?? 0;
+      final rawBytes = Uint8List.fromList(response.data ?? const <int>[]);
+      if (statusCode == 401) {
+        if (revision == revisionGetter()) {
+          onUnauthorized?.call();
+        }
+        throw const ApiException('登录已过期，请重新登录', code: 401, statusCode: 401);
+      }
+      final contentType =
+          response.headers.value('content-type')?.toLowerCase() ?? '';
+      if (statusCode < 200 ||
+          statusCode >= 300 ||
+          contentType.contains('application/json')) {
+        String msg = '导出失败 ($statusCode)';
+        try {
+          final decoded = jsonDecode(utf8.decode(rawBytes));
+          if (decoded is Map<String, dynamic>) {
+            final bizCode = decoded['code'];
+            if (bizCode == 401 && revision == revisionGetter()) {
+              onUnauthorized?.call();
+            }
+            final m = decoded['message']?.toString();
+            if (m != null && m.isNotEmpty) msg = m;
+          }
+        } catch (_) {
+          // ignore non-json error body
+        }
+        throw ApiException(msg, statusCode: statusCode);
+      }
+      final disposition = response.headers.value('content-disposition') ?? '';
+      String? fileName;
+      final utf8Match =
+          RegExp(r"filename\*=UTF-8''([^;]+)", caseSensitive: false)
+              .firstMatch(disposition);
+      if (utf8Match != null) {
+        fileName = Uri.decodeComponent(utf8Match.group(1)!.trim());
+      } else {
+        final plainMatch =
+            RegExp(r'filename="?([^";]+)"?', caseSensitive: false)
+                .firstMatch(disposition);
+        if (plainMatch != null) {
+          fileName = plainMatch.group(1)!.trim();
+        }
+      }
+      return (bytes: rawBytes, fileName: fileName);
+    } on ApiException {
+      rethrow;
+    } on DioException catch (e) {
+      throw _mapDioError(e);
+    } catch (e) {
+      throw ApiException('导出文件失败：$e');
     }
   }
 

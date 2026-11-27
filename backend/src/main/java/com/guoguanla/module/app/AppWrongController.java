@@ -10,7 +10,13 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 @Tag(name = "学生端-错题本")
 @RestController
@@ -18,7 +24,12 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class AppWrongController {
 
+    private static final MediaType DOCX_MEDIA_TYPE = MediaType.parseMediaType(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    );
+
     private final AppWrongService wrongService;
+    private final WrongQuestionDocxService wrongDocxService;
 
     @Operation(summary = "分页获取待攻克错题（支持按学习阶段/年级筛选）")
     @GetMapping
@@ -65,5 +76,18 @@ public class AppWrongController {
     public Result<Void> clear() {
         wrongService.clearAll();
         return Result.ok();
+    }
+
+    @Operation(summary = "导出错题本为 A4 纸排版 Word (.docx) 文件")
+    @PostMapping("/export-docx")
+    public ResponseEntity<byte[]> exportDocx(@RequestBody(required = false) AppQuizDTO.WrongExportReq req) {
+        WrongQuestionDocxService.DocxExportResult result = wrongDocxService.exportDocx(req);
+        String encodedName = URLEncoder.encode(result.fileName(), StandardCharsets.UTF_8)
+                .replace("+", "%20");
+        return ResponseEntity.ok()
+                .contentType(DOCX_MEDIA_TYPE)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedName)
+                .header("X-Export-Question-Count", String.valueOf(result.questionCount()))
+                .body(result.bytes());
     }
 }

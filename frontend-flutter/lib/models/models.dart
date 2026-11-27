@@ -528,12 +528,86 @@ class AppDefaultTheme {
       };
 }
 
+class HomeBannerItem {
+  const HomeBannerItem({
+    required this.id,
+    required this.title,
+    required this.subtitle,
+    required this.imageKey,
+    required this.imageUrl,
+    this.sortOrder = 0,
+    this.enabled = 1,
+    this.hasDetailContent = true,
+    this.updatedAt = '',
+  });
+
+  final int id;
+  final String title;
+  final String subtitle;
+  final String imageKey;
+  final String imageUrl;
+  final int sortOrder;
+  final int enabled;
+  final bool hasDetailContent;
+  final String updatedAt;
+
+  factory HomeBannerItem.fromJson(Map<String, dynamic> json) {
+    return HomeBannerItem(
+      id: _asInt(json['id']),
+      title: _asString(json['title']),
+      subtitle: _asString(json['subtitle']),
+      imageKey: _asString(json['imageKey']),
+      imageUrl: _asString(json['imageUrl']),
+      sortOrder: _asInt(json['sortOrder']),
+      enabled: _asInt(json['enabled'], 1),
+      hasDetailContent: _asBool(json['hasDetailContent'], true),
+      updatedAt: _asString(json['updatedAt']),
+    );
+  }
+}
+
+class HomeBannerDetail {
+  const HomeBannerDetail({
+    required this.id,
+    required this.title,
+    required this.subtitle,
+    required this.imageKey,
+    required this.imageUrl,
+    required this.contentHtml,
+    this.createdAt = '',
+    this.updatedAt = '',
+  });
+
+  final int id;
+  final String title;
+  final String subtitle;
+  final String imageKey;
+  final String imageUrl;
+  final String contentHtml;
+  final String createdAt;
+  final String updatedAt;
+
+  factory HomeBannerDetail.fromJson(Map<String, dynamic> json) {
+    return HomeBannerDetail(
+      id: _asInt(json['id']),
+      title: _asString(json['title']),
+      subtitle: _asString(json['subtitle']),
+      imageKey: _asString(json['imageKey']),
+      imageUrl: _asString(json['imageUrl']),
+      contentHtml: _asString(json['contentHtml']),
+      createdAt: _asString(json['createdAt']),
+      updatedAt: _asString(json['updatedAt']),
+    );
+  }
+}
+
 class HomeSummary {
   const HomeSummary({
     required this.guestModeEnabled,
     required this.appNotice,
     this.profile,
     this.defaultTheme,
+    this.banners = const [],
     required this.grades,
     required this.realms,
   });
@@ -542,12 +616,14 @@ class HomeSummary {
   final String appNotice;
   final AppUserProfile? profile;
   final AppDefaultTheme? defaultTheme;
+  final List<HomeBannerItem> banners;
   final List<GradeItem> grades;
   final List<RealmItem> realms;
 
   factory HomeSummary.fromJson(Map<String, dynamic> json) {
     final gradesRaw = json['grades'] as List<dynamic>? ?? const [];
     final realmsRaw = json['realms'] as List<dynamic>? ?? const [];
+    final bannersRaw = json['banners'] as List<dynamic>? ?? const [];
     return HomeSummary(
       guestModeEnabled: _asBool(json['guestModeEnabled'], true),
       appNotice: _asString(json['appNotice']),
@@ -559,6 +635,10 @@ class HomeSummary {
               json['defaultTheme'] as Map<String, dynamic>,
             )
           : null,
+      banners: bannersRaw
+          .whereType<Map<String, dynamic>>()
+          .map(HomeBannerItem.fromJson)
+          .toList(),
       grades: gradesRaw
           .whereType<Map<String, dynamic>>()
           .map(GradeItem.fromJson)

@@ -15,6 +15,7 @@ import com.guoguanla.module.bank.mapper.EduChapterMapper;
 import com.guoguanla.module.bank.mapper.EduGateMapper;
 import com.guoguanla.module.bank.mapper.EduGradeMapper;
 import com.guoguanla.module.bank.mapper.EduQuestionMapper;
+import com.guoguanla.module.banner.HomeBannerService;
 import com.guoguanla.module.oss.AliyunOssService;
 import com.guoguanla.module.progress.entity.UserGateProgress;
 import com.guoguanla.module.progress.mapper.UserGateProgressMapper;
@@ -49,6 +50,7 @@ public class AppBankService {
     private final SysConfigMapper sysConfigMapper;
     private final RealmHelperService realmHelper;
     private final AdminSystemService systemService;
+    private final HomeBannerService homeBannerService;
     private final AliyunOssService ossService;
 
     public AppDefaultThemeVO getDefaultTheme() {
@@ -56,6 +58,10 @@ public class AppBankService {
     }
 
     public AppUserProfileVO.HomeSummaryVO homeSummary(Set<Long> guestPassedGateIds) {
+        return homeSummary(guestPassedGateIds, "");
+    }
+
+    public AppUserProfileVO.HomeSummaryVO homeSummary(Set<Long> guestPassedGateIds, String baseOrigin) {
         boolean guestEnabled = isGuestModeEnabled();
         String notice = getConfig("app_notice", "初一至高三全章节已开放，支持自由刷题、阶段升级测评与错题巩固！");
 
@@ -66,7 +72,7 @@ public class AppBankService {
             AppUser user = userMapper.selectById(userId);
             if (user != null && user.getStatus() == 1) {
                 currentUser = user;
-                profile = buildProfileVO(user);
+                profile = buildProfileVO(user, baseOrigin);
             }
         }
 
@@ -95,6 +101,7 @@ public class AppBankService {
                 .appNotice(notice)
                 .defaultTheme(systemService.getDefaultTheme())
                 .profile(profile)
+                .banners(homeBannerService.listAppBanners(baseOrigin))
                 .grades(gradeItems)
                 .realms(realms)
                 .build();
@@ -357,6 +364,28 @@ public class AppBankService {
         }
 
         userMapper.update(null, uw);
+        AppUser refreshed = userMapper.selectById(userId);
+        return buildProfileVO(refreshed != null ? refreshed : user, baseOrigin);
+    }
+
+    public AppUserProfileVO updateUserGrade(String gradeCode, String baseOrigin) {
+        Long userId = StpAppUtil.getLoginIdAsLong();
+        AppUser user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BizException(ErrorCode.UNAUTHORIZED);
+        }
+        String normalized = gradeCode == null ? "" : gradeCode.trim();
+        EduRealm targetRealm = realmHelper.findByGradeCode(normalized);
+        if (targetRealm == null) {
+            targetRealm = realmHelper.findByRealmCode(normalized);
+        }
+        if (targetRealm == null) {
+            throw new BizException(ErrorCode.BAD_REQUEST, "目标年级阶段不存在");
+        }
+        userMapper.update(null, new LambdaUpdateWrapper<AppUser>()
+                .eq(AppUser::getId, userId)
+                .set(AppUser::getGradeCode, targetRealm.getGradeCode())
+                .set(AppUser::getRealmCode, targetRealm.getRealmCode()));
         AppUser refreshed = userMapper.selectById(userId);
         return buildProfileVO(refreshed != null ? refreshed : user, baseOrigin);
     }

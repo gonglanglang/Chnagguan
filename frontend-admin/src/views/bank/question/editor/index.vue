@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from "vue";
+import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, type UploadRequestOptions } from "element-plus";
 import MathFormulaText from "@/components/MathFormulaText.vue";
 import MathFormulaDialog from "@/components/MathFormulaDialog.vue";
 import QuestionDiagram, { type DiagramSpec } from "@/components/QuestionDiagram.vue";
+import MathDiagramStudioDialog from "@/components/MathDiagramStudioDialog.vue";
 import GglIcon from "@/components/GglIcon/index.vue";
 import {
   getRealms,
@@ -43,6 +44,29 @@ const gates = ref<GateItem[]>([]);
 
 const activeTab = ref<"content" | "answer" | "analysis">("content");
 const phonePreviewStage = ref<"answering" | "reviewed">("answering");
+const previewDevice = ref<"phone" | "tablet">("phone");
+const fullPreviewModalVisible = ref(false);
+const previewStageWrapRef = ref<HTMLElement | null>(null);
+const previewWrapSize = reactive({ width: 460, height: 680 });
+let previewResizeObserver: ResizeObserver | null = null;
+
+const deviceFrameSpec = computed(() =>
+  previewDevice.value === "tablet"
+    ? { label: "标准平板", width: 768, height: 1024, bezel: 12, radius: 28 }
+    : { label: "标准手机", width: 375, height: 812, bezel: 8, radius: 34 }
+);
+
+const previewScale = computed(() => {
+  const spec = deviceFrameSpec.value;
+  const outerW = spec.width + spec.bezel * 2;
+  const outerH = spec.height + spec.bezel * 2;
+  const availW = Math.max(260, previewWrapSize.width - 12);
+  const availH = Math.max(360, previewWrapSize.height - 12);
+  const s = Math.min(1, availW / outerW, availH / outerH);
+  return Math.max(0.32, Math.round(s * 1000) / 1000);
+});
+
+const previewScalePercent = computed(() => Math.round(previewScale.value * 100));
 const activeSampleIndex = ref(0);
 
 const editId = computed(() => {
@@ -89,6 +113,29 @@ const figureImageKey = ref("");
 const figureImageUrl = ref("");
 const uploadingFigure = ref(false);
 const showDiagramJson = ref(false);
+const mathStudioVisible = ref(false);
+
+function handleStudioSaveDiagram(spec: DiagramSpec) {
+  const cloned = JSON.parse(JSON.stringify(spec)) as DiagramSpec;
+  figureDiagram.value = cloned;
+  figureDiagramJson.value = JSON.stringify(cloned, null, 2);
+  figureDiagramJsonError.value = "";
+  ElMessage.success("专业数学矢量图已保存到当前题目");
+}
+
+async function handleStudioExportPng(blob: Blob) {
+  uploadingFigure.value = true;
+  try {
+    const fd = new FormData();
+    fd.append("file", blob, `math_diagram_${Date.now()}.png`);
+    const res = await uploadQuestionImage(fd);
+    figureImageKey.value = res.data.objectKey;
+    figureImageUrl.value = res.data.previewUrl;
+    ElMessage.success("数学绘图高清 PNG 已上传至当前题目");
+  } finally {
+    uploadingFigure.value = false;
+  }
+}
 
 const diagramPresets: Array<{ label: string; spec: DiagramSpec }> = [
   {
@@ -750,6 +797,22 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+  await nextTick();
+  if (previewStageWrapRef.value && typeof ResizeObserver !== "undefined") {
+    previewResizeObserver = new ResizeObserver(entries => {
+      const rect = entries[0]?.contentRect;
+      if (rect && rect.width > 0 && rect.height > 0) {
+        previewWrapSize.width = rect.width;
+        previewWrapSize.height = rect.height;
+      }
+    });
+    previewResizeObserver.observe(previewStageWrapRef.value);
+  }
+});
+
+onBeforeUnmount(() => {
+  previewResizeObserver?.disconnect();
+  previewResizeObserver = null;
 });
 </script>
 
@@ -991,22 +1054,29 @@ onMounted(async () => {
               </template>
             </div>
 
-            <!-- 题目配图配置（矢量几何图 / 上传图片，静态题与动态题通用） -->
+            <!-- 题目配图配置（专业数学图形绘制工作台 JSXGraph / 上传图片，静态题与动态题通用） -->
             <div class="mt-5 space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="flex items-center gap-2">
-                  <span class="text-sm font-semibold text-slate-800">题目配图（几何图 / 函数图 / 图片）</span>
+                  <span class="text-sm font-semibold text-slate-800">专业数学图形绘制（JSXGraph 几何 / 函数 / 图片）</span>
                   <el-tag v-if="figureDiagram" size="small" type="primary">矢量图已配</el-tag>
                   <el-tag v-if="figureImageUrl || figureImageKey" size="small" type="success">图片已上传</el-tag>
                 </div>
                 <div class="flex flex-wrap items-center gap-1.5">
+                  <el-button
+                    size="small"
+                    type="primary"
+                    @click="mathStudioVisible = true"
+                  >
+                    {{ figureDiagram ? "打开绘图工作台继续编辑" : "打开专业数学绘图工作台" }}
+                  </el-button>
                   <el-upload
                     :show-file-list="false"
                     accept="image/*"
                     :http-request="handleFigureImageUpload"
                   >
-                    <el-button size="small" type="primary" plain :loading="uploadingFigure">
-                      上传题目图片
+                    <el-button size="small" type="success" plain :loading="uploadingFigure">
+                      上传图片
                     </el-button>
                   </el-upload>
                   <el-button
@@ -1014,7 +1084,7 @@ onMounted(async () => {
                     plain
                     @click="showDiagramJson = !showDiagramJson"
                   >
-                    {{ showDiagramJson ? "收起矢量 JSON" : "编辑矢量 JSON" }}
+                    {{ showDiagramJson ? "收起 JSON" : "高级 JSON" }}
                   </el-button>
                   <el-button
                     v-if="figureDiagram"
@@ -1037,17 +1107,24 @@ onMounted(async () => {
                 </div>
               </div>
 
-              <div class="flex flex-wrap items-center gap-1.5">
-                <span class="text-xs text-slate-500">快速套用几何模板：</span>
-                <el-button
-                  v-for="preset in diagramPresets"
-                  :key="preset.label"
-                  size="small"
-                  plain
-                  @click="applyDiagramPreset(preset)"
-                >
-                  {{ preset.label }}
-                </el-button>
+              <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-100 bg-sky-50/70 px-3 py-2 text-xs text-sky-900">
+                <span>支持交互式拖拽点、线、圆、垂线、直角/角标、多边形、数轴与任意函数图像 f(x) 绘制，保存后全端矢量高清渲染。</span>
+                <div class="flex flex-wrap items-center gap-1">
+                  <span class="text-slate-500">快捷起手：</span>
+                  <el-button
+                    v-for="preset in diagramPresets.slice(0, 4)"
+                    :key="preset.label"
+                    size="small"
+                    link
+                    type="primary"
+                    @click="
+                      applyDiagramPreset(preset);
+                      mathStudioVisible = true;
+                    "
+                  >
+                    {{ preset.label }}
+                  </el-button>
+                </div>
               </div>
 
               <QuestionDiagram
@@ -1061,7 +1138,7 @@ onMounted(async () => {
                   :model-value="figureDiagramJson"
                   type="textarea"
                   :rows="6"
-                  placeholder='{"title":"三角形","width":300,"height":190,"primitives":[...]}（动态题标注支持 {{变量名}}）'
+                  placeholder='{"title":"三角形","width":320,"height":210,"primitives":[...]}（动态题标注支持 {{变量名}}）'
                   @update:model-value="onDiagramJsonInput"
                 />
                 <div v-if="figureDiagramJsonError" class="text-xs text-red-600">
@@ -1193,15 +1270,25 @@ onMounted(async () => {
         </el-tabs>
       </section>
 
-      <!-- 右侧：学生端手机显示实时预览 -->
-      <aside class="col-span-5 flex min-h-0 flex-col items-center justify-between overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <!-- 右侧：学生端标准手机 (375px) / 标准平板 (768px) 实时模型预览 -->
+      <aside class="col-span-5 flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-3.5">
         <div class="flex w-full shrink-0 flex-wrap items-center justify-between gap-2 pb-2">
-          <span class="text-xs font-bold text-slate-700">学生端手机实时预览</span>
           <div class="flex items-center gap-2">
+            <span class="text-xs font-bold text-slate-700">实时设备预览</span>
+            <el-tag size="small" type="info" effect="plain">
+              {{ deviceFrameSpec.width }} × {{ deviceFrameSpec.height }} · {{ previewScalePercent }}%
+            </el-tag>
+          </div>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <el-radio-group v-model="previewDevice" size="small">
+              <el-radio-button value="phone">标准手机 375px</el-radio-button>
+              <el-radio-button value="tablet">标准平板 768px</el-radio-button>
+            </el-radio-group>
             <el-radio-group v-model="phonePreviewStage" size="small">
               <el-radio-button value="answering">答题中</el-radio-button>
               <el-radio-button value="reviewed">交卷后</el-radio-button>
             </el-radio-group>
+            <el-button size="small" plain @click="fullPreviewModalVisible = true">1:1 放大</el-button>
           </div>
         </div>
 
@@ -1225,103 +1312,233 @@ onMounted(async () => {
           <span v-else class="text-xs text-amber-700">点击右上角「试生成 3 题」查看随机效果</span>
         </div>
 
-        <!-- 手机边框外壳 -->
-        <div class="flex min-h-0 w-[348px] flex-1 flex-col overflow-hidden rounded-[32px] border-[8px] border-slate-800 bg-[#f6f8f7] shadow-xl">
-          <!-- 手机状态栏 -->
-          <div class="flex h-6 shrink-0 items-center justify-between bg-white px-5 text-[11px] font-semibold text-slate-700">
-            <span>09:41</span>
-            <div class="h-3 w-16 rounded-full bg-slate-900" />
-            <span>5G</span>
-          </div>
+        <!-- 自适应等比缩放舞台（保证严格按 375px 手机宽度 / 768px 平板宽度排版渲染） -->
+        <div
+          ref="previewStageWrapRef"
+          class="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-slate-100/80"
+        >
+          <div
+            class="flex shrink-0 flex-col overflow-hidden border-slate-800 bg-[#f6f8f7] shadow-2xl transition-all duration-200"
+            :style="{
+              width: `${deviceFrameSpec.width + deviceFrameSpec.bezel * 2}px`,
+              height: `${deviceFrameSpec.height + deviceFrameSpec.bezel * 2}px`,
+              borderWidth: `${deviceFrameSpec.bezel}px`,
+              borderRadius: `${deviceFrameSpec.radius}px`,
+              transform: `scale(${previewScale})`,
+              transformOrigin: 'center center'
+            }"
+          >
+            <!-- 设备状态栏 -->
+            <div class="flex h-7 shrink-0 items-center justify-between bg-white px-5 text-[11px] font-semibold text-slate-700">
+              <span>09:41</span>
+              <div
+                v-if="previewDevice === 'phone'"
+                class="h-3.5 w-20 rounded-full bg-slate-900"
+              />
+              <div v-else class="flex items-center gap-1.5 text-[11px] text-slate-400">
+                <span class="h-2 w-2 rounded-full bg-slate-700" />
+                <span>iPad / 标准平板 (768px)</span>
+              </div>
+              <span>5G · 100%</span>
+            </div>
 
-          <!-- 学生端导航栏 -->
-          <div class="flex h-11 shrink-0 items-center justify-between border-b border-slate-100 bg-white px-3.5">
-            <span class="text-xs text-slate-600">‹ 退出</span>
-            <span class="max-w-[180px] truncate text-sm font-bold text-slate-800">
-              {{ selectedGate?.gateName || "关卡挑战" }}
-            </span>
-            <span class="w-8" />
-          </div>
+            <!-- 学生端导航栏 -->
+            <div class="flex h-12 shrink-0 items-center justify-between border-b border-slate-100 bg-white px-4">
+              <span class="text-xs font-semibold text-slate-600">‹ 退出</span>
+              <span class="max-w-[260px] truncate text-sm font-bold text-slate-800">
+                {{ selectedGate?.gateName || "关卡挑战" }}
+              </span>
+              <span class="w-10 text-right text-[11px] text-slate-400">01:20</span>
+            </div>
 
-          <!-- 学生端可滚动内容区 -->
-          <div class="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
-            <!-- 题干卡（题号直接置于题目前方，取消顶部进度条） -->
-            <div class="rounded-xl bg-white p-3.5 shadow-2xs">
-              <div class="flex flex-wrap items-center justify-between gap-1.5 text-[11px] text-slate-400">
-                <div class="flex min-w-0 items-center gap-1.5">
-                  <span class="shrink-0 rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-[11px] font-bold text-green-700">
-                    第 1 / {{ selectedGate?.questionCount || 3 }} 题
-                  </span>
-                  <span class="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">
-                    {{ selectedRealm?.realmName || "初一" }}
-                  </span>
-                  <span class="truncate">{{ selectedChapter?.name || "章节练习" }}</span>
+            <!-- 学生端可滚动内容区 -->
+            <div
+              class="min-h-0 flex-1 space-y-3.5 overflow-y-auto"
+              :class="previewDevice === 'tablet' ? 'p-6' : 'p-3.5'"
+            >
+              <!-- 题干卡 -->
+              <div
+                class="rounded-xl bg-white shadow-2xs"
+                :class="previewDevice === 'tablet' ? 'p-6' : 'p-4'"
+              >
+                <div class="flex flex-wrap items-center justify-between gap-1.5 text-[11px] text-slate-400">
+                  <div class="flex min-w-0 items-center gap-1.5">
+                    <span class="shrink-0 rounded-full border border-green-200 bg-green-50 px-2.5 py-0.5 text-[11px] font-bold text-green-700">
+                      第 1 / {{ selectedGate?.questionCount || 3 }} 题
+                    </span>
+                    <span class="shrink-0 rounded bg-slate-100 px-2 py-0.5 text-slate-600">
+                      {{ selectedRealm?.realmName || "初一" }}
+                    </span>
+                    <span class="truncate">{{ selectedChapter?.name || "章节练习" }}</span>
+                  </div>
+                  <div class="flex shrink-0 items-center gap-1">
+                    <span
+                      v-if="form.questionFormat === 'ESSAY'"
+                      class="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700"
+                    >
+                      解答题
+                    </span>
+                    <span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+                      答对 {{ selectedGate?.passCount || 2 }} 题过关
+                    </span>
+                  </div>
                 </div>
-                <div class="flex shrink-0 items-center gap-1">
+                <div
+                  class="mt-3 font-medium leading-relaxed text-slate-800"
+                  :class="previewDevice === 'tablet' ? 'text-[17px]' : 'text-[15px]'"
+                >
+                  <MathFormulaText :text="phoneStem" />
+                </div>
+                <QuestionDiagram
+                  v-if="phoneDiagram || phoneImageUrl"
+                  :diagram="phoneDiagram"
+                  :image-url="phoneImageUrl"
+                  :compact="previewDevice === 'phone'"
+                  class="mt-3"
+                />
+              </div>
+
+              <!-- 选择题选项（标准平板自动采用更舒展的两列网格，标准手机单列） -->
+              <div
+                v-if="form.questionFormat === 'SINGLE_CHOICE'"
+                :class="previewDevice === 'tablet' ? 'grid grid-cols-2 gap-3' : 'space-y-2.5'"
+              >
+                <div
+                  v-for="(op, idx) in phoneOptions"
+                  :key="idx"
+                  class="flex items-center gap-3 rounded-xl border bg-white px-3.5 py-3 transition"
+                  :class="[
+                    previewDevice === 'tablet' ? 'text-sm' : 'text-[13px]',
+                    phonePreviewStage === 'reviewed' && idx === phoneAnswerIndex
+                      ? 'border-[#16a34a] bg-[#f0fdf4] font-semibold text-green-900'
+                      : 'border-slate-200 text-slate-700'
+                  ]"
+                >
                   <span
-                    v-if="form.questionFormat === 'ESSAY'"
-                    class="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700"
+                    class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold"
+                    :class="
+                      phonePreviewStage === 'reviewed' && idx === phoneAnswerIndex
+                        ? 'bg-[#16a34a] text-white'
+                        : 'bg-slate-100 text-slate-600'
+                    "
                   >
-                    解答题
+                    {{ "ABCD"[idx] }}
                   </span>
-                  <span class="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
-                    答对 {{ selectedGate?.passCount || 2 }} 题过关
-                  </span>
+                  <div class="min-w-0 flex-1">
+                    <MathFormulaText :text="op || `选项 ${'ABCD'[idx]}`" inline />
+                  </div>
                 </div>
               </div>
-              <div class="mt-2.5 text-[15px] font-medium leading-relaxed text-slate-800">
+
+              <!-- 解答题作答后预览 -->
+              <div
+                v-else-if="phonePreviewStage === 'reviewed'"
+                class="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-800"
+              >
+                <div class="font-semibold">作答已提交至云端，等待老师批改点评</div>
+                <div class="rounded bg-white/80 p-2.5 text-slate-700">
+                  <span class="font-semibold text-green-700">参考答案（后台可见）：</span>
+                  <MathFormulaText :text="phoneEssayAnswer" inline />
+                </div>
+              </div>
+
+              <!-- 交卷后解析卡 -->
+              <div
+                v-if="phonePreviewStage === 'reviewed' && phoneAnalysis"
+                class="rounded-xl border border-green-200 bg-[#f0fdf4] p-3.5 text-xs text-slate-700"
+              >
+                <div class="mb-1 font-semibold text-green-800">解题思路</div>
+                <MathFormulaText :text="phoneAnalysis" />
+              </div>
+            </div>
+
+            <!-- 底部安全区按钮栏 -->
+            <div
+              class="shrink-0 border-t border-slate-100 bg-white"
+              :class="previewDevice === 'tablet' ? 'px-6 py-3.5' : 'px-4 py-3'"
+            >
+              <div
+                v-if="form.questionFormat === 'ESSAY' && phonePreviewStage === 'answering'"
+                class="flex h-10 w-full items-center justify-center rounded-lg bg-[#16a34a] text-sm font-semibold text-white"
+              >
+                打开手写画板作答
+              </div>
+              <div
+                v-else
+                class="flex h-10 w-full items-center justify-center rounded-lg bg-[#16a34a] text-sm font-semibold text-white opacity-95"
+              >
+                {{ phonePreviewStage === "answering" ? "提交答案" : "下一题" }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </main>
+
+    <!-- 1:1 真实物理像素宽度（375px / 768px）放大预览弹窗 -->
+    <el-dialog
+      v-model="fullPreviewModalVisible"
+      :title="`1:1 原始宽度预览 · ${deviceFrameSpec.label}（${deviceFrameSpec.width} × ${deviceFrameSpec.height} px）`"
+      :width="previewDevice === 'tablet' ? '860px' : '460px'"
+      top="3vh"
+    >
+      <div class="mb-3 flex items-center justify-between">
+        <el-radio-group v-model="previewDevice" size="small">
+          <el-radio-button value="phone">标准手机 (375px)</el-radio-button>
+          <el-radio-button value="tablet">标准平板 (768px)</el-radio-button>
+        </el-radio-group>
+        <el-radio-group v-model="phonePreviewStage" size="small">
+          <el-radio-button value="answering">答题中</el-radio-button>
+          <el-radio-button value="reviewed">交卷后</el-radio-button>
+        </el-radio-group>
+      </div>
+      <div class="flex justify-center overflow-x-auto py-2">
+        <div
+          class="flex shrink-0 flex-col overflow-hidden border-slate-800 bg-[#f6f8f7] shadow-xl"
+          :style="{
+            width: `${deviceFrameSpec.width}px`,
+            maxHeight: '72vh',
+            borderWidth: `${deviceFrameSpec.bezel}px`,
+            borderRadius: `${deviceFrameSpec.radius}px`
+          }"
+        >
+          <div class="flex h-11 shrink-0 items-center justify-between border-b border-slate-100 bg-white px-4">
+            <span class="text-xs text-slate-500">‹ 退出</span>
+            <span class="text-sm font-bold text-slate-800">{{ selectedGate?.gateName || "关卡挑战" }}</span>
+            <span class="text-[11px] text-slate-400">{{ deviceFrameSpec.width }}px</span>
+          </div>
+          <div class="flex-1 space-y-3 overflow-y-auto p-4">
+            <div class="rounded-xl bg-white p-4 shadow-2xs">
+              <div class="text-[15px] font-medium leading-relaxed text-slate-800">
                 <MathFormulaText :text="phoneStem" />
               </div>
               <QuestionDiagram
                 v-if="phoneDiagram || phoneImageUrl"
                 :diagram="phoneDiagram"
                 :image-url="phoneImageUrl"
-                compact
-                class="mt-2.5"
+                class="mt-3"
               />
             </div>
-
-            <!-- 选择题选项 -->
-            <div v-if="form.questionFormat === 'SINGLE_CHOICE'" class="space-y-2">
+            <div
+              v-if="form.questionFormat === 'SINGLE_CHOICE'"
+              :class="previewDevice === 'tablet' ? 'grid grid-cols-2 gap-3' : 'space-y-2'"
+            >
               <div
                 v-for="(op, idx) in phoneOptions"
                 :key="idx"
-                class="flex items-center gap-2.5 rounded-xl border bg-white px-3 py-2.5 text-xs transition"
+                class="flex items-center gap-2.5 rounded-xl border bg-white px-3.5 py-2.5 text-sm"
                 :class="
                   phonePreviewStage === 'reviewed' && idx === phoneAnswerIndex
-                    ? 'border-[#16a34a] bg-[#f0fdf4] text-green-900 font-semibold'
+                    ? 'border-[#16a34a] bg-[#f0fdf4] font-semibold text-green-900'
                     : 'border-slate-200 text-slate-700'
                 "
               >
-                <span
-                  class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
-                  :class="
-                    phonePreviewStage === 'reviewed' && idx === phoneAnswerIndex
-                      ? 'bg-[#16a34a] text-white'
-                      : 'bg-slate-100 text-slate-600'
-                  "
-                >
+                <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold">
                   {{ "ABCD"[idx] }}
                 </span>
-                <div class="min-w-0 flex-1">
-                  <MathFormulaText :text="op || `选项 ${'ABCD'[idx]}`" inline />
-                </div>
+                <MathFormulaText :text="op || `选项 ${'ABCD'[idx]}`" inline />
               </div>
             </div>
-
-            <!-- 解答题作答后预览 -->
-            <div
-              v-else-if="phonePreviewStage === 'reviewed'"
-              class="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800"
-            >
-              <div class="font-semibold">作答已提交至云端，等待老师批改点评</div>
-              <div class="rounded bg-white/80 p-2 text-slate-700">
-                <span class="font-semibold text-green-700">参考答案（后台可见）：</span>
-                <MathFormulaText :text="phoneEssayAnswer" inline />
-              </div>
-            </div>
-
-            <!-- 交卷后解析卡 -->
             <div
               v-if="phonePreviewStage === 'reviewed' && phoneAnalysis"
               class="rounded-xl border border-green-200 bg-[#f0fdf4] p-3 text-xs text-slate-700"
@@ -1330,25 +1547,16 @@ onMounted(async () => {
               <MathFormulaText :text="phoneAnalysis" />
             </div>
           </div>
-
-          <!-- 手机端底部安全区按钮栏 -->
-          <div class="shrink-0 border-t border-slate-100 bg-white px-3.5 py-2.5">
-            <div
-              v-if="form.questionFormat === 'ESSAY' && phonePreviewStage === 'answering'"
-              class="flex h-9 w-full items-center justify-center rounded-lg bg-[#16a34a] text-xs font-semibold text-white"
-            >
-              开始作答
-            </div>
-            <div
-              v-else
-              class="flex h-9 w-full items-center justify-center rounded-lg bg-[#16a34a] text-xs font-semibold text-white opacity-90"
-            >
-              {{ phonePreviewStage === "answering" ? "下一题" : "提交交卷" }}
-            </div>
-          </div>
         </div>
-      </aside>
-    </main>
+      </div>
+    </el-dialog>
+
+    <MathDiagramStudioDialog
+      v-model="mathStudioVisible"
+      :initial-diagram="figureDiagram"
+      @save-diagram="handleStudioSaveDiagram"
+      @export-image="handleStudioExportPng"
+    />
 
     <MathFormulaDialog
       v-model="formulaDialogVisible"

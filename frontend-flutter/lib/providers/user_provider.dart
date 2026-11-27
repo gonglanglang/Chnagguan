@@ -13,7 +13,8 @@ class UserProvider extends ChangeNotifier {
   UserProvider._internal(this._storage, this._api)
       : _accessToken = _storage.accessToken,
         _userInfo = _storage.cachedProfile,
-        _guestPassedIds = _storage.guestPassedIds;
+        _guestPassedIds = _storage.guestPassedIds,
+        _guestSelectedGradeCode = _storage.guestSelectedGradeCode;
 
   final GlobalCache _storage;
   final GuoguanlaApi _api;
@@ -21,6 +22,7 @@ class UserProvider extends ChangeNotifier {
   String _accessToken;
   AppUserProfile? _userInfo;
   List<int> _guestPassedIds;
+  String? _guestSelectedGradeCode;
   HomeSummary? _homeSummary;
   int _wrongCount = 0;
   int _sessionRevision = 0;
@@ -44,8 +46,17 @@ class UserProvider extends ChangeNotifier {
           ? _homeSummary!.grades
           : GradeItem.fallbacks;
 
+  List<HomeBannerItem> get banners => _homeSummary?.banners ?? const [];
+
   RealmItem get currentRealm {
     final list = realms;
+    if (!isAuthenticated &&
+        _guestSelectedGradeCode != null &&
+        _guestSelectedGradeCode!.isNotEmpty) {
+      for (final r in list) {
+        if (r.gradeCode == _guestSelectedGradeCode) return r;
+      }
+    }
     for (final r in list) {
       if (r.isCurrent) return r;
     }
@@ -55,7 +66,67 @@ class UserProvider extends ChangeNotifier {
         if (r.realmCode == userRealmCode) return r;
       }
     }
+    final userGradeCode = _userInfo?.gradeCode;
+    if (userGradeCode != null && userGradeCode.isNotEmpty) {
+      for (final r in list) {
+        if (r.gradeCode == userGradeCode) return r;
+      }
+    }
     return list.first;
+  }
+
+  GradeItem get currentGrade {
+    final active = currentRealm;
+    for (final g in grades) {
+      if (g.gradeCode == active.gradeCode) return g;
+    }
+    return grades.first;
+  }
+
+  RealmItem? get nextRealm {
+    final active = currentRealm;
+    final list = realms;
+    final idx = list.indexWhere((r) => r.gradeCode == active.gradeCode);
+    if (idx >= 0 && idx + 1 < list.length) {
+      return list[idx + 1];
+    }
+    return null;
+  }
+
+  GradeItem? findGradeByCode(String? gradeCode) {
+    if (gradeCode == null || gradeCode.isEmpty) return null;
+    for (final g in grades) {
+      if (g.gradeCode == gradeCode) return g;
+    }
+    return null;
+  }
+
+  RealmItem? findRealmByGradeCode(String? gradeCode) {
+    if (gradeCode == null || gradeCode.isEmpty) return null;
+    for (final r in realms) {
+      if (r.gradeCode == gradeCode) return r;
+    }
+    return null;
+  }
+
+  Future<void> switchGrade(String gradeCode) async {
+    final clean = gradeCode.trim();
+    if (clean.isEmpty) return;
+    if (isAuthenticated) {
+      final updated = await _api.updateUserGrade(clean);
+      _userInfo = updated;
+      await _storage.setCachedProfile(updated);
+      notifyListeners();
+      try {
+        await loadHomeSummary();
+      } catch (_) {
+        // Keep updated profile even if summary refresh transiently fails
+      }
+    } else {
+      _guestSelectedGradeCode = clean;
+      await _storage.setGuestSelectedGradeCode(clean);
+      notifyListeners();
+    }
   }
 
   String get appNotice => _homeSummary?.appNotice ?? '';

@@ -14,6 +14,7 @@ import '../../widgets/ggl_comic_panel.dart';
 import '../../widgets/ggl_feedback.dart';
 import '../../widgets/ggl_skeleton.dart';
 import '../../widgets/ggl_skin_widgets.dart';
+import '../../widgets/grade_promotion_helper.dart';
 import '../chapter_map/chapter_map_page.dart';
 import '../login/login_page.dart';
 import '../quiz/quiz_page.dart';
@@ -112,6 +113,33 @@ class _GradeChaptersPageState extends State<GradeChaptersPage> {
     }
   }
 
+  GradeItem? _findNextGrade(UserProvider user) {
+    final grades = user.grades;
+    final idx = grades.indexWhere((g) => g.gradeCode == widget.grade.gradeCode);
+    if (idx >= 0 && idx + 1 < grades.length) {
+      return grades[idx + 1];
+    }
+    return null;
+  }
+
+  Future<void> _promoteToNextGrade(GradeItem nextGrade) async {
+    final promoted = await GradePromotionHelper.confirmAndPromoteGrade(
+      context,
+      currentGradeName: widget.grade.gradeName,
+      nextGradeCode: nextGrade.gradeCode,
+      nextGradeName: nextGrade.gradeName,
+    );
+    if (!promoted || !mounted) return;
+    final nextRealm = context.read<UserProvider>().findRealmByGradeCode(
+          nextGrade.gradeCode,
+        );
+    await Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(
+        builder: (_) => GradeChaptersPage(grade: nextGrade, realm: nextRealm),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = WelkTheme.of(context).resolveColors(context);
@@ -130,6 +158,8 @@ class _GradeChaptersPageState extends State<GradeChaptersPage> {
         .where((c) => c.totalGates > 0 && c.passedCount >= c.totalGates)
         .length;
     final pct = totalGates > 0 ? (passedGates / totalGates).clamp(0.0, 1.0) : 0.0;
+    final allCleared = totalGates > 0 && passedGates >= totalGates;
+    final nextGrade = _findNextGrade(user);
 
     return Scaffold(
       backgroundColor: AppTheme.pageBackground(context),
@@ -221,6 +251,59 @@ class _GradeChaptersPageState extends State<GradeChaptersPage> {
                 ],
               ),
             ),
+
+            if (allCleared && nextGrade != null) ...[
+              const SizedBox(height: 12),
+              GglComicPanel(
+                color: colors.success.withValues(
+                  alpha: colors.isDark ? 0.22 : 0.28,
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                shadowOffset: const Offset(2, 2),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.workspace_premium_rounded,
+                      color: AppTheme.inkColor(context),
+                      size: 24,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${widget.grade.gradeName}全部 $totalGates 关已闯完！',
+                            style: TextStyle(
+                              color: AppTheme.inkColor(context),
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '准备进入${nextGrade.gradeName}开启新关卡',
+                            style: TextStyle(
+                              color: AppTheme.mutedText(context),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    GglButton(
+                      label: '晋级${nextGrade.gradeName}',
+                      variant: WelkButtonVariant.success,
+                      onPressed: () => unawaited(_promoteToNextGrade(nextGrade)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
 
             if (isSuppressed || canExamHere) ...[
               const SizedBox(height: 12),

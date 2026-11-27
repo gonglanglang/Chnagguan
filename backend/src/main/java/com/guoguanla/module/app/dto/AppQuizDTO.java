@@ -69,4 +69,17 @@ public class AppQuizDTO {
         private Long chapterId;
         private Integer limit = 5;
     }
+
+    @Data
+    public static class WrongExportReq {
+        private List<Long> wrongIds;
+        private String gradeCode;
+        private String realmCode;
+        private Boolean highFrequencyOnly;
+        private String title;
+        /** END(末尾附答案解析) / INLINE(每题紧跟答案解析) / NONE(仅题目不附答案) */
+        private String answerMode = "END";
+        private Boolean includeDiagrams = true;
+        private Boolean includeWorkspace = true;
+    }
 }

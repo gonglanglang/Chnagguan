@@ -8,6 +8,7 @@ import com.guoguanla.module.app.dto.AppLoginReq;
 import com.guoguanla.module.app.vo.AppUserProfileVO;
 import com.guoguanla.module.bank.entity.EduGate;
 import com.guoguanla.module.bank.mapper.EduGateMapper;
+import com.guoguanla.module.dashboard.StudentOnlineTrackerService;
 import com.guoguanla.module.progress.entity.UserGateProgress;
 import com.guoguanla.module.progress.mapper.UserGateProgressMapper;
 import com.guoguanla.module.system.RealmHelperService;
@@ -32,6 +33,7 @@ public class AppAuthService {
     private final AppBankService bankService;
     private final RealmHelperService realmHelper;
     private final CaptchaService captchaService;
+    private final StudentOnlineTrackerService onlineTracker;
 
     @Transactional(rollbackFor = Exception.class)
     public AppUserProfileVO.AuthVO login(AppLoginReq req) {
@@ -54,6 +56,7 @@ public class AppAuthService {
         userMapper.updateById(user);
 
         String token = StpAppUtil.login(user.getId());
+        onlineTracker.touchUser(user.getId(), "登录应用", "app");
         return AppUserProfileVO.AuthVO.builder()
                 .token(token)
                 .profile(bankService.buildProfileVO(user))
@@ -92,6 +95,7 @@ public class AppAuthService {
         userMapper.updateById(user);
 
         String token = StpAppUtil.login(user.getId());
+        onlineTracker.touchUser(user.getId(), "登录应用", "app");
         return AppUserProfileVO.AuthVO.builder()
                 .token(token)
                 .profile(bankService.buildProfileVO(user))
@@ -99,6 +103,10 @@ public class AppAuthService {
     }
 
     public void logout() {
+        Long userId = StpAppUtil.getLoginIdOrNull();
+        if (userId != null) {
+            onlineTracker.markOffline(userId);
+        }
         StpAppUtil.logout();
     }
 

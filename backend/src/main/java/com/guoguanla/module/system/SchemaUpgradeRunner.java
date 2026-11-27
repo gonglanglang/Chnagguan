@@ -1,6 +1,8 @@
 package com.guoguanla.module.system;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.guoguanla.module.banner.entity.EduHomeBanner;
+import com.guoguanla.module.banner.mapper.EduHomeBannerMapper;
 import com.guoguanla.module.oss.AliyunOssService;
 import com.guoguanla.module.system.entity.EduRealm;
 import com.guoguanla.module.system.entity.SysConfig;
@@ -51,6 +53,7 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
     private final EduRealmMapper realmMapper;
     private final AppUserMapper userMapper;
     private final SysConfigMapper sysConfigMapper;
+    private final EduHomeBannerMapper homeBannerMapper;
     private final AliyunOssService ossService;
 
     @Override
@@ -59,6 +62,7 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
         ensureEduRealmTable();
         ensureUserEssayAnswerTable();
         ensureVideoTables();
+        ensureHomeBannerTable();
         upgradeSysConfigValueColumn();
         boolean addedUserRealm = ensureColumn("app_user", "realm_code", "VARCHAR(24) NOT NULL DEFAULT 'lianqi'");
         ensureColumn("app_user", "email", "VARCHAR(128) DEFAULT NULL");
@@ -81,6 +85,7 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
         ensureAppVersionConfigs();
         ensureAiConfigs();
         ensureDefaultThemeConfigs();
+        seedDefaultHomeBanners();
         syncOssCustomDomain();
     }
 
@@ -177,6 +182,96 @@ public class SchemaUpgradeRunner implements ApplicationRunner {
                   KEY idx_video_lesson_series (series_id, enabled, sort_order)
                 )
                 """);
+    }
+
+    private void ensureHomeBannerTable() {
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS edu_home_banner (
+                  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                  title VARCHAR(128) NOT NULL,
+                  subtitle VARCHAR(255) NOT NULL DEFAULT '',
+                  image_key VARCHAR(512) NOT NULL DEFAULT '',
+                  content_html MEDIUMTEXT DEFAULT NULL,
+                  sort_order INT NOT NULL DEFAULT 0,
+                  enabled TINYINT NOT NULL DEFAULT 1,
+                  created_by BIGINT UNSIGNED DEFAULT NULL,
+                  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  deleted TINYINT NOT NULL DEFAULT 0,
+                  PRIMARY KEY (id),
+                  KEY idx_banner_enabled_sort (enabled, deleted, sort_order)
+                )
+                """);
+    }
+
+    private void seedDefaultHomeBanners() {
+        if (homeBannerMapper.selectCount(null) > 0) {
+            return;
+        }
+        List<EduHomeBanner> defaults = List.of(
+                buildDefaultBanner(
+                        "初高中数学金牌教研团队",
+                        "10年+一线教学沉淀 · 人教版全51章体系打磨",
+                        "preset://faculty-1",
+                        """
+                        <h2>过关啦核心教研团队介绍</h2>
+                        <p>过关啦数学教研团队由多位拥有 <strong>10 年以上初高中重点中学一线执教经验</strong> 的资深数学老师联合组建，严格对标人教版教材大纲，系统打磨初一至高三全 51 章 204 道阶梯关卡。</p>
+                        <h3>核心教学特色</h3>
+                        <ul>
+                          <li><strong>阶梯闯关设计：</strong>每章细分为基础关、中档关、拓展关与压轴关，夯实基础的同时稳步拔高。</li>
+                          <li><strong>动静结合出题：</strong>精选经典母题与智能参数变式题相结合，杜绝机械背答案。</li>
+                          <li><strong>手写作答精批：</strong>解答题支持手写画板作答，老师在线批注点评并自动同步错题本。</li>
+                        </ul>
+                        <blockquote><p>“把每一道易错基础题练透，就是数学提分最稳妥的捷径。”</p></blockquote>
+                        """,
+                        1
+                ),
+                buildDefaultBanner(
+                        "中考几何模型与辅助线名师组",
+                        "省重点骨干名师领衔 · 专攻全等、圆与动态压轴",
+                        "preset://faculty-2",
+                        """
+                        <h2>中考几何专项教研组</h2>
+                        <p>由省重点初中数学备课组长领衔，专注初中平面几何知识体系构建与中考压轴模型拆解，累计编写高质量几何配图题 <strong>300+ 道</strong>。</p>
+                        <h3>核心授课与研发方向</h3>
+                        <ul>
+                          <li><strong>核心几何模型：</strong>手拉手全等、一线三垂直、将军饮马、胡不归、隐圆与阿氏圆。</li>
+                          <li><strong>精准矢量配图：</strong>每道几何题配备标准比例矢量图形，帮助同学建立直观空间感与识图能力。</li>
+                          <li><strong>辅助线思维链：</strong>结合 AI 智能画板分步启发，引导同学独立想出关键辅助线。</li>
+                        </ul>
+                        """,
+                        2
+                ),
+                buildDefaultBanner(
+                        "高考函数导数与解析几何名师团",
+                        "清北硕博教研领衔 · 冲刺高中数学高分突破",
+                        "preset://faculty-3",
+                        """
+                        <h2>高中数学高阶教研名师团</h2>
+                        <p>针对高中数学知识跨度大、综合性强等痛点，团队精心构建 <strong>高一夯实 → 高二深化 → 高三专题冲刺</strong> 三阶训练闭环。</p>
+                        <h3>重点攻克专题</h3>
+                        <ol>
+                          <li><strong>函数与导数：</strong>单调性分类讨论、极值点偏移、隐零点与恒成立放缩。</li>
+                          <li><strong>解析几何：</strong>直线与圆锥曲线联立、韦达定理化简、定点定值与最值问题。</li>
+                          <li><strong>立体几何与概率统计：</strong>空间向量建系、条件概率与正态分布建模。</li>
+                        </ol>
+                        """,
+                        3
+                )
+        );
+        defaults.forEach(homeBannerMapper::insert);
+        log.info("Seeded {} default home faculty banners", defaults.size());
+    }
+
+    private EduHomeBanner buildDefaultBanner(String title, String subtitle, String imageKey, String html, int sortOrder) {
+        EduHomeBanner b = new EduHomeBanner();
+        b.setTitle(title);
+        b.setSubtitle(subtitle);
+        b.setImageKey(imageKey);
+        b.setContentHtml(html.trim());
+        b.setSortOrder(sortOrder);
+        b.setEnabled(1);
+        return b;
     }
 
     private void backfillEssayGateKeys() {

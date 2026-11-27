@@ -14,6 +14,7 @@ import '../../widgets/ggl_comic_panel.dart';
 import '../../widgets/ggl_feedback.dart';
 import '../../widgets/ggl_skeleton.dart';
 import '../../widgets/ggl_skin_widgets.dart';
+import '../../widgets/grade_promotion_helper.dart';
 import '../../widgets/image_preview_page.dart';
 import '../../widgets/math_text.dart';
 import '../../widgets/question_figure_card.dart';
@@ -498,6 +499,24 @@ class _QuizPageState extends State<QuizPage> {
 
   Future<void> _goNextGate(SubmitResult res) async {
     if (!res.hasNextGate) return;
+    if (res.nextGateCrossGrade) {
+      final user = context.read<UserProvider>();
+      final nextCode = res.nextGradeCode ?? user.nextRealm?.gradeCode;
+      final nextName =
+          res.nextGradeName ?? user.nextRealm?.realmName ?? '下一年级';
+      final currentName = _startData?.realmName?.isNotEmpty == true
+          ? _startData!.realmName!
+          : user.currentGrade.gradeName;
+      if (nextCode != null && nextCode.isNotEmpty) {
+        final promoted = await GradePromotionHelper.confirmAndPromoteGrade(
+          context,
+          currentGradeName: currentName,
+          nextGradeCode: nextCode,
+          nextGradeName: nextName,
+        );
+        if (!promoted || !mounted) return;
+      }
+    }
     _activeGateId = res.nextGateId;
     _activeGateSeq = res.nextGateIndex != null
         ? res.nextGateIndex! + 1
@@ -1305,7 +1324,7 @@ class _QuizPageState extends State<QuizPage> {
       final canDirectNext = widget.mode == QuizMode.gate && res.hasNextGate;
       final nextSeq = (res.nextGateIndex ?? 0) + 1;
       final nextLabel = res.nextGateCrossGrade
-          ? '进入${res.nextGradeName ?? '下一年级'} · 第 $nextSeq 关'
+          ? '晋级${res.nextGradeName ?? '下一年级'} · 第 $nextSeq 关'
           : res.nextGateCrossChapter
               ? '进入下一章 · 第 $nextSeq 关'
               : '进入下一关 · 第 $nextSeq 关';

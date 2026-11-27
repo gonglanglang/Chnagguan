@@ -3,27 +3,34 @@ import 'dart:typed_data';
 import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 import 'package:forui/forui.dart';
 import 'package:guoguanla_app/app/app_theme.dart';
 import 'package:guoguanla_app/core/cache/global_cache.dart';
 import 'package:guoguanla_app/core/network/api_client.dart';
 import 'package:guoguanla_app/models/models.dart';
 import 'package:guoguanla_app/pages/about/about_page.dart';
+import 'package:guoguanla_app/pages/banner/banner_detail_page.dart';
 import 'package:guoguanla_app/pages/draw_answer/draw_answer_page.dart';
 import 'package:guoguanla_app/pages/grade_chapters/grade_chapters_page.dart';
 import 'package:guoguanla_app/pages/home/home_tab_page.dart';
 import 'package:guoguanla_app/pages/login/login_page.dart';
+import 'package:guoguanla_app/pages/main_shell_page.dart';
 import 'package:guoguanla_app/pages/mine/mine_tab_page.dart';
 import 'package:guoguanla_app/pages/profile/profile_page.dart';
 import 'package:guoguanla_app/pages/quiz/quiz_page.dart';
 import 'package:guoguanla_app/pages/settings/theme_settings_page.dart';
 import 'package:guoguanla_app/pages/smart_board/smart_board_page.dart';
+import 'package:guoguanla_app/pages/wrong/wrong_export_preview_page.dart';
+import 'package:guoguanla_app/pages/wrong/wrong_tab_page.dart';
 import 'package:guoguanla_app/providers/theme_provider.dart';
 import 'package:guoguanla_app/providers/update_provider.dart';
 import 'package:guoguanla_app/providers/user_provider.dart';
 import 'package:guoguanla_app/services/guoguanla_api.dart';
 import 'package:guoguanla_app/widgets/ggl_comic_panel.dart';
 import 'package:guoguanla_app/widgets/ggl_video_player.dart';
+import 'package:guoguanla_app/widgets/home_banner_carousel.dart';
+import 'package:guoguanla_app/widgets/home_top_nav_bar.dart';
 import 'package:guoguanla_app/widgets/math_text.dart';
 import 'package:guoguanla_app/widgets/question_figure_card.dart';
 import 'package:video_player/video_player.dart';
@@ -416,7 +423,7 @@ void main() {
   });
 
   testWidgets(
-      'HomeTabPage renders 3-col grade grid without 章节闯关 and auto-pops announcement once',
+      'HomeTabPage renders HomeTopNavBar, BannerCarousel, single grade challenge module and auto-pops announcement once',
       (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     PackageInfo.setMockInitialValues(
@@ -440,6 +447,7 @@ void main() {
     await tester.pumpWidget(
       MultiProvider(
         providers: [
+          Provider<ApiClient>.value(value: api.client),
           Provider<GlobalCache>.value(value: cache),
           Provider<GuoguanlaApi>.value(value: api),
           ChangeNotifierProvider<UserProvider>.value(value: userProvider),
@@ -476,26 +484,36 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('我知道了'), findsNothing);
 
-    // Home renders AI smart board card, 3-column grade grid and removed old 章节闯关 & 学习体系
-    expect(find.text('AI 智能手写画板'), findsOneWidget);
-    expect(find.text('拍照识题'), findsOneWidget);
-    expect(find.text('选择年级'), findsOneWidget);
-    expect(find.text('章节闯关'), findsNothing);
-    expect(find.text('学习体系'), findsNothing);
+    // Independent HomeTopNavBar + BannerCarousel + single current-grade challenge module (no 3-col grade GridView)
+    expect(find.byType(HomeTopNavBar), findsOneWidget);
+    expect(find.byType(HomeBannerCarousel), findsOneWidget);
+    expect(find.text('名师数学教研团队'), findsOneWidget);
+    expect(find.byType(GridView), findsNothing);
+    expect(find.text('选择年级'), findsNothing);
+    expect(find.text('数学闯关'), findsOneWidget);
     expect(find.text('初一'), findsWidgets);
-    expect(find.text('高三'), findsOneWidget);
+    expect(find.text('第1章 有理数'), findsOneWidget);
 
     await tester.scrollUntilVisible(
-      find.text('继续学习'),
+      find.text('AI 智能手写画板'),
       200,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('继续学习'), findsOneWidget);
+    expect(find.text('AI 智能手写画板'), findsOneWidget);
+    expect(find.text('拍照识题'), findsOneWidget);
 
-    final grid = tester.widget<GridView>(find.byType(GridView).first);
-    final delegate =
-        grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
-    expect(delegate.crossAxisCount, 3);
+    // Tap grade selector in HomeTopNavBar -> switch current grade to 初二
+    await tester.tap(find.descendant(
+      of: find.byType(HomeTopNavBar),
+      matching: find.text('初一'),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('切换当前年级阶段'), findsOneWidget);
+    await tester.tap(find.text('初二'));
+    await tester.pumpAndSettle();
+    expect(userProvider.currentGrade.gradeCode, 'g8');
+    expect(cache.guestSelectedGradeCode, 'g8');
+    await tester.pump(const Duration(seconds: 4));
   });
 
   testWidgets('GradeChaptersPage renders chapters in a 2-column grid', (
@@ -964,8 +982,18 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('完成交卷'));
     await tester.pumpAndSettle();
-    expect(find.text('进入初二 · 第 1 关'), findsOneWidget);
+    expect(find.text('晋级初二 · 第 1 关'), findsOneWidget);
     expect(find.textContaining('即将开启初二'), findsOneWidget);
+
+    // 点击跨年级按钮应弹出晋级确认框
+    await tester.tap(find.text('晋级初二 · 第 1 关'));
+    await tester.pumpAndSettle();
+    expect(find.text('是否晋级到初二？'), findsOneWidget);
+    expect(find.text('晋级初二'), findsOneWidget);
+    expect(find.text('留在初一'), findsOneWidget);
+    await tester.tap(find.text('留在初一'));
+    await tester.pumpAndSettle();
+    expect(userProvider.currentGrade.gradeCode, 'g7');
   });
 
   testWidgets(
@@ -1129,6 +1157,115 @@ void main() {
     expect(find.textContaining('已将矢量图形绘制到白板'), findsOneWidget);
     await tester.pump(const Duration(seconds: 4));
   });
+
+  testWidgets(
+      'TASK-20261127-001 MainShellPage renames tab0 to 首页 and WrongTabPage uses UI library Tabs across all 3 skins',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'ggl_access_token': 'demo_token_123',
+    });
+    final cache = await GlobalCache.init();
+    final api = _FakeGuoguanlaApi();
+    final userProvider = UserProvider(storage: cache, api: api);
+    final updateProvider = UpdateProvider(api);
+    final themeProvider = ThemeProvider(cache);
+    final wrongSignal = ValueNotifier<int>(0);
+    addTearDown(wrongSignal.dispose);
+
+    Widget wrapShell(Widget child) => MultiProvider(
+          providers: [
+            Provider<ApiClient>.value(value: api.client),
+            Provider<GlobalCache>.value(value: cache),
+            Provider<GuoguanlaApi>.value(value: api),
+            ChangeNotifierProvider<UserProvider>.value(value: userProvider),
+            ChangeNotifierProvider<UpdateProvider>.value(value: updateProvider),
+            ChangeNotifierProvider<ThemeProvider>.value(value: themeProvider),
+          ],
+          child: Consumer<ThemeProvider>(
+            builder: (context, theme, _) => WelkTheme(
+              data: theme.welkTheme,
+              child: WiredThemeScope(
+                data: theme.skribbleTheme,
+                child: MaterialApp(
+                  theme: theme.materialTheme,
+                  localizationsDelegates: FLocalizations.localizationsDelegates,
+                  builder: (ctx, c) => FTheme(
+                    data: theme.foruiTheme,
+                    child: FToaster(child: c!),
+                  ),
+                  home: child,
+                ),
+              ),
+            ),
+          ),
+        );
+
+    // 1. MainShellPage tab0 displays '首页' (not '闯关')
+    await tester.pumpWidget(wrapShell(const MainShellPage()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
+    if (find.text('我知道了').evaluate().isNotEmpty) {
+      await tester.tap(find.text('我知道了'));
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('首页'), findsOneWidget);
+    expect(find.text('闯关'), findsNothing);
+
+    // 2. WrongTabPage renders WelkTabs on WelkUI, FTabs on Forui, WiredTabBar on Skribble
+    await tester.pumpWidget(wrapShell(WrongTabPage(refreshSignal: wrongSignal)));
+    await tester.pumpAndSettle();
+    expect(find.byType(WelkTabs), findsOneWidget);
+    expect(find.text('导出 Word'), findsOneWidget);
+
+    await themeProvider.setUiSkin(AppUiSkin.forui);
+    await tester.pumpAndSettle();
+    expect(find.byType(FTabs), findsOneWidget);
+
+    await themeProvider.setUiSkin(AppUiSkin.skribble);
+    await tester.pumpAndSettle();
+    expect(find.byType(WiredTabBar), findsOneWidget);
+
+    // Switch back to WelkUI and test A4 WrongExportPreviewPage + BannerDetailPage
+    await themeProvider.setUiSkin(AppUiSkin.welkui);
+    await tester.pumpAndSettle();
+
+    await tester.pumpWidget(
+      wrapShell(
+        WrongExportPreviewPage(
+          initialFilter: 'all',
+          filterLabel: '全部',
+          initialItems: api.demoWrongItems,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('A4 错题卷预览与导出'), findsOneWidget);
+    expect(find.textContaining('A4 打印效果预览'), findsOneWidget);
+    expect(find.text('生成 Word 并分享至微信'), findsOneWidget);
+
+    await tester.pumpWidget(
+      wrapShell(
+        const BannerDetailPage(
+          bannerId: 1,
+          initialBanner: HomeBannerItem(
+            id: 1,
+            title: '名师数学教研团队',
+            subtitle: '人教版同步教研',
+            imageKey: 'preset://faculty-1',
+            imageUrl: '',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('名师数学教研团队'), findsWidgets);
+    expect(find.byType(HtmlWidget), findsOneWidget);
+    expect(
+      find.textContaining('教研实力介绍', findRichText: true),
+      findsOneWidget,
+    );
+  });
 }
 
 class _FakeGuoguanlaApi extends GuoguanlaApi {
@@ -1268,10 +1405,130 @@ class _FakeGuoguanlaApi extends GuoguanlaApi {
     return const HomeSummary(
       guestModeEnabled: true,
       appNotice: '测试公告内容 v1.0.14',
+      banners: [
+        HomeBannerItem(
+          id: 1,
+          title: '名师数学教研团队',
+          subtitle: '初高中同步数学名师团',
+          imageKey: 'preset://faculty-1',
+          imageUrl: '',
+          sortOrder: 1,
+        ),
+      ],
       grades: GradeItem.fallbacks,
       realms: RealmItem.defaults,
     );
   }
+
+  @override
+  Future<void> sendOnlineHeartbeat({String? page}) async {}
+
+  @override
+  Future<AppUserProfile> updateUserGrade(String gradeCode) async {
+    return AppUserProfile(
+      id: 1,
+      username: 'stu_demo',
+      phone: '',
+      email: '',
+      nickname: '小测同学',
+      avatarUrl: '',
+      gradeCode: gradeCode,
+      gradeName: gradeCode == 'g8' ? '初二' : '初一',
+      realmCode: gradeCode == 'g8' ? 'zhuji' : 'lianqi',
+      realmName: gradeCode == 'g8' ? '初二' : '初一',
+      realmOrder: gradeCode == 'g8' ? 2 : 1,
+      difficultyLabel: '基础入门',
+      realmPassedGates: 0,
+      realmTotalGates: 40,
+      examUnlockGates: 40,
+      examRemainingGates: 40,
+      examEligible: false,
+      examQuestionCount: 5,
+      examPassScore: 60,
+      passedGateCount: 0,
+    );
+  }
+
+  @override
+  Future<PageResult<VideoSeriesItem>> getVideoSeriesPage({
+    String? realmCode,
+    String? keyword,
+    int pageNum = 1,
+    int pageSize = 12,
+  }) async {
+    return PageResult<VideoSeriesItem>(
+      total: 0,
+      pageNum: pageNum,
+      pageSize: pageSize,
+      records: const [],
+    );
+  }
+
+  @override
+  Future<AppVersionInfo> checkLatestVersion({
+    required String currentVersion,
+    required int versionCode,
+  }) async {
+    return AppVersionInfo(
+      currentVersion: currentVersion,
+      latestVersion: currentVersion,
+      latestVersionCode: versionCode,
+      hasUpdate: false,
+      forceUpdate: false,
+      releaseNotes: '',
+      downloadUrl: '',
+      githubReleaseUrl: '',
+      githubRepo: '',
+      githubReachable: false,
+      publishedAt: '',
+      source: 'MOCK',
+    );
+  }
+
+  @override
+  Future<HomeBannerDetail> getHomeBannerDetail(int id) async {
+    return const HomeBannerDetail(
+      id: 1,
+      title: '名师数学教研团队',
+      subtitle: '初高中同步数学名师团',
+      imageKey: 'preset://faculty-1',
+      imageUrl: '',
+      contentHtml: '<h2>教研实力介绍</h2><p>由重点中学一线数学骨干教师领衔编写。</p>',
+    );
+  }
+
+  @override
+  Future<PageResult<WrongQuestionItem>> getWrongPage({
+    String? realmCode,
+    int? chapterId,
+    int pageNum = 1,
+    int pageSize = 20,
+  }) async {
+    return PageResult<WrongQuestionItem>(
+      total: demoWrongItems.length,
+      pageNum: pageNum,
+      pageSize: pageSize,
+      records: demoWrongItems,
+    );
+  }
+
+  final List<WrongQuestionItem> demoWrongItems = const <WrongQuestionItem>[
+    WrongQuestionItem(
+      id: 501,
+      gradeCode: 'g7',
+      realmCode: 'lianqi',
+      realmName: '初一',
+      chapterName: '第1章 有理数',
+      gateName: '基础关',
+      questionFormat: 'SINGLE_CHOICE',
+      stem: r'计算 $(-2)^3 + 5$ 的结果是',
+      options: ['-3', '3', '-1', '13'],
+      answerIndex: 0,
+      analysis: '(-2)^3 = -8，-8 + 5 = -3。',
+      wrongCount: 2,
+      lastWrongAt: '2026-11-27T11:20:00',
+    ),
+  ];
 
   final List<int> startedGateIds = <int>[];
 
