@@ -513,6 +513,7 @@ class GglButton extends StatelessWidget {
           child: Text(
             label,
             maxLines: 1,
+            softWrap: false,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontSize: compact ? 12 : (size == WelkButtonSize.small ? 13 : 14),

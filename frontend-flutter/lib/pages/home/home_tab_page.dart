@@ -378,11 +378,11 @@ class _HomeTabPageState extends State<HomeTabPage> {
       return '本章共 ${ch.totalGates} 关已全部通关';
     }
     if (ch.passedCount > 0) {
-      return '进度：第 ${ch.passedCount + 1} / ${ch.totalGates} 关 · 趁热打铁继续闯关';
+      return '进度：第 ${ch.passedCount + 1}/${ch.totalGates} 关 · 继续攻克本章';
     }
     return ch.description.isNotEmpty
         ? ch.description
-        : '第 1 / ${ch.totalGates} 关 · 点击开启本章节闯关';
+        : '第 1/${ch.totalGates} 关 · 点击开启本章节闯关';
   }
 
   Future<void> _openGradeChapters(GradeItem grade) async {
@@ -572,75 +572,38 @@ class _HomeTabPageState extends State<HomeTabPage> {
       body: RefreshIndicator(
         onRefresh: _refreshPage,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
           children: [
             if (showSummarySkeleton) ...[
               const AspectRatio(
-                aspectRatio: 12 / 5,
-                child: GglSkeletonBox(width: double.infinity, height: 150),
+                aspectRatio: 16 / 6.2,
+                child: GglSkeletonBox(width: double.infinity, height: 130),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               const GglCardSkeleton(lines: 2),
-              const SizedBox(height: 14),
-              const GglCardSkeleton(lines: 5),
-              const SizedBox(height: 14),
+              const SizedBox(height: 10),
               const GglCardSkeleton(lines: 3),
+              const SizedBox(height: 10),
+              const GglCardSkeleton(lines: 4),
             ] else ...[
               // 1. 师资力量顶部轮播图
               if (user.banners.isNotEmpty) ...[
                 HomeBannerCarousel(banners: user.banners),
-                const SizedBox(height: 14),
+                const SizedBox(height: 10),
               ],
 
-              // 2. 问候与总进度摘要
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          greeting,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: ink,
-                            fontSize: 19,
-                            fontWeight: FontWeight.w900,
-                            fontFamilyFallback: AppTheme.cjkFontFallback,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          '全阶段已累计闯过 $totalPassed / $totalGates 关 · 点击顶部可切换年级',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: muted,
-                            fontSize: 12.2,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // 3. 学习公告条
+              // 2. 单行学习公告条（不占过多主空间）
               GglComicPanel(
                 color: colors.warning
                     .withValues(alpha: colors.isDark ? 0.2 : 0.24),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                shadowOffset: const Offset(2, 2),
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                shadowOffset: const Offset(1.5, 1.5),
                 onTap: () => unawaited(_showAnnouncementDialog(noticeText)),
                 child: Row(
                   children: [
-                    Icon(Icons.campaign_rounded, size: 17, color: ink),
-                    const SizedBox(width: 8),
+                    Icon(Icons.campaign_rounded, size: 16, color: ink),
+                    const SizedBox(width: 6),
                     const GglStatusTag(
                       label: '学习公告',
                       variant: WelkBadgeVariant.warning,
@@ -650,45 +613,22 @@ class _HomeTabPageState extends State<HomeTabPage> {
                       child: Text(
                         noticePreview,
                         maxLines: 1,
+                        softWrap: false,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: ink,
-                          fontSize: 12.8,
+                          fontSize: 12.5,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 4),
                     Icon(Icons.chevron_right_rounded, size: 16, color: ink),
                   ],
                 ),
               ),
+              const SizedBox(height: 10),
 
-              // 4. 当前年级闯关模块（替代原宫格选择）
-              const GglSectionLabel(
-                title: '数学闯关',
-                trailing: Text(
-                  '点击进入当前年级关卡',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                ),
-              ),
-              _buildCurrentGradeChallengeModule(
-                context: context,
-                colors: colors,
-                currentGrade: currentGrade,
-                currentRealm: currentRealm,
-                nextRealm: nextRealm,
-                gradePassedGates: gradePassedGates,
-                gradeTotalGates: gradeTotalGates,
-                gradePassedChapters: gradePassedChapters,
-                gradeTotalChapters: gradeTotalChapters,
-                gradePct: gradePct,
-                gradeAllCleared: gradeAllCleared,
-                activeChapter: activeChapter,
-              ),
-
-              // 5. AI 智能手写画板卡片
-              const SizedBox(height: 14),
+              // 3. AI 智能手写画板（置顶位于闯关模块上方）
               GglComicPanel(
                 color: Color.alphaBlend(
                   accent.withValues(
@@ -698,7 +638,7 @@ class _HomeTabPageState extends State<HomeTabPage> {
                   ),
                   surface,
                 ),
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.all(12),
                 onTap: () => _openSmartBoard(),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -706,17 +646,18 @@ class _HomeTabPageState extends State<HomeTabPage> {
                     Row(
                       children: [
                         Container(
-                          width: 38,
-                          height: 38,
+                          width: 34,
+                          height: 34,
                           decoration: AppTheme.insetBoxDecoration(
                             context,
                             color: accent,
                             borderColor:
                                 AppTheme.isForui(context) ? accent : null,
+                            radius: 9,
                           ),
                           child: Icon(
                             Icons.draw_rounded,
-                            size: 20,
+                            size: 18,
                             color: AppTheme.onAccentColor(context),
                           ),
                         ),
@@ -731,10 +672,11 @@ class _HomeTabPageState extends State<HomeTabPage> {
                                     child: Text(
                                       'AI 智能手写画板',
                                       maxLines: 1,
+                                      softWrap: false,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
                                         color: ink,
-                                        fontSize: 16,
+                                        fontSize: 15.5,
                                         fontWeight: FontWeight.w900,
                                       ),
                                     ),
@@ -748,12 +690,13 @@ class _HomeTabPageState extends State<HomeTabPage> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                '拍照识题入画板 · AI 思路与解题过程直接板书绘制',
+                                '拍照/手写识题 · AI 思路引导与板书解题',
                                 maxLines: 1,
+                                softWrap: false,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   color: muted,
-                                  fontSize: 12.2,
+                                  fontSize: 12,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -790,26 +733,49 @@ class _HomeTabPageState extends State<HomeTabPage> {
                   ],
                 ),
               ),
+              const SizedBox(height: 10),
 
-              // 6. 阶段升级测评提醒
+              // 4. 当前年级闯关模块（单行紧凑标题 + 关卡信息）
+              _buildCurrentGradeChallengeModule(
+                context: context,
+                colors: colors,
+                greeting: greeting,
+                totalPassed: totalPassed,
+                totalGates: totalGates,
+                currentGrade: currentGrade,
+                currentRealm: currentRealm,
+                nextRealm: nextRealm,
+                gradePassedGates: gradePassedGates,
+                gradeTotalGates: gradeTotalGates,
+                gradePassedChapters: gradePassedChapters,
+                gradeTotalChapters: gradeTotalChapters,
+                gradePct: gradePct,
+                gradeAllCleared: gradeAllCleared,
+                activeChapter: activeChapter,
+              ),
+
+              // 5. 阶段升级测评提醒
               if (currentRealm.examEligible) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 GglComicPanel(
                   color: colors.success
-                      .withValues(alpha: colors.isDark ? 0.22 : 0.35),
+                      .withValues(alpha: colors.isDark ? 0.22 : 0.32),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
-                    vertical: 10,
+                    vertical: 9,
                   ),
-                  shadowOffset: const Offset(2, 2),
+                  shadowOffset: const Offset(1.5, 1.5),
                   child: Row(
                     children: [
                       Expanded(
                         child: Text(
-                          '${currentRealm.realmName}阶段已达标，可参加阶段升级测评',
+                          '${currentRealm.realmName}已达标，可参加升级测评',
+                          maxLines: 1,
+                          softWrap: false,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: ink,
-                            fontSize: 13,
+                            fontSize: 12.8,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -817,6 +783,7 @@ class _HomeTabPageState extends State<HomeTabPage> {
                       const SizedBox(width: 8),
                       GglButton(
                         label: '去测评',
+                        compact: true,
                         variant: WelkButtonVariant.success,
                         onPressed: _startAdvanceExam,
                       ),
@@ -825,20 +792,23 @@ class _HomeTabPageState extends State<HomeTabPage> {
                 ),
               ],
 
-              // 7. 底部提示
-              const SizedBox(height: 10),
+              // 6. 底部紧凑提示
+              const SizedBox(height: 8),
               GestureDetector(
                 onTap: currentRealm.examEligible
                     ? () => unawaited(_startAdvanceExam())
                     : null,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Text(
                     currentRealm.examEligible
-                        ? '${currentRealm.realmName}阶段已满足升级条件，点击立即参加阶段升级测评'
-                        : '当前 ${currentGrade.gradeName} 再过 ${currentRealm.examRemainingGates > 0 ? currentRealm.examRemainingGates : 0} 关可解锁阶段升级测评',
+                        ? '${currentRealm.realmName}已满足升级条件，点击参加阶段测评'
+                        : '$greeting · 全学段已过 $totalPassed/$totalGates 关',
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: muted, fontSize: 12),
+                    style: TextStyle(color: muted, fontSize: 11.8),
                   ),
                 ),
               ),
@@ -852,6 +822,9 @@ class _HomeTabPageState extends State<HomeTabPage> {
   Widget _buildCurrentGradeChallengeModule({
     required BuildContext context,
     required WelkColors colors,
+    required String greeting,
+    required int totalPassed,
+    required int totalGates,
     required GradeItem currentGrade,
     required RealmItem currentRealm,
     required RealmItem? nextRealm,
@@ -871,16 +844,17 @@ class _HomeTabPageState extends State<HomeTabPage> {
 
     return GglComicPanel(
       color: surface,
+      padding: const EdgeInsets.all(12),
       onTap: () => unawaited(_openGradeChapters(currentGrade)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 模块标题行（标题为当前年级）
+          // 模块标题行（标题为当前年级，单行绝不换行）
           Row(
             children: [
               Container(
-                width: 42,
-                height: 42,
+                width: 36,
+                height: 36,
                 alignment: Alignment.center,
                 decoration: AppTheme.insetBoxDecoration(
                   context,
@@ -888,19 +862,19 @@ class _HomeTabPageState extends State<HomeTabPage> {
                   borderColor: AppTheme.isForui(context)
                       ? (gradeAllCleared ? colors.success : accent)
                       : null,
-                  radius: 12,
+                  radius: 10,
                 ),
                 child: Icon(
                   gradeAllCleared
                       ? Icons.emoji_events_rounded
                       : Icons.flag_rounded,
-                  size: 22,
+                  size: 19,
                   color: gradeAllCleared
                       ? colors.onFill(colors.success)
                       : AppTheme.onAccentColor(context),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -909,29 +883,34 @@ class _HomeTabPageState extends State<HomeTabPage> {
                       children: [
                         Text(
                           currentGrade.gradeName,
+                          maxLines: 1,
+                          softWrap: false,
                           style: TextStyle(
                             color: ink,
-                            fontSize: 21,
+                            fontSize: 18,
                             fontWeight: FontWeight.w900,
                             height: 1.15,
                             fontFamilyFallback: AppTheme.cjkFontFallback,
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 6),
                         GglStatusTag(
-                          label: gradeAllCleared ? '本年级已通关' : '闯关进行中',
+                          label: gradeAllCleared ? '已通关' : '数学闯关',
                           variant: gradeAllCleared
                               ? WelkBadgeVariant.success
                               : WelkBadgeVariant.defaultStyle,
                         ),
                       ],
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 2),
                     Text(
-                      '共 $gradeTotalChapters 章 $gradeTotalGates 关 · 已通关 $gradePassedGates 关',
+                      '$gradeTotalChapters 章 $gradeTotalGates 关 · 已过 $gradePassedGates 关',
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: muted,
-                        fontSize: 12.5,
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -943,18 +922,20 @@ class _HomeTabPageState extends State<HomeTabPage> {
                 children: [
                   Text(
                     '全部关卡',
+                    maxLines: 1,
+                    softWrap: false,
                     style: TextStyle(
                       color: accent,
-                      fontSize: 12.5,
+                      fontSize: 12,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  Icon(Icons.chevron_right_rounded, size: 18, color: accent),
+                  Icon(Icons.chevron_right_rounded, size: 17, color: accent),
                 ],
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
 
           // 年级总进度条
           Row(
@@ -962,67 +943,62 @@ class _HomeTabPageState extends State<HomeTabPage> {
               Expanded(
                 child: GglProgressBar(
                   percent: gradePct,
-                  height: 11,
+                  height: 9,
                   fillColor: gradeAllCleared ? colors.success : null,
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Text(
                 '$pctInt%',
+                maxLines: 1,
+                softWrap: false,
                 style: TextStyle(
                   color: ink,
-                  fontSize: 13.5,
+                  fontSize: 12.5,
                   fontWeight: FontWeight.w800,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
 
           // 关卡详情内容区
           if (_loadingGradeChapters && activeChapter == null)
-            const GglSkeletonBox(width: double.infinity, height: 76)
+            const GglSkeletonBox(width: double.infinity, height: 68)
           else if (gradeAllCleared) ...[
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
               decoration: AppTheme.insetBoxDecoration(
                 context,
                 color: colors.success.withValues(
                   alpha: colors.isDark ? 0.16 : 0.18,
                 ),
-                radius: 10,
+                radius: 9,
               ),
               child: Row(
                 children: [
-                  Icon(Icons.workspace_premium_rounded, color: ink, size: 24),
-                  const SizedBox(width: 10),
+                  Icon(Icons.workspace_premium_rounded, color: ink, size: 20),
+                  const SizedBox(width: 8),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '恭喜！${currentGrade.gradeName}全部 $gradeTotalGates 关已闯完',
-                          style: TextStyle(
-                            color: ink,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          nextRealm != null
-                              ? '准备开启 ${nextRealm.realmName} 新阶段，点击下方按钮确认晋级！'
-                              : '已完成全学段同步关卡，可随时进入章节复习巩固。',
-                          style: TextStyle(color: muted, fontSize: 12),
-                        ),
-                      ],
+                    child: Text(
+                      nextRealm != null
+                          ? '${currentGrade.gradeName}已全部通关，可晋级${nextRealm.realmName}！'
+                          : '${currentGrade.gradeName}已全部通关，随时可回刷巩固！',
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: ink,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-            const GglDivider(verticalPadding: 12),
+            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
@@ -1036,9 +1012,8 @@ class _HomeTabPageState extends State<HomeTabPage> {
                 if (nextRealm != null) ...[
                   const SizedBox(width: 10),
                   Expanded(
-                    flex: 2,
                     child: GglBlockButton(
-                      label: '晋级下一年级（${nextRealm.realmName}）',
+                      label: '晋级${nextRealm.realmName}',
                       icon: Icons.rocket_launch_rounded,
                       variant: WelkButtonVariant.success,
                       size: WelkButtonSize.small,
@@ -1053,11 +1028,11 @@ class _HomeTabPageState extends State<HomeTabPage> {
           ] else ...[
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(10),
               decoration: AppTheme.insetBoxDecoration(
                 context,
                 color: AppTheme.mutedSurfaceColor(context),
-                radius: 10,
+                radius: 9,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1066,53 +1041,54 @@ class _HomeTabPageState extends State<HomeTabPage> {
                     children: [
                       GglStatusTag(
                         label: activeChapter != null
-                            ? '第 $_activeChapterSeq 章'
+                            ? '第$_activeChapterSeq章'
                             : '待开启',
                         variant: WelkBadgeVariant.info,
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                       Expanded(
                         child: Text(
                           activeChapter?.name ?? '${currentGrade.gradeName}章节闯关',
                           maxLines: 1,
+                          softWrap: false,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: ink,
-                            fontSize: 15,
+                            fontSize: 14,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
                       ),
+                      const SizedBox(width: 6),
                       if (activeChapter != null)
                         Text(
-                          '${activeChapter.passedCount}/${activeChapter.totalGates} 关',
+                          '${activeChapter.passedCount}/${activeChapter.totalGates}关',
+                          maxLines: 1,
+                          softWrap: false,
                           style: TextStyle(
                             color: muted,
-                            fontSize: 12,
+                            fontSize: 11.5,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
                     ],
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 5),
                   Text(
                     activeChapter != null
                         ? _activeGateSubtitle(activeChapter)
-                        : '已通 $gradePassedChapters/$gradeTotalChapters 章 · 点击进入查看全部关卡',
-                    maxLines: 2,
+                        : '已通 $gradePassedChapters/$gradeTotalChapters 章 · 点击进入闯关',
+                    maxLines: 1,
+                    softWrap: false,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: muted,
-                      fontSize: 12.5,
-                      height: 1.4,
-                    ),
+                    style: TextStyle(color: muted, fontSize: 12),
                   ),
                   if (activeChapter != null && activeChapter.totalGates > 0) ...[
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     Row(
                       children: [
                         for (var i = 0; i < activeChapter.totalGates; i++) ...[
-                          if (i > 0) const SizedBox(width: 6),
+                          if (i > 0) const SizedBox(width: 5),
                           Expanded(
                             child: _GateMiniChip(
                               gateNo: i + 1,
@@ -1127,7 +1103,7 @@ class _HomeTabPageState extends State<HomeTabPage> {
                 ],
               ),
             ),
-            const GglDivider(verticalPadding: 12),
+            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
@@ -1141,7 +1117,6 @@ class _HomeTabPageState extends State<HomeTabPage> {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  flex: 2,
                   child: GglBlockButton(
                     label: gradePassedGates > 0 ? '继续闯关' : '开始闯关',
                     icon: Icons.play_arrow_rounded,
@@ -1189,39 +1164,43 @@ class _GateMiniChip extends StatelessWidget {
             : muted;
 
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       decoration: AppTheme.insetBoxDecoration(
         context,
         color: bg,
-        borderColor: AppTheme.isForui(context) && (passed || active)
-            ? bg
-            : null,
+        borderColor:
+            AppTheme.isForui(context) && (passed || active) ? bg : null,
         radius: 7,
         width: AppTheme.isForui(context) ? 1 : 1.3,
       ),
       alignment: Alignment.center,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            passed
-                ? Icons.check_rounded
-                : active
-                    ? Icons.bolt_rounded
-                    : Icons.lock_open_rounded,
-            size: 12,
-            color: fg,
-          ),
-          const SizedBox(width: 2),
-          Text(
-            '第$gateNo关',
-            style: TextStyle(
-              color: passed || active ? fg : ink,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              passed
+                  ? Icons.check_rounded
+                  : active
+                      ? Icons.bolt_rounded
+                      : Icons.lock_open_rounded,
+              size: 11,
+              color: fg,
             ),
-          ),
-        ],
+            const SizedBox(width: 2),
+            Text(
+              '第$gateNo关',
+              maxLines: 1,
+              softWrap: false,
+              style: TextStyle(
+                color: passed || active ? fg : ink,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -1320,6 +1320,8 @@ class WrongQuestionItem {
     required this.chapterName,
     required this.gateName,
     this.questionFormat,
+    this.questionTypeLabel = '',
+    bool? needsAnswerSpace,
     required this.stem,
     this.diagram,
     this.imageUrl,
@@ -1330,7 +1332,8 @@ class WrongQuestionItem {
     required this.analysis,
     required this.wrongCount,
     required this.lastWrongAt,
-  });
+  }) : needsAnswerSpace = needsAnswerSpace ??
+            (questionFormat == 'ESSAY' || questionFormat == 'essay');
 
   final int id;
   final String gradeCode;
@@ -1340,6 +1343,8 @@ class WrongQuestionItem {
   final String chapterName;
   final String gateName;
   final String? questionFormat;
+  final String questionTypeLabel;
+  final bool needsAnswerSpace;
   final String stem;
   final BoardDiagramSpec? diagram;
   final String? imageUrl;
@@ -1350,6 +1355,14 @@ class WrongQuestionItem {
   final String analysis;
   final int wrongCount;
   final String lastWrongAt;
+
+  bool get isEssay =>
+      questionFormat?.toUpperCase() == 'ESSAY' || needsAnswerSpace;
+
+  String get displayTypeLabel =>
+      questionTypeLabel.trim().isNotEmpty
+          ? questionTypeLabel.trim()
+          : (isEssay ? '解答题' : '选择题');
 
   String formattedCorrectAnswer() {
     if (questionFormat == 'ESSAY') {
@@ -1379,6 +1392,10 @@ class WrongQuestionItem {
       chapterName: _asString(json['chapterName']),
       gateName: _asString(json['gateName']),
       questionFormat: _asNullableString(json['questionFormat']),
+      questionTypeLabel: _asString(json['questionTypeLabel']),
+      needsAnswerSpace: json['needsAnswerSpace'] is bool
+          ? json['needsAnswerSpace'] as bool
+          : null,
       stem: _asString(json['stem']),
       diagram: json['diagram'] is Map<String, dynamic>
           ? BoardDiagramSpec.fromJson(json['diagram'] as Map<String, dynamic>)

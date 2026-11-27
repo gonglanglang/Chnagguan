@@ -847,6 +847,7 @@ class GglBlockButton extends StatelessWidget {
             child: Text(
               label,
               maxLines: 1,
+              softWrap: false,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
             ),

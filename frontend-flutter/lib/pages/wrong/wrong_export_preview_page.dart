@@ -66,7 +66,9 @@ class A4PageModel {
   final List<A4LayoutBlock> blocks;
 }
 
-/// 纯函数 A4 排版分页引擎：按标准 A4（210×297mm）版心高度自动分栏与分页，确保单题不被跨页截断。
+/// 纯函数 A4 排版分页引擎：
+/// - 严格按后端题型标记（选择题不预留作答区，仅解答题预留作答空间）估算版心高度；
+/// - 自动分组（一、选择题 / 二、解答题），单题绝不跨页截断。
 List<A4PageModel> buildWrongA4Pages({
   required List<WrongQuestionItem> items,
   required String answerMode,
@@ -84,8 +86,8 @@ List<A4PageModel> buildWrongA4Pages({
     ];
   }
 
-  final choices = items.where((q) => q.questionFormat != 'ESSAY').toList();
-  final essays = items.where((q) => q.questionFormat == 'ESSAY').toList();
+  final choices = items.where((q) => !q.needsAnswerSpace).toList();
+  final essays = items.where((q) => q.needsAnswerSpace).toList();
 
   final orderedBlocks = <({A4LayoutBlock block, double weight})>[];
   var seq = 1;
@@ -93,25 +95,26 @@ List<A4PageModel> buildWrongA4Pages({
 
   double estimateQuestionWeight(WrongQuestionItem item, bool isEssay) {
     final stemLines = (item.stem.length / 28).ceil().clamp(1, 6);
-    var weight = 9.0 + stemLines * 3.6;
+    var weight = 8.5 + stemLines * 3.5;
     if (!isEssay && item.options.isNotEmpty) {
       final shortOptions = item.options.every((o) => o.length <= 16);
-      weight += shortOptions ? 8.5 : item.options.length * 4.0;
+      weight += shortOptions ? 8.0 : item.options.length * 3.8;
     }
     final hasFig = (item.diagram != null && item.diagram!.primitives.isNotEmpty) ||
         (item.imageUrl != null && item.imageUrl!.trim().isNotEmpty);
     if (includeDiagrams && hasFig) {
       weight += 22.0;
     }
-    if (includeWorkspace) {
-      weight += isEssay ? 21.0 : 8.5;
+    // 仅解答题预留回答空间，选择题不预留作答/演算/反思区
+    if (includeWorkspace && item.needsAnswerSpace) {
+      weight += 22.0;
     }
     if (answerMode == 'INLINE') {
       final ansLen = item.formattedCorrectAnswer().length + item.analysis.length;
       final ansLines = (ansLen / 30).ceil().clamp(1, 6);
       weight += 7.0 + ansLines * 3.2;
     }
-    return weight.clamp(12.0, 74.0);
+    return weight.clamp(11.0, 74.0);
   }
 
   if (choices.isNotEmpty) {
@@ -146,7 +149,7 @@ List<A4PageModel> buildWrongA4Pages({
   }
 
   const double pageCapacity = 100.0;
-  const double coverHeaderCost = 20.0;
+  const double coverHeaderCost = 18.0;
   final pages = <A4PageModel>[];
 
   var currentBlocks = <A4LayoutBlock>[];
@@ -169,7 +172,6 @@ List<A4PageModel> buildWrongA4Pages({
 
   for (var i = 0; i < orderedBlocks.length; i++) {
     final entry = orderedBlocks[i];
-    // 防止章节标题落单在页尾
     var needed = entry.weight;
     if (entry.block is A4SectionHeaderBlock && i + 1 < orderedBlocks.length) {
       needed += orderedBlocks[i + 1].weight;
@@ -184,10 +186,9 @@ List<A4PageModel> buildWrongA4Pages({
     flushPage(answerPage: false);
   }
 
-  // 文末附答案：新起独立 A4 答案页
   if (answerMode == 'END' && numberedItems.isNotEmpty) {
     currentBlocks = <A4LayoutBlock>[
-      const A4SectionHeaderBlock('参考答案与解析', '独立附页 · 方便撕页自查'),
+      const A4SectionHeaderBlock('参考答案与解题思路', '独立附页 · 方便打印自查'),
     ];
     used = 12.0;
     for (final pair in numberedItems) {
@@ -226,14 +227,16 @@ class WrongExportPreviewPage extends StatefulWidget {
 }
 
 class _WrongExportPreviewPageState extends State<WrongExportPreviewPage> {
-  static const List<GglTabOption> _answerModeTabs = <GglTabOption>[
-    GglTabOption(value: 'END', label: '文末附答案'),
-    GglTabOption(value: 'INLINE', label: '逐题解析'),
-    GglTabOption(value: 'NONE', label: '纯题无答案'),
+  static const double _configHeaderHeight = 46.0;
+  static const List<({String value, String label})> _answerModes = [
+    (value: 'END', label: '文末答案'),
+    (value: 'INLINE', label: '逐题解析'),
+    (value: 'NONE', label: '无答案'),
   ];
 
   bool _loading = true;
   bool _exporting = false;
+  bool _configExpanded = false;
   List<WrongQuestionItem> _allItems = const [];
   final Set<int> _selectedIds = <int>{};
 
@@ -304,6 +307,23 @@ class _WrongExportPreviewPageState extends State<WrongExportPreviewPage> {
   List<WrongQuestionItem> get _selectedItems =>
       _allItems.where((item) => _selectedIds.contains(item.id)).toList();
 
+  bool get _isAllSelected =>
+      _allItems.isNotEmpty && _selectedIds.length == _allItems.length;
+
+  void _toggleSelectAll() {
+    setState(() {
+      if (_isAllSelected) {
+        _selectedIds.clear();
+      } else {
+        _selectedIds
+          ..clear()
+          ..addAll(_allItems.map((e) => e.id));
+      }
+      _currentPageIndex = 0;
+      _invalidateDocxCache();
+    });
+  }
+
   String _buildSignature() {
     final ids = _selectedItems.map((e) => e.id).join(',');
     return '$ids|$_title|$_answerMode|$_includeDiagrams|$_includeWorkspace';
@@ -312,7 +332,7 @@ class _WrongExportPreviewPageState extends State<WrongExportPreviewPage> {
   Future<({Uint8List bytes, String fileName})?> _ensureDocxGenerated() async {
     final chosen = _selectedItems;
     if (chosen.isEmpty) {
-      GglFeedback.warning(context, '请至少勾选 1 道错题再导出');
+      GglFeedback.warning(context, '请先勾选至少 1 道错题再生成试卷');
       return null;
     }
     final sig = _buildSignature();
@@ -397,10 +417,11 @@ class _WrongExportPreviewPageState extends State<WrongExportPreviewPage> {
   }
 
   Future<void> _openQuestionSelector() async {
+    if (_configExpanded) setState(() => _configExpanded = false);
     final working = Set<int>.from(_selectedIds);
     final applied = await showGglBottomSheet<bool>(
       context: context,
-      title: '勾选导出错题（已选 ${working.length}/${_allItems.length}）',
+      title: '挑选导出错题',
       builder: (sheetCtx) {
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
@@ -414,8 +435,8 @@ class _WrongExportPreviewPageState extends State<WrongExportPreviewPage> {
                 Row(
                   children: [
                     GglButton(
-                      label: allSelected ? '全部取消' : '全选全部',
-                      variant: WelkButtonVariant.secondary,
+                      label: allSelected ? '取消全选' : '全选',
+                      variant: WelkButtonVariant.primary,
                       compact: true,
                       onPressed: () {
                         setSheetState(() {
@@ -431,8 +452,8 @@ class _WrongExportPreviewPageState extends State<WrongExportPreviewPage> {
                     ),
                     const SizedBox(width: 8),
                     GglButton(
-                      label: '仅选高频错题',
-                      variant: WelkButtonVariant.info,
+                      label: '仅选高频',
+                      variant: WelkButtonVariant.secondary,
                       compact: true,
                       onPressed: () {
                         setSheetState(() {
@@ -448,7 +469,9 @@ class _WrongExportPreviewPageState extends State<WrongExportPreviewPage> {
                     ),
                     const Spacer(),
                     Text(
-                      '已选 ${working.length} 题',
+                      '已选 ${working.length}/${_allItems.length} 题',
+                      maxLines: 1,
+                      softWrap: false,
                       style: TextStyle(
                         color: muted,
                         fontSize: 12.5,
@@ -468,7 +491,7 @@ class _WrongExportPreviewPageState extends State<WrongExportPreviewPage> {
                         child: GglComicPanel(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10,
-                            vertical: 9,
+                            vertical: 8,
                           ),
                           shadowOffset: const Offset(1.5, 1.5),
                           onTap: () {
@@ -502,10 +525,19 @@ class _WrongExportPreviewPageState extends State<WrongExportPreviewPage> {
                                   children: [
                                     Row(
                                       children: [
+                                        GglStatusTag(
+                                          label: q.displayTypeLabel,
+                                          variant: q.isEssay
+                                              ? WelkBadgeVariant.info
+                                              : WelkBadgeVariant.defaultStyle,
+                                          neutral: !q.isEssay,
+                                        ),
+                                        const SizedBox(width: 6),
                                         Expanded(
                                           child: Text(
                                             '${i + 1}. ${q.realmName} · ${q.chapterName}',
                                             maxLines: 1,
+                                            softWrap: false,
                                             overflow: TextOverflow.ellipsis,
                                             style: TextStyle(
                                               color: muted,
@@ -514,6 +546,7 @@ class _WrongExportPreviewPageState extends State<WrongExportPreviewPage> {
                                             ),
                                           ),
                                         ),
+                                        const SizedBox(width: 4),
                                         GglStatusTag(
                                           label: '错${q.wrongCount}次',
                                           variant: q.wrongCount >= 2
@@ -545,7 +578,7 @@ class _WrongExportPreviewPageState extends State<WrongExportPreviewPage> {
                 ],
                 const SizedBox(height: 10),
                 GglBlockButton(
-                  label: '应用勾选（${working.length} 题）',
+                  label: '确定（已选 ${working.length} 题）',
                   onPressed: () => Navigator.of(sheetCtx).pop(true),
                 ),
               ],
@@ -564,6 +597,221 @@ class _WrongExportPreviewPageState extends State<WrongExportPreviewPage> {
         _invalidateDocxCache();
       });
     }
+  }
+
+  Widget _buildCollapsedConfigBar(BuildContext context) {
+    final ink = AppTheme.inkColor(context);
+    final accent = AppTheme.accentColor(context);
+    final displayTitle =
+        _title.trim().isEmpty ? '过关啦数学错题巩固卷' : _title.trim();
+
+    return Container(
+      height: _configHeaderHeight,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: AppTheme.barDecoration(context, bottomBorder: true),
+      child: Row(
+        children: [
+          Icon(Icons.description_outlined, size: 17, color: accent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setState(() => _configExpanded = !_configExpanded),
+              child: Text(
+                displayTitle,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: ink,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  fontFamilyFallback: AppTheme.cjkFontFallback,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Semantics(
+            button: true,
+            label: _configExpanded ? '收起打印配置' : '展开打印配置',
+            child: InkWell(
+              onTap: () => setState(() => _configExpanded = !_configExpanded),
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: AppTheme.insetBoxDecoration(
+                  context,
+                  color: _configExpanded
+                      ? accent.withValues(alpha: 0.16)
+                      : AppTheme.mutedSurfaceColor(context),
+                  radius: 8,
+                  width: 1,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.tune_rounded,
+                      size: 14,
+                      color: _configExpanded ? accent : ink,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '打印配置',
+                      maxLines: 1,
+                      softWrap: false,
+                      style: TextStyle(
+                        color: _configExpanded ? accent : ink,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Icon(
+                      _configExpanded
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      size: 16,
+                      color: _configExpanded ? accent : ink,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFloatingConfigOverlay(BuildContext context) {
+    final ink = AppTheme.inkColor(context);
+    final muted = AppTheme.mutedText(context);
+    final surface = AppTheme.surfaceColor(context);
+
+    return Positioned.fill(
+      top: _configHeaderHeight,
+      child: Stack(
+        children: [
+          // 点击半透明遮罩即刻收起（不占用底层文档流）
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _configExpanded = false),
+            child: Container(
+              color: Colors.black.withValues(alpha: 0.28),
+            ),
+          ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Material(
+              color: Colors.transparent,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                child: GglComicPanel(
+                  color: surface,
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      GglInput(
+                        label: '试卷标题',
+                        value: _title,
+                        placeholder: '请输入导出 Word 试卷标题',
+                        onChanged: (v) {
+                          setState(() {
+                            _title = v;
+                            _invalidateDocxCache();
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        '答案与解析排版',
+                        maxLines: 1,
+                        softWrap: false,
+                        style: TextStyle(
+                          color: ink,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          for (var i = 0; i < _answerModes.length; i++) ...[
+                            if (i > 0) const SizedBox(width: 8),
+                            Expanded(
+                              child: GglPillChip(
+                                label: _answerModes[i].label,
+                                selected: _answerMode == _answerModes[i].value,
+                                onTap: () {
+                                  setState(() {
+                                    _answerMode = _answerModes[i].value;
+                                    _currentPageIndex = 0;
+                                    _invalidateDocxCache();
+                                  });
+                                },
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: GglSwitch(
+                              value: _includeDiagrams,
+                              label: '包含配图',
+                              onChanged: (v) {
+                                setState(() {
+                                  _includeDiagrams = v;
+                                  _currentPageIndex = 0;
+                                  _invalidateDocxCache();
+                                });
+                              },
+                            ),
+                          ),
+                          Expanded(
+                            child: GglSwitch(
+                              value: _includeWorkspace,
+                              label: '解答题作答区',
+                              onChanged: (v) {
+                                setState(() {
+                                  _includeWorkspace = v;
+                                  _currentPageIndex = 0;
+                                  _invalidateDocxCache();
+                                });
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '选择题自动保持清爽试卷排版；仅解答题按开关预留「解：」手写空间。',
+                        style: TextStyle(color: muted, fontSize: 11.5),
+                      ),
+                      const SizedBox(height: 10),
+                      GglBlockButton(
+                        label: '收起配置',
+                        size: WelkButtonSize.small,
+                        variant: WelkButtonVariant.secondary,
+                        onPressed: () =>
+                            setState(() => _configExpanded = false),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -590,297 +838,251 @@ class _WrongExportPreviewPageState extends State<WrongExportPreviewPage> {
 
     return Scaffold(
       backgroundColor: AppTheme.pageBackground(context),
-      appBar: GglAppBar(
-        title: 'A4 错题卷预览与导出',
+      appBar: const GglAppBar(
+        title: 'A4 错题卷导出',
         showBack: true,
-        actions: [
-          if (_allItems.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: GglButton(
-                label: '选题(${selectedItems.length})',
-                variant: WelkButtonVariant.secondary,
-                compact: true,
-                onPressed: () => unawaited(_openQuestionSelector()),
-              ),
-            ),
-        ],
       ),
-      body: _loading && _allItems.isEmpty
-          ? ListView(
-              padding: const EdgeInsets.all(16),
-              children: const [
-                GglCardSkeleton(lines: 3),
-                SizedBox(height: 14),
-                AspectRatio(
-                  aspectRatio: 210 / 297,
-                  child: GglSkeletonBox(width: double.infinity, height: 420),
-                ),
-              ],
-            )
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-              children: [
-                // 排版参数配置卡片
-                GglComicPanel(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: Stack(
+        children: [
+          Column(
+            children: [
+              // 顶部默认收起的打印配置栏（仅展示试卷标题 + 展开图标）
+              _buildCollapsedConfigBar(context),
+
+              // 紧凑单行选题与全选工具条
+              if (_allItems.isNotEmpty)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                  decoration:
+                      AppTheme.barDecoration(context, bottomBorder: true),
+                  child: Row(
                     children: [
-                      GglInput(
-                        label: '试卷标题',
-                        value: _title,
-                        placeholder: '请输入导出 Word 试卷标题',
-                        onChanged: (v) {
-                          setState(() {
-                            _title = v;
-                            _invalidateDocxCache();
-                          });
-                        },
+                      GglCheckbox(
+                        value: _isAllSelected,
+                        label: '全选',
+                        onChanged: (_) => _toggleSelectAll(),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(width: 8),
                       Text(
-                        '答案与解析排版',
+                        '已选 ${selectedItems.length}/${_allItems.length} 题',
+                        maxLines: 1,
+                        softWrap: false,
                         style: TextStyle(
-                          color: ink,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
+                          color: muted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      GglTabs(
-                        semanticLabel: '答案排版模式',
-                        items: _answerModeTabs,
-                        value: _answerMode,
-                        scrollable: false,
-                        onChanged: (v) {
-                          setState(() {
-                            _answerMode = v;
-                            _currentPageIndex = 0;
-                            _invalidateDocxCache();
-                          });
-                        },
-                        panelChild: Wrap(
-                          spacing: 18,
-                          runSpacing: 8,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            GglSwitch(
-                              value: _includeDiagrams,
-                              label: '包含配图',
-                              onChanged: (v) {
-                                setState(() {
-                                  _includeDiagrams = v;
-                                  _currentPageIndex = 0;
-                                  _invalidateDocxCache();
-                                });
-                              },
+                      const Spacer(),
+                      GglButton(
+                        label: '挑选题目',
+                        icon: Icons.checklist_rounded,
+                        variant: WelkButtonVariant.secondary,
+                        compact: true,
+                        onPressed: () => unawaited(_openQuestionSelector()),
+                      ),
+                    ],
+                  ),
+                ),
+
+              // 主视区：最大化 A4 纸张预览
+              Expanded(
+                child: _loading && _allItems.isEmpty
+                    ? ListView(
+                        padding: const EdgeInsets.all(14),
+                        children: const [
+                          AspectRatio(
+                            aspectRatio: 210 / 297,
+                            child:
+                                GglSkeletonBox(width: double.infinity, height: 420),
+                          ),
+                        ],
+                      )
+                    : ListView(
+                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
+                        children: [
+                          if (selectedItems.isEmpty)
+                            GglComicPanel(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 38,
+                                horizontal: 20,
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    Icons.checklist_rtl_rounded,
+                                    size: 38,
+                                    color: muted,
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    '请先勾选需要生成试卷的错题',
+                                    style: TextStyle(
+                                      color: ink,
+                                      fontSize: 14.5,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      GglButton(
+                                        label: '一键全选',
+                                        variant: WelkButtonVariant.primary,
+                                        onPressed: _allItems.isEmpty
+                                            ? null
+                                            : _toggleSelectAll,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      GglButton(
+                                        label: '挑选题目',
+                                        variant: WelkButtonVariant.secondary,
+                                        onPressed: () =>
+                                            unawaited(_openQuestionSelector()),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            )
+                          else ...[
+                            Center(
+                              child: ConstrainedBox(
+                                constraints:
+                                    const BoxConstraints(maxWidth: 520),
+                                child: AspectRatio(
+                                  aspectRatio: 210 / 297,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(
+                                        color: const Color(0xFFD4D4D8),
+                                        width: 1,
+                                      ),
+                                      boxShadow: const [
+                                        BoxShadow(
+                                          color: Color(0x22000000),
+                                          blurRadius: 14,
+                                          offset: Offset(0, 5),
+                                        ),
+                                      ],
+                                    ),
+                                    clipBehavior: Clip.antiAlias,
+                                    child: InteractiveViewer(
+                                      minScale: 0.95,
+                                      maxScale: 2.8,
+                                      child: _A4PaperSheetView(
+                                        page: activePage,
+                                        totalPages: pages.length,
+                                        totalQuestions: selectedItems.length,
+                                        title: _title.trim().isEmpty
+                                            ? '过关啦数学错题巩固卷'
+                                            : _title.trim(),
+                                        studentName: studentName,
+                                        gradeName: user.currentGrade.gradeName,
+                                        dateStr: dateStr,
+                                        answerMode: _answerMode,
+                                        includeDiagrams: _includeDiagrams,
+                                        includeWorkspace: _includeWorkspace,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
                             ),
-                            GglSwitch(
-                              value: _includeWorkspace,
-                              label: '预留答题区',
-                              onChanged: (v) {
-                                setState(() {
-                                  _includeWorkspace = v;
-                                  _currentPageIndex = 0;
-                                  _invalidateDocxCache();
-                                });
-                              },
+                            const SizedBox(height: 10),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                GglButton(
+                                  label: '上一页',
+                                  icon: Icons.chevron_left_rounded,
+                                  variant: WelkButtonVariant.secondary,
+                                  compact: true,
+                                  onPressed: safePageIdx > 0
+                                      ? () => setState(
+                                            () =>
+                                                _currentPageIndex = safePageIdx - 1,
+                                          )
+                                      : null,
+                                ),
+                                const SizedBox(width: 14),
+                                Text(
+                                  '第 ${safePageIdx + 1} / ${pages.length} 页',
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  style: TextStyle(
+                                    color: ink,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+                                GglButton(
+                                  label: '下一页',
+                                  icon: Icons.chevron_right_rounded,
+                                  variant: WelkButtonVariant.secondary,
+                                  compact: true,
+                                  onPressed: safePageIdx < pages.length - 1
+                                      ? () => setState(
+                                            () =>
+                                                _currentPageIndex = safePageIdx + 1,
+                                          )
+                                      : null,
+                                ),
+                              ],
                             ),
                           ],
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
+              ),
+            ],
+          ),
 
-                // A4 分页工具条
-                Row(
-                  children: [
-                    Icon(Icons.description_outlined, size: 17, color: ink),
-                    const SizedBox(width: 6),
-                    Text(
-                      'A4 打印效果预览（210×297mm）',
-                      style: TextStyle(
-                        color: ink,
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const Spacer(),
-                    GglStatusTag(
-                      label: '共 ${pages.length} 页 · ${selectedItems.length} 题',
-                      variant: WelkBadgeVariant.info,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-
-                // 标准 A4 纸模板实时预览容器（支持双指缩放）
-                if (selectedItems.isEmpty)
-                  GglComicPanel(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 38,
-                      horizontal: 20,
-                    ),
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.checklist_rtl_rounded,
-                          size: 38,
-                          color: muted,
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          '尚未勾选任何错题',
-                          style: TextStyle(
-                            color: ink,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        GglButton(
-                          label: '去勾选错题',
-                          onPressed: () => unawaited(_openQuestionSelector()),
-                        ),
-                      ],
-                    ),
-                  )
-                else ...[
-                  Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 520),
-                      child: AspectRatio(
-                        aspectRatio: 210 / 297,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              color: const Color(0xFFD4D4D8),
-                              width: 1,
-                            ),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Color(0x22000000),
-                                blurRadius: 16,
-                                offset: Offset(0, 6),
-                              ),
-                            ],
-                          ),
-                          clipBehavior: Clip.antiAlias,
-                          child: InteractiveViewer(
-                            minScale: 0.95,
-                            maxScale: 2.8,
-                            child: _A4PaperSheetView(
-                              page: activePage,
-                              totalPages: pages.length,
-                              totalQuestions: selectedItems.length,
-                              title: _title.trim().isEmpty
-                                  ? '过关啦数学错题巩固卷'
-                                  : _title.trim(),
-                              studentName: studentName,
-                              gradeName: user.currentGrade.gradeName,
-                              dateStr: dateStr,
-                              answerMode: _answerMode,
-                              includeDiagrams: _includeDiagrams,
-                              includeWorkspace: _includeWorkspace,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      GglButton(
-                        label: '上一页',
-                        icon: Icons.chevron_left_rounded,
-                        variant: WelkButtonVariant.secondary,
-                        compact: true,
-                        onPressed: safePageIdx > 0
-                            ? () =>
-                                setState(() => _currentPageIndex = safePageIdx - 1)
-                            : null,
-                      ),
-                      const SizedBox(width: 14),
-                      Text(
-                        '第 ${safePageIdx + 1} / ${pages.length} 页',
-                        style: TextStyle(
-                          color: ink,
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      GglButton(
-                        label: '下一页',
-                        icon: Icons.chevron_right_rounded,
-                        variant: WelkButtonVariant.secondary,
-                        compact: true,
-                        onPressed: safePageIdx < pages.length - 1
-                            ? () =>
-                                setState(() => _currentPageIndex = safePageIdx + 1)
-                            : null,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '提示：双指可放大查看 A4 试卷排版细节；导出的 Word (.docx) 将按 A4 标准纸型自动排版并嵌入高清矢量图。',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: muted, fontSize: 11.5),
-                  ),
-                ],
-              ],
-            ),
+          // 悬浮打印配置浮层（不占文档流）
+          if (_configExpanded) _buildFloatingConfigOverlay(context),
+        ],
+      ),
       bottomNavigationBar: SafeArea(
         child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
           decoration: AppTheme.barDecoration(context, topBorder: true),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+          child: Row(
             children: [
-              GglBlockButton(
-                label: _exporting ? '正在生成 A4 Word 文件...' : '生成 Word 并分享至微信',
-                icon: Icons.chat_rounded,
-                variant: WelkButtonVariant.success,
-                size: WelkButtonSize.large,
-                loading: _exporting,
-                onPressed:
-                    selectedItems.isEmpty || _exporting ? null : _handleShareWeChat,
+              GglButton(
+                label: '打开',
+                icon: Icons.open_in_new_rounded,
+                variant: WelkButtonVariant.secondary,
+                compact: true,
+                onPressed: selectedItems.isEmpty || _exporting
+                    ? null
+                    : _handleOpenLocal,
               ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: GglBlockButton(
-                      label: '系统分享',
-                      icon: Icons.ios_share_rounded,
-                      variant: WelkButtonVariant.secondary,
-                      size: WelkButtonSize.small,
-                      onPressed: selectedItems.isEmpty || _exporting
-                          ? null
-                          : _handleShareSystem,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: GglBlockButton(
-                      label: '打开 Word 预览',
-                      icon: Icons.open_in_new_rounded,
-                      variant: WelkButtonVariant.info,
-                      size: WelkButtonSize.small,
-                      onPressed: selectedItems.isEmpty || _exporting
-                          ? null
-                          : _handleOpenLocal,
-                    ),
-                  ),
-                ],
+              const SizedBox(width: 8),
+              GglButton(
+                label: '分享',
+                icon: Icons.ios_share_rounded,
+                variant: WelkButtonVariant.secondary,
+                compact: true,
+                onPressed: selectedItems.isEmpty || _exporting
+                    ? null
+                    : _handleShareSystem,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: GglBlockButton(
+                  label: _exporting ? '正在生成...' : '导出 Word 发微信',
+                  icon: Icons.chat_rounded,
+                  variant: WelkButtonVariant.success,
+                  size: WelkButtonSize.small,
+                  loading: _exporting,
+                  onPressed: selectedItems.isEmpty || _exporting
+                      ? null
+                      : _handleShareWeChat,
+                ),
               ),
             ],
           ),
@@ -929,7 +1131,6 @@ class _A4PaperSheetView extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 页眉
           Row(
             children: [
               Expanded(
@@ -946,7 +1147,7 @@ class _A4PaperSheetView extends StatelessWidget {
                 ),
               ),
               Text(
-                page.isAnswerPage ? '参考答案附页' : 'A4 标准打印模板',
+                page.isAnswerPage ? '参考答案附页' : '标准 A4',
                 style: const TextStyle(
                   color: _paperMuted,
                   fontSize: 8.5,
@@ -956,8 +1157,6 @@ class _A4PaperSheetView extends StatelessWidget {
             ],
           ),
           const Divider(height: 8, thickness: 0.7, color: _paperRule),
-
-          // 正文区
           Expanded(
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
@@ -988,38 +1187,33 @@ class _A4PaperSheetView extends StatelessWidget {
                         border: Border.all(color: _paperRule, width: 0.7),
                         borderRadius: BorderRadius.circular(3),
                       ),
-                      child: Wrap(
-                        alignment: WrapAlignment.spaceBetween,
-                        spacing: 10,
-                        runSpacing: 3,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
                             '姓名：$studentName',
                             style: const TextStyle(
                               color: _paperInk,
-                              fontSize: 9,
+                              fontSize: 8.6,
                             ),
                           ),
                           Text(
                             '年级：$gradeName',
                             style: const TextStyle(
                               color: _paperInk,
-                              fontSize: 9,
-                            ),
-                          ),
-                          Text(
-                            '题量：$totalQuestions 题',
-                            style: const TextStyle(
-                              color: _paperInk,
-                              fontSize: 9,
+                              fontSize: 8.6,
                             ),
                           ),
                           Text(
                             '日期：$dateStr',
                             style: const TextStyle(
                               color: _paperInk,
-                              fontSize: 9,
+                              fontSize: 8.6,
                             ),
+                          ),
+                          const Text(
+                            '得分：____',
+                            style: TextStyle(color: _paperInk, fontSize: 8.6),
                           ),
                         ],
                       ),
@@ -1031,15 +1225,13 @@ class _A4PaperSheetView extends StatelessWidget {
               ),
             ),
           ),
-
-          // 页脚
           const Divider(height: 8, thickness: 0.6, color: _paperRule),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                '过关啦数学学习系统自动排版',
-                style: TextStyle(color: _paperMuted, fontSize: 8),
+              Text(
+                '共 $totalQuestions 题 · 过关啦数学错题本',
+                style: const TextStyle(color: _paperMuted, fontSize: 8),
               ),
               Text(
                 '第 ${page.pageNumber} 页 / 共 $totalPages 页',
@@ -1096,18 +1288,44 @@ class _A4PaperSheetView extends StatelessWidget {
     final hasDiagram = item.diagram != null && item.diagram!.primitives.isNotEmpty;
     final hasImg = item.imageUrl != null && item.imageUrl!.trim().isNotEmpty;
     final twoColOptions = !isEssay &&
-        item.options.length >= 2 &&
-        item.options.every((o) => o.length <= 16);
+        item.options.length == 4 &&
+        item.options.every((o) => o.length <= 16 && !o.contains('\n'));
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.only(bottom: 6),
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0xFFECEEF2), width: 0.6)),
+        border: Border(
+          bottom: BorderSide(color: Color(0xFFECEEF2), width: 0.6),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 题号与题型标签行
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+            margin: const EdgeInsets.only(bottom: 4),
+            decoration: const BoxDecoration(
+              color: Color(0xFFF8FAFC),
+              border: Border(
+                left: BorderSide(color: _paperAccent, width: 2),
+              ),
+            ),
+            child: Text(
+              '第 $seq 题  [${item.displayTypeLabel}]  ${item.realmName} · ${item.chapterName} · 错${item.wrongCount}次',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: _paperMuted,
+                fontSize: 8,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+
+          // 题干（独立行，绝不与选项合并）
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1115,37 +1333,24 @@ class _A4PaperSheetView extends StatelessWidget {
                 '$seq. ',
                 style: const TextStyle(
                   color: _paperInk,
-                  fontSize: 10,
+                  fontSize: 9.8,
                   fontWeight: FontWeight.w800,
                 ),
               ),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '[${item.realmName} · ${item.chapterName} · 错${item.wrongCount}次]',
-                      style: const TextStyle(
-                        color: _paperMuted,
-                        fontSize: 8,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 1.5),
-                    MathText(
-                      item.stem,
-                      style: const TextStyle(
-                        color: _paperInk,
-                        fontSize: 9.8,
-                        height: 1.45,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
+                child: MathText(
+                  item.stem,
+                  style: const TextStyle(
+                    color: _paperInk,
+                    fontSize: 9.8,
+                    height: 1.45,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
           ),
+
           if (includeDiagrams && (hasDiagram || hasImg)) ...[
             const SizedBox(height: 5),
             Padding(
@@ -1160,25 +1365,43 @@ class _A4PaperSheetView extends StatelessWidget {
               ),
             ),
           ],
+
+          // 选择题选项（规整 2×2 网格或单列，绝不预留作答/订正反思区）
           if (!isEssay && item.options.isNotEmpty) ...[
             const SizedBox(height: 4),
             Padding(
               padding: const EdgeInsets.only(left: 14),
               child: twoColOptions
-                  ? Wrap(
-                      spacing: 10,
-                      runSpacing: 3,
+                  ? Column(
                       children: [
-                        for (var i = 0; i < item.options.length; i++)
-                          SizedBox(
-                            width: 120,
-                            child: MathText(
-                              '${i < _letters.length ? _letters[i] : '${i + 1}'}. ${item.options[i]}',
-                              style: const TextStyle(
-                                color: _paperInk,
-                                fontSize: 9.2,
-                                height: 1.35,
-                              ),
+                        for (var r = 0; r < 2; r++)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 2),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: MathText(
+                                    '${_letters[r * 2]}. ${item.options[r * 2]}',
+                                    style: const TextStyle(
+                                      color: _paperInk,
+                                      fontSize: 9.2,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: MathText(
+                                    '${_letters[r * 2 + 1]}. ${item.options[r * 2 + 1]}',
+                                    style: const TextStyle(
+                                      color: _paperInk,
+                                      fontSize: 9.2,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                       ],
@@ -1202,42 +1425,38 @@ class _A4PaperSheetView extends StatelessWidget {
                     ),
             ),
           ],
-          if (includeWorkspace) ...[
-            const SizedBox(height: 5),
-            Padding(
-              padding: const EdgeInsets.only(left: 14),
-              child: isEssay
-                  ? Container(
-                      height: 48,
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: _paperRule,
-                          width: 0.7,
-                        ),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                      alignment: Alignment.topLeft,
-                      child: const Text(
-                        '解：',
-                        style: TextStyle(color: _paperMuted, fontSize: 8.5),
-                      ),
-                    )
-                  : const Text(
-                      '我的作答：________    订正反思：____________________',
-                      style: TextStyle(color: _paperMuted, fontSize: 8.2),
-                    ),
+
+          // 仅解答题预留回答空间，选择题不预留任何作答/演算/反思区
+          if (includeWorkspace && item.needsAnswerSpace) ...[
+            const SizedBox(height: 6),
+            Container(
+              height: 56,
+              width: double.infinity,
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                border: Border.all(color: _paperRule, width: 0.8),
+                borderRadius: BorderRadius.circular(2),
+              ),
+              alignment: Alignment.topLeft,
+              child: const Text(
+                '解：',
+                style: TextStyle(
+                  color: _paperMuted,
+                  fontSize: 8.8,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
           ],
+
           if (answerMode == 'INLINE') ...[
             const SizedBox(height: 5),
             Container(
-              margin: const EdgeInsets.only(left: 14),
+              width: double.infinity,
               padding: const EdgeInsets.all(5),
               decoration: BoxDecoration(
-                color: const Color(0xFFF0F9FF),
-                border: Border.all(color: const Color(0xFFBAE6FD), width: 0.7),
+                color: const Color(0xFFF0FDF4),
+                border: Border.all(color: const Color(0xFFBBF7D0), width: 0.7),
                 borderRadius: BorderRadius.circular(3),
               ),
               child: Column(
@@ -1246,7 +1465,7 @@ class _A4PaperSheetView extends StatelessWidget {
                   MathText(
                     '【参考答案】${item.formattedCorrectAnswer()}',
                     style: const TextStyle(
-                      color: Color(0xFF0369A1),
+                      color: Color(0xFF15803D),
                       fontSize: 8.8,
                       fontWeight: FontWeight.w700,
                     ),
@@ -1254,7 +1473,7 @@ class _A4PaperSheetView extends StatelessWidget {
                   if (item.analysis.trim().isNotEmpty) ...[
                     const SizedBox(height: 2),
                     MathText(
-                      '【思路解析】${item.analysis}',
+                      '【解题思路】${item.analysis}',
                       style: const TextStyle(
                         color: _paperMuted,
                         fontSize: 8.4,
@@ -1284,17 +1503,17 @@ class _A4PaperSheetView extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           MathText(
-            '$seq. 答案：${item.formattedCorrectAnswer()}',
+            '第 $seq 题  [${item.displayTypeLabel}]  参考答案：${item.formattedCorrectAnswer()}',
             style: const TextStyle(
-              color: _paperInk,
-              fontSize: 9.2,
+              color: Color(0xFF15803D),
+              fontSize: 9.1,
               fontWeight: FontWeight.w800,
             ),
           ),
           if (item.analysis.trim().isNotEmpty) ...[
-            const SizedBox(height: 2),
+            const SizedBox(height: 3),
             MathText(
-              '解析：${item.analysis}',
+              '解题思路：${item.analysis}',
               style: const TextStyle(
                 color: _paperMuted,
                 fontSize: 8.5,

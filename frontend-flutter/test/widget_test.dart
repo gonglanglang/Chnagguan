@@ -484,23 +484,22 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('我知道了'), findsNothing);
 
-    // Independent HomeTopNavBar + BannerCarousel + single current-grade challenge module (no 3-col grade GridView)
+    // Independent HomeTopNavBar + BannerCarousel + AI Board ABOVE current-grade challenge module (no 3-col grade GridView)
     expect(find.byType(HomeTopNavBar), findsOneWidget);
     expect(find.byType(HomeBannerCarousel), findsOneWidget);
     expect(find.text('名师数学教研团队'), findsOneWidget);
     expect(find.byType(GridView), findsNothing);
     expect(find.text('选择年级'), findsNothing);
+    expect(find.text('AI 智能手写画板'), findsOneWidget);
+    expect(find.text('拍照识题'), findsOneWidget);
     expect(find.text('数学闯关'), findsOneWidget);
     expect(find.text('初一'), findsWidgets);
     expect(find.text('第1章 有理数'), findsOneWidget);
 
-    await tester.scrollUntilVisible(
-      find.text('AI 智能手写画板'),
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('AI 智能手写画板'), findsOneWidget);
-    expect(find.text('拍照识题'), findsOneWidget);
+    // 验证「AI 智能手写画板」位于当前年级闯关模块上方
+    final aiBoardTop = tester.getTopLeft(find.text('AI 智能手写画板')).dy;
+    final challengeTop = tester.getTopLeft(find.text('数学闯关')).dy;
+    expect(aiBoardTop, lessThan(challengeTop));
 
     // Tap grade selector in HomeTopNavBar -> switch current grade to 初二
     await tester.tap(find.descendant(
@@ -1159,7 +1158,7 @@ void main() {
   });
 
   testWidgets(
-      'TASK-20261127-001 MainShellPage renames tab0 to 首页 and WrongTabPage uses UI library Tabs across all 3 skins',
+      'TASK-20261127-001 MainShellPage renames tab0 to 首页, WrongTabPage keeps original pill tabs, and WrongExportPreviewPage uses floating config + select-all + type-aware A4 layout',
       (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues(<String, Object>{
       'ggl_access_token': 'demo_token_123',
@@ -1212,24 +1211,15 @@ void main() {
     expect(find.text('首页'), findsOneWidget);
     expect(find.text('闯关'), findsNothing);
 
-    // 2. WrongTabPage renders WelkTabs on WelkUI, FTabs on Forui, WiredTabBar on Skribble
+    // 2. WrongTabPage restores original horizontal GglPillChip tabs (全部/高频/年级)
     await tester.pumpWidget(wrapShell(WrongTabPage(refreshSignal: wrongSignal)));
     await tester.pumpAndSettle();
-    expect(find.byType(WelkTabs), findsOneWidget);
+    expect(find.byType(GglPillChip), findsWidgets);
+    expect(find.text('全部'), findsOneWidget);
+    expect(find.text('高频'), findsOneWidget);
     expect(find.text('导出 Word'), findsOneWidget);
 
-    await themeProvider.setUiSkin(AppUiSkin.forui);
-    await tester.pumpAndSettle();
-    expect(find.byType(FTabs), findsOneWidget);
-
-    await themeProvider.setUiSkin(AppUiSkin.skribble);
-    await tester.pumpAndSettle();
-    expect(find.byType(WiredTabBar), findsOneWidget);
-
-    // Switch back to WelkUI and test A4 WrongExportPreviewPage + BannerDetailPage
-    await themeProvider.setUiSkin(AppUiSkin.welkui);
-    await tester.pumpAndSettle();
-
+    // 3. WrongExportPreviewPage: default collapsed config bar + floating dropdown (does not shift A4 paper!) + Select All + no choice reflection box
     await tester.pumpWidget(
       wrapShell(
         WrongExportPreviewPage(
@@ -1240,10 +1230,28 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('A4 错题卷预览与导出'), findsOneWidget);
-    expect(find.textContaining('A4 打印效果预览'), findsOneWidget);
-    expect(find.text('生成 Word 并分享至微信'), findsOneWidget);
+    expect(find.text('A4 错题卷导出'), findsOneWidget);
+    expect(find.text('打印配置'), findsOneWidget);
+    expect(find.text('答案与解析排版'), findsNothing); // 默认收起
+    expect(find.text('全选'), findsOneWidget);
+    expect(find.text('挑选题目'), findsOneWidget);
+    expect(find.text('导出 Word 发微信'), findsOneWidget);
+    expect(find.textContaining('我的作答'), findsNothing);
+    expect(find.textContaining('订正反思'), findsNothing);
 
+    // 记录展开前 A4 纸张位置，验证悬浮展开不占文档流（A4 位置不变）
+    final a4TopBefore = tester.getTopLeft(find.byType(InteractiveViewer)).dy;
+    await tester.tap(find.text('打印配置'));
+    await tester.pumpAndSettle();
+    expect(find.text('答案与解析排版'), findsOneWidget);
+    final a4TopAfter = tester.getTopLeft(find.byType(InteractiveViewer)).dy;
+    expect(a4TopAfter, equals(a4TopBefore));
+
+    await tester.tap(find.text('收起配置'));
+    await tester.pumpAndSettle();
+    expect(find.text('答案与解析排版'), findsNothing);
+
+    // 4. BannerDetailPage native rich-text rendering
     await tester.pumpWidget(
       wrapShell(
         const BannerDetailPage(

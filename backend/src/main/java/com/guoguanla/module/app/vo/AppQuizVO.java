@@ -116,6 +116,8 @@ public class AppQuizVO {
         private String chapterName;
         private String gateName;
         private String questionFormat;
+        private String questionTypeLabel;
+        private Boolean needsAnswerSpace;
         private String stem;
         private List<String> options;
         private Integer answerIndex;

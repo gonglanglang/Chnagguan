@@ -29,7 +29,7 @@ class HomeTopNavBar extends StatelessWidget implements PreferredSizeWidget {
   final List<Widget> trailingActions;
 
   @override
-  Size get preferredSize => const Size.fromHeight(60);
+  Size get preferredSize => const Size.fromHeight(54);
 
   Future<void> _openGradePicker(BuildContext context) async {
     final user = context.read<UserProvider>();
@@ -336,12 +336,12 @@ class HomeTopNavBar extends StatelessWidget implements PreferredSizeWidget {
     }
 
     final barContent = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Row(
         children: [
           Container(
-            width: 30,
-            height: 30,
+            width: 28,
+            height: 28,
             alignment: Alignment.center,
             decoration: AppTheme.insetBoxDecoration(
               context,
@@ -351,41 +351,24 @@ class HomeTopNavBar extends StatelessWidget implements PreferredSizeWidget {
             ),
             child: Icon(
               Icons.calculate_rounded,
-              size: 18,
+              size: 16,
               color: AppTheme.onAccentColor(context),
             ),
           ),
-          const SizedBox(width: 9),
+          const SizedBox(width: 8),
           Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: ink,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    height: 1.1,
-                    fontFamilyFallback: AppTheme.cjkFontFallback,
-                  ),
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  '人教版同步数学闯关',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: AppTheme.mutedText(context),
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w600,
-                    height: 1.15,
-                  ),
-                ),
-              ],
+            child: Text(
+              title,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: ink,
+                fontSize: 17.5,
+                fontWeight: FontWeight.w900,
+                height: 1.15,
+                fontFamilyFallback: AppTheme.cjkFontFallback,
+              ),
             ),
           ),
           const SizedBox(width: 8),
@@ -405,7 +388,7 @@ class HomeTopNavBar extends StatelessWidget implements PreferredSizeWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(height: isSkribble ? 56 : 58, child: barContent),
+            SizedBox(height: isSkribble ? 50 : 52, child: barContent),
             if (isSkribble) const WiredDivider(),
           ],
         ),

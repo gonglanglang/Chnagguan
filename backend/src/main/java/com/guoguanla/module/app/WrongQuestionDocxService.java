@@ -73,6 +73,8 @@ public class WrongQuestionDocxService {
             String chapterName,
             String gateName,
             String questionFormat,
+            String questionTypeLabel,
+            boolean needsAnswerSpace,
             int wrongCount,
             String stem,
             List<String> options,
@@ -114,7 +116,11 @@ public class WrongQuestionDocxService {
         List<UserWrongQuestion> choiceWrongs = new ArrayList<>();
         List<UserWrongQuestion> essayWrongs = new ArrayList<>();
         for (UserWrongQuestion w : wrongs) {
-            if ("ESSAY".equalsIgnoreCase(w.getQuestionFormat())) {
+            EduQuestion sourceQ = qMap.get(w.getQuestionId());
+            String rawFmt = (w.getQuestionFormat() != null && !w.getQuestionFormat().isBlank())
+                    ? w.getQuestionFormat()
+                    : (sourceQ != null ? sourceQ.getQuestionFormat() : null);
+            if ("ESSAY".equalsIgnoreCase(rawFmt)) {
                 essayWrongs.add(w);
             } else {
                 choiceWrongs.add(w);
@@ -127,14 +133,20 @@ public class WrongQuestionDocxService {
         int seq = 1;
         for (UserWrongQuestion w : ordered) {
             EduRealm r = realmByGrade.get(w.getGradeCode());
-            String fmt = "ESSAY".equalsIgnoreCase(w.getQuestionFormat()) ? "ESSAY" : "SINGLE_CHOICE";
+            EduQuestion sourceQ = qMap.get(w.getQuestionId());
+            String rawFmt = (w.getQuestionFormat() != null && !w.getQuestionFormat().isBlank())
+                    ? w.getQuestionFormat()
+                    : (sourceQ != null ? sourceQ.getQuestionFormat() : null);
+            boolean isEssay = "ESSAY".equalsIgnoreCase(rawFmt);
+            String fmt = isEssay ? "ESSAY" : "SINGLE_CHOICE";
+            String typeLabel = isEssay ? "解答题" : "选择题";
             List<String> opts = JsonHelper.readStringList(objectMapper, w.getOptionsJson());
             int ansIdx = parseAnswerIndex(w.getAnswerJson());
             String refAns = parseReferenceAnswer(w.getAnswerJson());
 
             EmbeddedImage fig = null;
             if (includeDiagrams) {
-                fig = buildFigureImage(qMap.get(w.getQuestionId()), images.size() + 1);
+                fig = buildFigureImage(sourceQ, images.size() + 1);
                 if (fig != null) {
                     images.add(fig);
                 }
@@ -146,6 +158,8 @@ public class WrongQuestionDocxService {
                     safeStr(w.getChapterName()),
                     safeStr(w.getGateName()),
                     fmt,
+                    typeLabel,
+                    isEssay,
                     w.getWrongCount() == null ? 1 : Math.max(1, w.getWrongCount()),
                     formatMathText(safeStr(w.getStem())),
                     opts.stream().map(WrongQuestionDocxService::formatMathText).toList(),
@@ -419,8 +433,7 @@ public class WrongQuestionDocxService {
                 body.append(buildSectionHeading(sectionTitle));
             }
 
-            body.append(buildQuestionCardTable(item, answerMode, includeWorkspace, imgDocPrId++));
-            body.append("<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"140\"/></w:pPr></w:p>");
+            body.append(buildQuestionBlock(item, answerMode, includeWorkspace, imgDocPrId++));
         }
 
         // 末尾统一附参考答案与解题思路
@@ -457,7 +470,7 @@ public class WrongQuestionDocxService {
                 "姓名：" + studentName,
                 "年级：" + gradeName,
                 "日期：" + dateStr,
-                "订正情况：□已掌握"
+                "得分：________"
         };
         StringBuilder sb = new StringBuilder();
         sb.append("<w:tbl><w:tblPr>")
@@ -492,63 +505,91 @@ public class WrongQuestionDocxService {
                 + "</w:p>";
     }
 
-    private String buildQuestionCardTable(PreparedItem item, String answerMode, boolean includeWorkspace, int docPrId) {
+    /**
+     * 生成标准 A4 试卷排版题目块（纯原生段落 + Tab 对齐选项，严禁嵌套表格，避免 Word/WPS/微信预览合并错位）。
+     * - 选择题（!needsAnswerSpace）：仅展示题号、题干、配图与规整选项，不预留任何作答/演算/反思区；
+     * - 解答题（needsAnswerSpace）：开启 includeWorkspace 时展示独立「解：」大题手写作答区。
+     */
+    private String buildQuestionBlock(PreparedItem item, String answerMode, boolean includeWorkspace, int docPrId) {
         StringBuilder sb = new StringBuilder();
-        sb.append("<w:tbl><w:tblPr>")
-                .append("<w:tblW w:w=\"").append(PAGE_CONTENT_WIDTH_TWIPS).append("\" w:type=\"dxa\"/>")
-                .append("<w:tblBorders>")
-                .append("<w:top w:val=\"single\" w:sz=\"6\" w:space=\"0\" w:color=\"CBD5E1\"/>")
-                .append("<w:bottom w:val=\"single\" w:sz=\"6\" w:space=\"0\" w:color=\"CBD5E1\"/>")
-                .append("<w:left w:val=\"single\" w:sz=\"6\" w:space=\"0\" w:color=\"CBD5E1\"/>")
-                .append("<w:right w:val=\"single\" w:sz=\"6\" w:space=\"0\" w:color=\"CBD5E1\"/>")
-                .append("<w:insideH w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"E2E8F0\"/>")
-                .append("</w:tblBorders></w:tblPr>");
+        boolean hasOptions = !item.needsAnswerSpace() && !item.options().isEmpty();
+        boolean hasEssayWorkspace = item.needsAnswerSpace() && includeWorkspace;
+        boolean hasInlineAnswer = "INLINE".equals(answerMode);
 
-        // Row 1: 题目编号 + 来源标签 + 错次（禁止与题干分开）
+        // 1. 题目元信息条（带浅灰背景与 keepNext，确保不与题干分离）
         String sourceMeta = item.realmName() + " · " + item.chapterName() + " · " + item.gateName();
-        String typeLabel = "ESSAY".equals(item.questionFormat()) ? "解答题" : "选择题";
-        sb.append("<w:tr><w:trPr><w:cantSplit/></w:trPr><w:tc><w:tcPr>")
-                .append("<w:tcW w:w=\"").append(PAGE_CONTENT_WIDTH_TWIPS).append("\" w:type=\"dxa\"/>")
+        sb.append("<w:p><w:pPr><w:keepNext/><w:keepLines/>")
                 .append("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"F1F5F9\"/>")
-                .append("<w:tcMar><w:top w:w=\"75\" w:type=\"dxa\"/><w:bottom w:w=\"75\" w:type=\"dxa\"/>")
-                .append("<w:left w:w=\"150\" w:type=\"dxa\"/><w:right w:w=\"150\" w:type=\"dxa\"/></w:tcMar>")
-                .append("</w:tcPr>")
-                .append("<w:p><w:pPr><w:keepNext/><w:spacing w:before=\"0\" w:after=\"0\"/></w:pPr>")
-                .append(textRun("第 " + item.index() + " 题", 21, "0369A1", true))
-                .append(textRun("  [" + typeLabel + "]  ", 18, "475569", true))
-                .append(textRun(sourceMeta, 18, "64748B", false))
-                .append(textRun("    ·    累计错 " + item.wrongCount() + " 次", 18, "DC2626", true))
-                .append("</w:p></w:tc></w:tr>");
+                .append("<w:pBdr><w:left w:val=\"single\" w:sz=\"18\" w:space=\"6\" w:color=\"0284C7\"/></w:pBdr>")
+                .append("<w:spacing w:before=\"140\" w:after=\"80\" w:line=\"260\" w:lineRule=\"auto\"/>")
+                .append("</w:pPr>")
+                .append(textRun("第 " + item.index() + " 题", 20, "0369A1", true))
+                .append(textRun("  [" + item.questionTypeLabel() + "]  ", 18, "334155", true))
+                .append(textRun(sourceMeta, 17, "64748B", false))
+                .append(textRun("  ·  错 " + item.wrongCount() + " 次", 17, "DC2626", true))
+                .append("</w:p>");
 
-        // Row 2: 题干 + 配图 + 选项 + 作答区 + 可选随题解析（整块 cantSplit 防跨页撕裂）
-        sb.append("<w:tr><w:trPr><w:cantSplit/></w:trPr><w:tc><w:tcPr>")
-                .append("<w:tcW w:w=\"").append(PAGE_CONTENT_WIDTH_TWIPS).append("\" w:type=\"dxa\"/>")
-                .append("<w:tcMar><w:top w:w=\"130\" w:type=\"dxa\"/><w:bottom w:w=\"130\" w:type=\"dxa\"/>")
-                .append("<w:left w:w=\"160\" w:type=\"dxa\"/><w:right w:w=\"160\" w:type=\"dxa\"/></w:tcMar>")
-                .append("</w:tcPr>");
-
-        // 题干（支持多行）
-        for (String line : item.stem().split("\\r?\\n")) {
-            sb.append("<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"80\" w:line=\"300\" w:lineRule=\"auto\"/></w:pPr>")
-                    .append(textRun(line, 22, "0F172A", false))
+        // 2. 题干（独立段落，绝不与选项 A 粘连）
+        String[] stemLines = item.stem().split("\\r?\\n");
+        for (int i = 0; i < stemLines.length; i++) {
+            boolean keepWithFollowing = (i < stemLines.length - 1)
+                    || item.figureImage() != null
+                    || hasOptions
+                    || hasEssayWorkspace
+                    || hasInlineAnswer;
+            sb.append("<w:p><w:pPr>");
+            if (keepWithFollowing) {
+                sb.append("<w:keepNext/>");
+            }
+            sb.append("<w:keepLines/>")
+                    .append("<w:ind w:left=\"120\"/>")
+                    .append("<w:spacing w:before=\"20\" w:after=\"80\" w:line=\"300\" w:lineRule=\"auto\"/>")
+                    .append("</w:pPr>");
+            if (i == 0) {
+                sb.append(textRun(item.index() + ". ", 22, "0F172A", true));
+            }
+            sb.append(textRun(stemLines[i], 22, "0F172A", false))
                     .append("</w:p>");
         }
 
-        // 配图
+        // 3. 配图（独立居中段落）
         if (item.figureImage() != null) {
-            sb.append(buildImageParagraph(item.figureImage(), docPrId));
+            sb.append(buildImageParagraph(item.figureImage(), docPrId, hasOptions || hasEssayWorkspace || hasInlineAnswer));
         }
 
-        // 选项排版
-        if (!"ESSAY".equals(item.questionFormat()) && !item.options().isEmpty()) {
+        // 4. 选择题选项（采用 Word 原生制表位 Tab Stops 规整双列/单列排版，零嵌套表格）
+        if (hasOptions) {
             boolean useTwoCol = item.options().size() == 4
-                    && item.options().stream().allMatch(o -> o.length() <= 18 && !o.contains("\n"));
+                    && item.options().stream().allMatch(o -> o.length() <= 16 && !o.contains("\n"));
             if (useTwoCol) {
-                sb.append(buildOptionsTwoColTable(item.options()));
+                for (int row = 0; row < 2; row++) {
+                    int leftIdx = row * 2;
+                    int rightIdx = row * 2 + 1;
+                    boolean keepNext = (row == 0) || hasInlineAnswer;
+                    sb.append("<w:p><w:pPr>");
+                    if (keepNext) sb.append("<w:keepNext/>");
+                    sb.append("<w:keepLines/>")
+                            .append("<w:tabs><w:tab w:val=\"left\" w:pos=\"4900\"/></w:tabs>")
+                            .append("<w:ind w:left=\"320\"/>")
+                            .append("<w:spacing w:before=\"20\" w:after=\"").append(row == 1 ? "120" : "60").append("\" w:line=\"280\" w:lineRule=\"auto\"/>")
+                            .append("</w:pPr>")
+                            .append(textRun(LETTERS[leftIdx] + ". ", 21, "0369A1", true))
+                            .append(textRun(item.options().get(leftIdx), 21, "1E293B", false))
+                            .append("<w:r><w:tab/></w:r>")
+                            .append(textRun(LETTERS[rightIdx] + ". ", 21, "0369A1", true))
+                            .append(textRun(item.options().get(rightIdx), 21, "1E293B", false))
+                            .append("</w:p>");
+                }
             } else {
                 for (int i = 0; i < item.options().size(); i++) {
+                    boolean keepNext = (i < item.options().size() - 1) || hasInlineAnswer;
                     String prefix = i < LETTERS.length ? LETTERS[i] + ". " : ((i + 1) + ". ");
-                    sb.append("<w:p><w:pPr><w:ind w:left=\"220\"/><w:spacing w:before=\"20\" w:after=\"50\"/></w:pPr>")
+                    sb.append("<w:p><w:pPr>");
+                    if (keepNext) sb.append("<w:keepNext/>");
+                    sb.append("<w:keepLines/>")
+                            .append("<w:ind w:left=\"320\"/>")
+                            .append("<w:spacing w:before=\"20\" w:after=\"").append(i == item.options().size() - 1 ? "120" : "50").append("\" w:line=\"280\" w:lineRule=\"auto\"/>")
+                            .append("</w:pPr>")
                             .append(textRun(prefix, 21, "0369A1", true))
                             .append(textRun(item.options().get(i), 21, "1E293B", false))
                             .append("</w:p>");
@@ -556,82 +597,85 @@ public class WrongQuestionDocxService {
             }
         }
 
-        // 预留手写作答区
-        if (includeWorkspace) {
-            int blankLines = "ESSAY".equals(item.questionFormat()) ? 5 : 2;
-            sb.append("<w:p><w:pPr><w:spacing w:before=\"100\" w:after=\"40\"/>"
-                            + "<w:pBdr><w:top w:val=\"dashed\" w:sz=\"4\" w:space=\"4\" w:color=\"CBD5E1\"/></w:pBdr></w:pPr>")
-                    .append(textRun("订正 / 演算区：", 18, "94A3B8", false))
-                    .append("</w:p>");
-            for (int l = 0; l < blankLines; l++) {
-                sb.append("<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"120\"/></w:pPr></w:p>");
-            }
+        // 5. 仅解答题预留独立作答空间（顶级 1×1 表格，绝不嵌套，选择题不生成任何作答/订正/反思区）
+        if (hasEssayWorkspace) {
+            sb.append(buildEssayAnswerBox());
         }
 
-        // 随题附答案与解析
-        if ("INLINE".equals(answerMode)) {
-            sb.append("<w:p><w:pPr><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"F0FDF4\"/>"
-                            + "<w:spacing w:before=\"80\" w:after=\"40\"/></w:pPr>")
+        // 6. 随题附参考答案与解析（独立两段，绝不粘连）
+        if (hasInlineAnswer) {
+            sb.append("<w:p><w:pPr><w:keepNext/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"F0FDF4\"/>")
+                    .append("<w:ind w:left=\"120\"/>")
+                    .append("<w:spacing w:before=\"60\" w:after=\"40\"/></w:pPr>")
                     .append(textRun("【参考答案】", 19, "15803D", true))
                     .append(textRun(formatCorrectAnswer(item), 19, "166534", true))
                     .append("</w:p>");
             if (!item.analysis().isBlank()) {
-                sb.append("<w:p><w:pPr><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"F0FDF4\"/>"
-                                + "<w:spacing w:before=\"0\" w:after=\"60\"/></w:pPr>")
+                sb.append("<w:p><w:pPr><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"F0FDF4\"/>")
+                        .append("<w:ind w:left=\"120\"/>")
+                        .append("<w:spacing w:before=\"0\" w:after=\"100\"/></w:pPr>")
                         .append(textRun("【解题思路】", 19, "15803D", true))
                         .append(textRun(item.analysis(), 19, "334155", false))
                         .append("</w:p>");
             }
         }
 
-        sb.append("</w:tc></w:tr></w:tbl>");
+        // 题间淡灰细分割线
+        sb.append("<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"100\"/>")
+                .append("<w:pBdr><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"2\" w:color=\"E2E8F0\"/></w:pBdr>")
+                .append("</w:pPr></w:p>");
         return sb.toString();
     }
 
-    private String buildOptionsTwoColTable(List<String> options) {
-        int innerW = PAGE_CONTENT_WIDTH_TWIPS - 360;
-        int halfW = innerW / 2;
-        StringBuilder sb = new StringBuilder();
-        sb.append("<w:tbl><w:tblPr>")
-                .append("<w:tblW w:w=\"").append(innerW).append("\" w:type=\"dxa\"/>")
-                .append("<w:tblBorders>")
-                .append("<w:top w:val=\"none\"/><w:bottom w:val=\"none\"/><w:left w:val=\"none\"/>")
-                .append("<w:right w:val=\"none\"/><w:insideH w:val=\"none\"/><w:insideV w:val=\"none\"/>")
-                .append("</w:tblBorders></w:tblPr>");
-        for (int row = 0; row < 2; row++) {
-            sb.append("<w:tr><w:trPr><w:cantSplit/></w:trPr>");
-            for (int col = 0; col < 2; col++) {
-                int idx = row * 2 + col;
-                sb.append("<w:tc><w:tcPr><w:tcW w:w=\"").append(halfW).append("\" w:type=\"dxa\"/>")
-                        .append("<w:tcMar><w:top w:w=\"40\" w:type=\"dxa\"/><w:bottom w:w=\"40\" w:type=\"dxa\"/>")
-                        .append("<w:left w:w=\"80\" w:type=\"dxa\"/><w:right w:w=\"80\" w:type=\"dxa\"/></w:tcMar></w:tcPr>")
-                        .append("<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\"/></w:pPr>")
-                        .append(textRun(LETTERS[idx] + ". ", 21, "0369A1", true))
-                        .append(textRun(options.get(idx), 21, "1E293B", false))
-                        .append("</w:p></w:tc>");
-            }
-            sb.append("</w:tr>");
-        }
-        sb.append("</w:tbl>");
-        return sb.toString();
+    private String buildEssayAnswerBox() {
+        return "<w:tbl><w:tblPr>"
+                + "<w:tblW w:w=\"" + PAGE_CONTENT_WIDTH_TWIPS + "\" w:type=\"dxa\"/>"
+                + "<w:tblBorders>"
+                + "<w:top w:val=\"dashed\" w:sz=\"6\" w:space=\"0\" w:color=\"CBD5E1\"/>"
+                + "<w:bottom w:val=\"dashed\" w:sz=\"6\" w:space=\"0\" w:color=\"CBD5E1\"/>"
+                + "<w:left w:val=\"dashed\" w:sz=\"6\" w:space=\"0\" w:color=\"CBD5E1\"/>"
+                + "<w:right w:val=\"dashed\" w:sz=\"6\" w:space=\"0\" w:color=\"CBD5E1\"/>"
+                + "</w:tblBorders></w:tblPr>"
+                + "<w:tr><w:trPr><w:cantSplit/><w:trHeight w:val=\"2200\" w:hRule=\"atLeast\"/></w:trPr>"
+                + "<w:tc><w:tcPr>"
+                + "<w:tcW w:w=\"" + PAGE_CONTENT_WIDTH_TWIPS + "\" w:type=\"dxa\"/>"
+                + "<w:tcMar><w:top w:w=\"100\" w:type=\"dxa\"/><w:bottom w:w=\"100\" w:type=\"dxa\"/>"
+                + "<w:left w:w=\"140\" w:type=\"dxa\"/><w:right w:w=\"140\" w:type=\"dxa\"/></w:tcMar>"
+                + "</w:tcPr>"
+                + "<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"0\"/></w:pPr>"
+                + textRun("解：", 20, "475569", true)
+                + "</w:p>"
+                + "</w:tc></w:tr></w:tbl>";
     }
 
     private String buildAnswerKeyCard(PreparedItem item) {
         StringBuilder sb = new StringBuilder();
-        sb.append("<w:p><w:pPr><w:spacing w:before=\"80\" w:after=\"40\"/>"
-                        + "<w:pBdr><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"4\" w:color=\"E2E8F0\"/></w:pBdr></w:pPr>")
-                .append(textRun("第 " + item.index() + " 题  ", 20, "0369A1", true))
-                .append(textRun("参考答案：" + formatCorrectAnswer(item), 20, "15803D", true));
-        if (!item.analysis().isBlank()) {
-            sb.append("<w:r><w:br/></w:r>")
-                    .append(textRun("解题思路：" + item.analysis(), 19, "475569", false));
+        boolean hasAnalysis = !item.analysis().isBlank();
+        sb.append("<w:p><w:pPr>");
+        if (hasAnalysis) {
+            sb.append("<w:keepNext/>");
+        } else {
+            sb.append("<w:pBdr><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"4\" w:color=\"E2E8F0\"/></w:pBdr>");
         }
-        sb.append("</w:p>");
+        sb.append("<w:spacing w:before=\"100\" w:after=\"").append(hasAnalysis ? "40" : "80").append("\"/></w:pPr>")
+                .append(textRun("第 " + item.index() + " 题  ", 20, "0369A1", true))
+                .append(textRun("[" + item.questionTypeLabel() + "]  ", 18, "64748B", false))
+                .append(textRun("参考答案：" + formatCorrectAnswer(item), 20, "15803D", true))
+                .append("</w:p>");
+        if (hasAnalysis) {
+            sb.append("<w:p><w:pPr><w:ind w:left=\"240\"/><w:spacing w:before=\"0\" w:after=\"90\"/>")
+                    .append("<w:pBdr><w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"6\" w:color=\"E2E8F0\"/></w:pBdr>")
+                    .append("</w:pPr>")
+                    .append(textRun("解题思路：", 19, "334155", true))
+                    .append(textRun(item.analysis(), 19, "475569", false))
+                    .append("</w:p>");
+        }
         return sb.toString();
     }
 
-    private String buildImageParagraph(EmbeddedImage img, int docPrId) {
-        return "<w:p><w:pPr><w:jc w:val=\"center\"/><w:spacing w:before=\"60\" w:after=\"80\"/></w:pPr>"
+    private String buildImageParagraph(EmbeddedImage img, int docPrId, boolean keepNext) {
+        return "<w:p><w:pPr>" + (keepNext ? "<w:keepNext/>" : "")
+                + "<w:jc w:val=\"center\"/><w:spacing w:before=\"60\" w:after=\"80\"/></w:pPr>"
                 + "<w:r><w:drawing>"
                 + "<wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">"
                 + "<wp:extent cx=\"" + img.cxEmu() + "\" cy=\"" + img.cyEmu() + "\"/>"

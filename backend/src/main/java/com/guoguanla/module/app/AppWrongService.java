@@ -73,8 +73,14 @@ public class AppWrongService {
         List<AppQuizVO.WrongQuestionVO> items = page.getRecords().stream()
                 .map(w -> {
                     EduRealm realm = realmByGrade.get(w.getGradeCode());
-                    String fmt = normalizeFormat(w.getQuestionFormat());
-                    FigureData fig = extractFigure(qMap.get(w.getQuestionId()), baseOrigin);
+                    EduQuestion sourceQ = qMap.get(w.getQuestionId());
+                    String rawFmt = (w.getQuestionFormat() != null && !w.getQuestionFormat().isBlank())
+                            ? w.getQuestionFormat()
+                            : (sourceQ != null ? sourceQ.getQuestionFormat() : null);
+                    String fmt = normalizeFormat(rawFmt);
+                    boolean needsAnswerSpace = "ESSAY".equals(fmt);
+                    String typeLabel = needsAnswerSpace ? "解答题" : "选择题";
+                    FigureData fig = extractFigure(sourceQ, baseOrigin);
                     return AppQuizVO.WrongQuestionVO.builder()
                             .id(w.getId())
                             .gradeCode(w.getGradeCode())
@@ -84,6 +90,8 @@ public class AppWrongService {
                             .chapterName(w.getChapterName())
                             .gateName(w.getGateName())
                             .questionFormat(fmt)
+                            .questionTypeLabel(typeLabel)
+                            .needsAnswerSpace(needsAnswerSpace)
                             .stem(w.getStem())
                             .options(parseOptions(w.getOptionsJson()))
                             .answerIndex(parseAnswerIndex(w.getAnswerJson()))

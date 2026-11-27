@@ -312,6 +312,13 @@ class Task20261127Tests {
         w2.setLastWrongAt(LocalDateTime.now());
         wrongMapper.insert(w2);
 
+        // 校验错题列表接口返回明确的题目类型标签与是否需要预留作答区标记
+        mockMvc.perform(get("/api/app/wrong-questions?pageNum=1&pageSize=10")
+                        .header("Authorization", "Bearer " + stu.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.records.length()").value(2));
+
         MvcResult res = mockMvc.perform(post("/api/app/wrong-questions/export-docx")
                         .header("Authorization", "Bearer " + stu.token())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -360,7 +367,7 @@ class Task20261127Tests {
             }
         }
 
-        // 校验 A4 纸尺寸、标题、分组与参考答案页
+        // 校验 A4 纸尺寸、标题、分组、选择题不留作答区、解答题预留「解：」作答区、无嵌套表格及答案换行独立段落
         String docXml = new String(entries.get("word/document.xml"), StandardCharsets.UTF_8);
         assertThat(docXml).contains("w:w=\"11906\" w:h=\"16838\"");
         assertThat(docXml).contains("初二勾股定理错题卷");
@@ -368,6 +375,36 @@ class Task20261127Tests {
         assertThat(docXml).contains("二、解答题（共 1 题）");
         assertThat(docXml).contains("参考答案与解题思路");
         assertThat(docXml).contains("rIdImg1");
+        assertThat(docXml).doesNotContain("订正 / 演算区");
+        assertThat(docXml).doesNotContain("订正反思");
+        assertThat(docXml).doesNotContain("我的作答");
+        assertThat(docXml).contains("解：");
+        // 仅 2 个顶级表格（卷头信息栏 + 1 道解答题作答区），绝不出现单元格内嵌套表格
+        assertThat(docXml.split("<w:tbl>", -1).length - 1).isEqualTo(2);
+        // 校验仅导出选择题时不含「解：」作答区
+        MvcResult choiceOnlyRes = mockMvc.perform(post("/api/app/wrong-questions/export-docx")
+                        .header("Authorization", "Bearer " + stu.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "wrongIds", List.of(w1.getId()),
+                                "title", "纯选择题错题卷",
+                                "answerMode", "END",
+                                "includeDiagrams", false,
+                                "includeWorkspace", true
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn();
+        Map<String, byte[]> choiceEntries = new HashMap<>();
+        try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(choiceOnlyRes.getResponse().getContentAsByteArray()))) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                choiceEntries.put(entry.getName(), zis.readAllBytes());
+            }
+        }
+        String choiceDocXml = new String(choiceEntries.get("word/document.xml"), StandardCharsets.UTF_8);
+        assertThat(choiceDocXml).doesNotContain("解：");
+        assertThat(choiceDocXml).doesNotContain("订正 / 演算区");
+        assertThat(choiceDocXml.split("<w:tbl>", -1).length - 1).isEqualTo(1);
 
         // 校验嵌入矢量配图是合法 PNG
         byte[] imgBytes = entries.get("word/media/img_1.png");

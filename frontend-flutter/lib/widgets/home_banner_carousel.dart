@@ -116,7 +116,7 @@ class _HomeBannerCarouselState extends State<HomeBannerCarousel> {
         GglComicPanel(
           padding: EdgeInsets.zero,
           child: AspectRatio(
-            aspectRatio: 12 / 5,
+            aspectRatio: 16 / 6.2,
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -296,7 +296,7 @@ class _HomeBannerCarouselState extends State<HomeBannerCarousel> {
           ),
         ),
         if (widget.banners.length > 1) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
